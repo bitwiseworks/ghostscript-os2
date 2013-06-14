@@ -42,7 +42,7 @@
 # include "config_win32.h"
 #endif
 
-#if defined(HAVE_STDINT_H) || defined(__MACOS__)
+#if defined(HAVE_STDINT_H) || defined(__MACOS__) || defined(__KLIBC__)
 # include <stdint.h>
 #elif defined(__VMS)
 # include <inttypes.h>

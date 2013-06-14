@@ -38,6 +38,8 @@ GLCCSHARED=$(CC_SHARED) $(GLCCFLAGS)
 #GLD=$(GLGEN)
 # Define the name of this makefile.
 LIB_MAK=$(GLSRC)lib.mak
+JBIG2_LIB=jbig2dec
+
 
 # Define the inter-dependencies of the .h files.
 # Since not all versions of `make' defer expansion of macros,

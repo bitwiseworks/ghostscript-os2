@@ -79,8 +79,13 @@ TID tid;
 void
 gs_addmess(char *str)
 {
+#if defined(__EMX__)
+    fputs(str, stderr);
+    fflush(stderr);
+#else
     fputs(str, stdout);
     fflush(stdout);
+#endif
 }
 
 /*********************************************************************/
@@ -98,6 +103,8 @@ gs_free_dll(void)
     if (gsdll.hmodule == (HMODULE) NULL)
 	return TRUE;
     rc = DosFreeModule(gsdll.hmodule);
+    if (rc == 12) rc = 0; //we ignore rc == 12 (ERROR_INVALID_ACCESS)
+
     if (rc) {
 	sprintf(buf, "DosFreeModule returns %d\n", rc);
 	gs_addmess(buf);

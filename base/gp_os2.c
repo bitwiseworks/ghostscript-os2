@@ -33,7 +33,9 @@
 #define popen fopen		/* doesn't support popen */
 #define pclose fclose		/* doesn't support pclose */
 #else
+#ifndef __KLIBC__
 #include <dos.h>
+#endif
 #endif
 /* Define the regs union tag for short registers. */
 #  define rshort x
@@ -136,7 +138,7 @@ gp_get_usertime(long *pdt)
 bool
 gp_file_is_console(FILE * f)
 {
-#ifndef __DLL__
+#if !defined(__DLL__) && !defined(__KLIBC__)
     if (!isos2) {
 	union REGS regs;
 
@@ -260,6 +262,9 @@ void
 gp_set_file_binary(int prnfno, int binary)
 {
 #ifndef __IBMC__
+#if defined(__KLIBC__)
+    setmode(prnfno, binary ? O_BINARY : O_TEXT);
+#else
     union REGS regs;
 
     regs.h.ah = 0x44;		/* ioctl */
@@ -276,6 +281,7 @@ gp_set_file_binary(int prnfno, int binary)
     regs.h.ah = 0x44;		/* ioctl */
     regs.h.al = 1;		/* set device info */
     intdos(&regs, &regs);
+#endif
 #endif
 }
 

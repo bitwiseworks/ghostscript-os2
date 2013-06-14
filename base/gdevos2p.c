@@ -38,6 +38,7 @@
 #define INCL_SPL
 #define INCL_SPLDOSPRINT
 #define INCL_SPLERRORS
+#define INCL_WINERRORS
 
 #include <os2.h>
 
@@ -46,7 +47,7 @@
 #include "gp.h"
 #include "gscdefs.h"		/* for gs_product */
 
-extern HWND hwndtext;		/* in gp_os2.h */
+HWND hwndtext;
 
 typedef struct tagOS2QL {
     PRQINFO3 *prq;		/* queue list */

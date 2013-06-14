@@ -36,6 +36,8 @@ PSLIBDIR=lib
 PSRESDIR=Resource
 PSGENDIR=obj
 PSOBJDIR=obj
+ADDONSDIR=addons
+CONTRIBDIR=contrib
 
 # Define the root directory for Ghostscript installation.
 
@@ -138,8 +140,8 @@ ICCSRCDIR=icclib
 # and the process forking method to use for the server.
 # See ijs.mak for more information.
 
-#IJSSRCDIR=ijs
-#IJSEXECTYPE=win
+IJSSRCDIR=ijs
+IJSEXECTYPE=unix
 
 # Define the directory where the imdi library source is stored.
 # See devs.mak for more information
@@ -181,11 +183,12 @@ PSD=$(PSGENDIR)\$(NUL)
 
 !if $(EMX)
 COMP=gcc $(X11INCLUDE)
-COMPBASE=\emx
-EMXPATH=/emx
-COMPDIR=$(COMPBASE)\bin
-INCDIR=$(EMXPATH)/include
-LIBDIR=$(EMXPATH)/lib
+CC_SHARED=gcc
+#COMPBASE=\emx
+#EMXPATH=/emx
+#COMPDIR=$(COMPBASE)\bin
+#INCDIR=$(EMXPATH)/include
+#LIBDIR=$(EMXPATH)/lib
 CPNG=-DPNGAPI=
 !endif
 
@@ -207,7 +210,7 @@ LIBDIR=$(TOOLPATH)\lib;$(COMPBASE)\lib
 # less capable than the designated one.
 
 # EMX requires 386 or higher
-CPU_TYPE=386
+CPU_TYPE=586
 
 # Define the .dev module that implements thread and synchronization
 # primitives for this platform.  Don't change this unless you really know
@@ -219,10 +222,11 @@ SYNC=nosync
 
 # Note that built-in libpng and zlib aren't available.
 
-SHARE_JPEG=0
-SHARE_LIBPNG=0
-SHARE_ZLIB=0
+SHARE_JPEG=1
+SHARE_LIBPNG=1
+SHARE_ZLIB=1
 SHARE_JBIG2=0
+SHARE_LIBTIFF=1
 
 # Swapping `make' out of memory makes linking much faster.
 # only used by Borland MAKER.EXE
@@ -248,7 +252,7 @@ AK=
 
 #Compiler Optimiser option
 !if $(EMX)
-CO=-O
+CO=-O2
 !endif
 !if $(IBMCPP)
 #CO=/O+
@@ -279,11 +283,7 @@ I_=-I
 II=-I
 _I=
 O_=-o $(NULL)
-!if $(MAKEDLL)
-OBJ=obj
-!else
 OBJ=o
-!endif
 Q=
 XE=.exe
 XEAUX=.exe
@@ -308,7 +308,7 @@ RMN_=$(GLSRCDIR)\rm.cmd
 # Define the arguments for genconf.
 
 !if $(MAKEDLL)
-CONFILES=-p %%s+
+CONFILES=-p %%s
 !else
 CONFILES=
 !endif
@@ -358,7 +358,7 @@ CGDB=
 
 !if $(MAKEDLL)
 !if $(EMX)
-CDLL=-Zdll -Zso -Zsys -Zomf $(MT_OPT) -D__DLL__
+CDLL=-Zomf $(MT_OPT) -D__DLL__
 !endif
 !if $(IBMCPP)
 CDLL=/Gd- /Ge- /Gm+ /Gs+ /D__DLL__
@@ -368,15 +368,15 @@ CDLL=
 !endif
 
 !if $(EMX)
-CEXE=-Zomf
-CEXESYS=-Zomf -Zsys
+CEXE=-Zexe
+CEXESYS=-Zomf -Zmap
 !endif
 
-GENOPT=$(CD) $(CGDB) $(CDLL) $(CO) $(CPNG)
+GENOPT=$(CD) $(CGDB) $(CO) $(CPNG)
 
-CCFLAGS0=$(GENOPT) $(PLATOPT) -D__OS2__ $(GCIFLAGS)
+CCFLAGS0=$(GENOPT) $(PLATOPT) -D__OS2__ $(GCIFLAGS) -I/cups/include
 CCFLAGS=$(CCFLAGS0) 
-CC=$(COMPDIR)\$(COMP) $(CCFLAGS0)
+CC=$(COMP) $(CCFLAGS0)
 CC_=$(CC)
 CC_D=$(CC) $(CO)
 CC_INT=$(CC)
@@ -388,7 +388,7 @@ CC_SHARED=$(CC_)
 # Choose the language feature(s) to include.  See gs.mak for details.
 # Since we have a large address space, we include some optional features.
 
-FEATURE_DEVS=$(PSD)psl3.dev $(PSD)pdf.dev $(PSD)dpsnext.dev $(PSD)ttfont.dev $(PSD)epsf.dev $(PSD)os2print.dev
+FEATURE_DEVS=$(PSD)psl3.dev $(PSD)pdf.dev $(PSD)dpsnext.dev $(PSD)ttfont.dev $(PSD)epsf.dev $(PSD)os2print.dev $(PSD)jbig2.dev
 
 # Choose whether to compile the .ps initialization files into the executable.
 # See gs.mak for details.
@@ -440,13 +440,23 @@ DEVICE_DEVS12=$(DD)psmono.dev $(DD)bit.dev $(DD)bitrgb.dev $(DD)bitcmyk.dev
 DEVICE_DEVS13=$(DD)pngmono.dev $(DD)pnggray.dev $(DD)png16.dev $(DD)png256.dev $(DD)png16m.dev $(DD)pngalpha.dev
 DEVICE_DEVS14=$(DD)jpeg.dev $(DD)jpeggray.dev $(DD)jpegcmyk.dev
 DEVICE_DEVS15=$(DD)pdfwrite.dev $(DD)pswrite.dev $(DD)ps2write.dev $(DD)epswrite.dev $(DD)txtwrite.dev $(DD)pxlmono.dev $(DD)pxlcolor.dev
-DEVICE_DEVS16=$(DD)bbox.dev
+DEVICE_DEVS16=$(DD)bbox.dev $(DD)cups.dev
 # Overflow for DEVS3,4,5,6,9
 DEVICE_DEVS17=$(DD)ljet3.dev $(DD)ljet3d.dev $(DD)ljet4.dev $(DD)ljet4d.dev 
 DEVICE_DEVS18=$(DD)pj.dev $(DD)pjxl.dev $(DD)pjxl300.dev $(DD)jetp3852.dev $(DD)r4081.dev
 DEVICE_DEVS19=$(DD)lbp8.dev $(DD)m8510.dev $(DD)necp6.dev $(DD)bjc600.dev $(DD)bjc800.dev
 DEVICE_DEVS20=$(DD)pnm.dev $(DD)pnmraw.dev $(DD)ppm.dev $(DD)ppmraw.dev $(DD)pamcmyk32.dev
-DEVICE_DEVS21= $(DD)spotcmyk.dev $(DD)devicen.dev $(DD)bmpsep1.dev $(DD)bmpsep8.dev $(DD)bmp16m.dev $(DD)bmp32b.dev $(DD)psdcmyk.dev $(DD)psdrgb.dev
+DEVICE_DEVS21=$(DD)spotcmyk.dev $(DD)devicen.dev $(DD)bmpsep1.dev $(DD)bmpsep8.dev $(DD)bmp16m.dev $(DD)bmp32b.dev $(DD)psdcmyk.dev $(DD)psdrgb.dev
+# eplaser-jp devices
+DEVICE_DEVS22=$(DD)eps9high.dev $(DD)eps9mid.dev $(DD)epson.dev $(DD)epsonc.dev $(DD)escp.dev $(DD)lp8000.dev $(DD)lq850.dev 
+DEVICE_DEVS23=$(DD)photoex.dev $(DD)st800.dev $(DD)stcolor.dev $(DD)alc1900.dev $(DD)alc2000.dev $(DD)alc4000.dev $(DD)alc4100.dev 
+DEVICE_DEVS24=$(DD)alc8500.dev $(DD)alc8600.dev $(DD)alc9100.dev $(DD)lp3000c.dev $(DD)lp8000c.dev $(DD)lp8200c.dev $(DD)lp8300c.dev 
+DEVICE_DEVS25=$(DD)lp8500c.dev $(DD)lp8800c.dev $(DD)lp9000c.dev $(DD)lp9200c.dev $(DD)lp9500c.dev $(DD)lp9800c.dev $(DD)lps6500.dev 
+DEVICE_DEVS26=$(DD)epl2050.dev $(DD)epl2050p.dev $(DD)epl2120.dev $(DD)epl2500.dev $(DD)epl2750.dev $(DD)epl5800.dev $(DD)epl5900.dev
+DEVICE_DEVS27=$(DD)epl6100.dev $(DD)epl6200.dev $(DD)lp1800.dev $(DD)lp1900.dev $(DD)lp2200.dev $(DD)lp2400.dev $(DD)lp2500.dev 
+DEVICE_DEVS28=$(DD)lp7500.dev $(DD)lp7700.dev $(DD)lp7900.dev $(DD)lp8100.dev $(DD)lp8300f.dev $(DD)lp8400f.dev $(DD)lp8600.dev 
+DEVICE_DEVS29=$(DD)lp8600f.dev $(DD)lp8700.dev $(DD)lp8900.dev $(DD)lp9000b.dev $(DD)lp9100.dev $(DD)lp9200b.dev $(DD)lp9300.dev
+DEVICE_DEVS30=$(DD)lp9400.dev $(DD)lp9600.dev $(DD)lp9600s.dev $(DD)lps4500.dev $(DD)eplcolor.dev $(DD)eplmono.dev
 
 # Include the generic makefiles.
 !include "$(GLSRCDIR)\version.mak"
@@ -460,10 +470,14 @@ DEVICE_DEVS21= $(DD)spotcmyk.dev $(DD)devicen.dev $(DD)bmpsep1.dev $(DD)bmpsep8.
 !include "$(GLSRCDIR)\libpng.mak"
 !include "$(GLSRCDIR)\jbig2.mak"
 !include "$(GLSRCDIR)\icclib.mak"
+!include "$(GLSRCDIR)\ijs.mak"
 !include "$(GLSRCDIR)\devs.mak"
+!include "$(GLSRCDIR)\libtiff.mak"
 !include "$(GLSRCDIR)\pcwin.mak"
 !include "$(GLSRCDIR)\contrib.mak"
+!include "contrib\contrib.mak"
 !include "$(PSSRCDIR)\int.mak"
+!include "cups/cups.mak"
 
 # -------------------------------- Library -------------------------------- #
 
@@ -507,13 +521,13 @@ $(GLOBJ)gp_os2pr.$(OBJ): $(GLSRC)gp_os2pr.c $(GLSRC)gp_os2.h $(AK)\
 
 #CCAUX=$(COMPDIR)\$(COMP) $(CO)
 # emx 0.9d (gcc 2.8.1) crashes when compiling genarch.c with optimizer
-CCAUX=$(COMPDIR)\$(COMP)
+CCAUX=$(COMP)
 
 $(ECHOGS_XE): $(GLSRCDIR)\echogs.c
 !if $(EMX)
-	$(CCAUX) -o $(AUXGEN)echogs $(GLSRCDIR)\echogs.c
-	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)echogs $(ECHOGS_XE)
-	del $(AUXGEN)echogs
+	$(CCAUX) -o $(AUXGEN)echogs$(XEAUX) $(GLSRCDIR)\echogs.c
+#	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)echogs $(ECHOGS_XE)
+#	del $(AUXGEN)echogs
 !endif
 !if $(IBMCPP)
 	$(CCAUX) /Fe$(ECHOGS_XE) $(GLSRCDIR)\echogs.c
@@ -523,9 +537,9 @@ $(GENARCH_XE): $(GLSRCDIR)\genarch.c $(GENARCH_DEPS)
 	-mkdir $(GLGENDIR)
 	-mkdir $(BINDIR)
 !if $(EMX)
-	$(CCAUX) -DHAVE_LONG_LONG -o $(AUXGEN)genarch $(GLSRCDIR)\genarch.c
-	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)genarch $(GENARCH_XE)
-	del $(AUXGEN)genarch
+	$(CCAUX) -DHAVE_LONG_LONG -Zomf -o $(AUXGEN)genarch$(XEAUX) $(GLSRCDIR)\genarch.c
+#	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)genarch $(GENARCH_XE)
+#	del $(AUXGEN)genarch
 !endif
 !if $(IBMCPP)
 	$(CCAUX) /Fe$(GENARCH_XE) $(GLSRCDIR)\genarch.c
@@ -533,9 +547,9 @@ $(GENARCH_XE): $(GLSRCDIR)\genarch.c $(GENARCH_DEPS)
 
 $(GENCONF_XE): $(GLSRCDIR)\genconf.c $(GENCONF_DEPS)
 !if $(EMX)
-	$(CCAUX) -o $(AUXGEN)genconf $(GLSRCDIR)\genconf.c
-	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)genconf $(GENCONF_XE)
-	del $(AUXGEN)genconf
+	$(CCAUX) -o $(AUXGEN)genconf$(XEAUX) $(GLSRCDIR)\genconf.c
+#	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)genconf $(GENCONF_XE)
+#	del $(AUXGEN)genconf
 !endif
 !if $(IBMCPP)
 	$(CCAUX) /Fe$(GENCONF_XE) $(GLSRCDIR)\genconf.c
@@ -543,9 +557,9 @@ $(GENCONF_XE): $(GLSRCDIR)\genconf.c $(GENCONF_DEPS)
 
 $(GENDEV_XE): $(GLSRCDIR)\gendev.c $(GENDEV_DEPS)
 !if $(EMX)
-	$(CCAUX) -o $(AUXGEN)gendev $(GLSRCDIR)\gendev.c
-	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)gendev $(GENDEV_XE)
-	del $(AUXGEN)gendev
+	$(CCAUX) -o $(AUXGEN)gendev$(XEAUX) $(GLSRCDIR)\gendev.c
+#	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)gendev $(GENDEV_XE)
+#	del $(AUXGEN)gendev
 !endif
 !if $(IBMCPP)
 	$(CCAUX) /Fe$(GENDEV_XE) $(GLSRCDIR)\gendev.c
@@ -553,9 +567,9 @@ $(GENDEV_XE): $(GLSRCDIR)\gendev.c $(GENDEV_DEPS)
 
 $(GENHT_XE): $(PSSRC)genht.c $(GENHT_DEPS)
 !if $(EMX)
-	$(CCAUX) -o $(AUXGEN)genht $(GENHT_CFLAGS) $(PSSRC)genht.c
-	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)genht $(GENHT_XE)
-	del $(AUXGEN)genht
+	$(CCAUX) -o $(AUXGEN)genht$(XEAUX) $(GENHT_CFLAGS) $(PSSRC)genht.c
+#	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)genht $(GENHT_XE)
+#	del $(AUXGEN)genht
 !endif
 !if $(IBMCPP)
 	$(CCAUX) /Fe$(GENHT_XE) genht.c
@@ -563,15 +577,19 @@ $(GENHT_XE): $(PSSRC)genht.c $(GENHT_DEPS)
 
 $(GENINIT_XE): $(PSSRC)geninit.c $(GENINIT_DEPS)
 !if $(EMX)
-	$(CCAUX) -o $(AUXGEN)geninit $(PSSRC)geninit.c
-	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)geninit $(GENINIT_XE)
-	del $(AUXGEN)geninit
+	$(CCAUX) -o $(AUXGEN)geninit$(XEAUX) $(PSSRC)geninit.c
+#	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)geninit $(GENINIT_XE)
+#	del $(AUXGEN)geninit
 !endif
 !if $(IBMCPP)
 	$(CCAUX) /Fe$(GENINIT_XE) geninit.c
 !endif
 
-MKROMFS_OBJS=$(MKROMFS_ZLIB_OBJS) $(GLOBJ)gscdefs.$(OBJ) $(GLOBJ)gpmisc.$(OBJ) $(GLOBJ)gp_getnv.obj $(GLOBJ)gp_os2fs.obj
+MKROMFS_OBJS=$(MKROMFS_ZLIB_OBJS) $(GLOBJ)gscdefs.$(OBJ) $(GLOBJ)gsmisc.$(OBJ) \
+ $(GLOBJ)gpmisc.$(OBJ) $(GLOBJ)gslibctx.$(OBJ) \
+ $(GLOBJ)gp_getnv.$(OBJ) $(GLOBJ)gp_os2.$(OBJ) $(GLOBJ)gp_os2fs.$(OBJ) $(GLOBJ)gp_stdia.$(OBJ) \
+ $(GLOBJ)gsutil.$(OBJ) 
+
 $(MKROMFS_XE): $(GLSRC)mkromfs.c $(MKROMFS_COMMON_DEPS) $(MKROMFS_OBJS)
 !if $(EMX)
 	$(CCAUX) -o $(AUXGEN)mkromfs.exe -D__OS2__ $(CD) $(CEXESYS) $(CO) $(CPNG) -I$(GLOBJ) -I$(GLSRCDIR) -I$(ZSRCDIR) $(GLSRC)mkromfs.c $(MKROMFS_OBJS)
@@ -582,9 +600,13 @@ $(MKROMFS_XE): $(GLSRC)mkromfs.c $(MKROMFS_COMMON_DEPS) $(MKROMFS_OBJS)
 
 # No special gconfig_.h is needed.
 $(gconfig__h): $(TOP_MAKEFILES) $(ECHOGS_XE)
-	$(ECHOGS_XE) -w $(gconfig__h) /* This file deliberately left blank. */
+	$(ECHOGS_XE) -w $(gconfig__h) /* This file is created by os2.mak. */
+        $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_SYS_TIME_H
+        $(ECHOGS_XE) -a $(gconfig__h) -x 23 define HAVE_STDINT_H
 
 # ----------------------------- Main program ------------------------------ #
+
+gsdllos2_h=$(GLSRC)gsdllos2.h
 
 # Interpreter main program
 
@@ -596,21 +618,24 @@ $(PSOBJ)dpmain.$(OBJ): $(PSSRC)dpmain.c $(AK)\
 
 !if $(MAKEDLL)
 #making a DLL
-GS_ALL=$(INT_ALL) \
+GS_ALL=$(PSOBJ)gsdll.$(OBJ) $(INT_ALL) \
   $(LIB_ALL) $(LIBCTR) $(ld_tr) $(PSOBJ)$(GS).res $(ICONS) $(PSOBJ)gsromfs$(COMPILE_INITS).$(OBJ)
 
 $(GS_XE): $(BINDIR)\$(GSDLL).dll $(PSSRC)dpmain.c $(PSSRC)gsos2.rc $(GLOBJ)gscdefs.$(OBJ)
 !if $(EMX)
-	$(COMPDIR)\$(COMP) $(CGDB) $(CO) -Zomf $(MT_OPT) -I$(PSSRCDIR) -I$(GLSRCDIR) -I$(PSOBJDIR) -I$(GLOBJDIR) -o$(GS_XE) $(PSSRC)dpmain.c $(GLOBJ)gscdefs.$(OBJ) $(PSSRC)gsos2.def
+	$(CCAUX) $(CGDB) $(CO) -Zomf $(CDLL) $(MT_OPT) -I$(PSSRCDIR) -I$(GLSRCDIR) -I$(PSOBJDIR) -I$(GLOBJDIR) -o $(GS_XE) $(PSSRC)dpmain.c $(GLOBJ)gscdefs.$(OBJ) $(PSSRC)gsos2.def
 !endif
 !if $(IBMCPP)
 	$(CCAUX) -I$(PSSRCDIR) -I$(GLSRCDIR) -I$(PSOBJDIR) -I$(GLOBJDIR) /Fe$(GX_XE) $(PSSRC)dpmain.c $(GLOBJ)gscdefs.$(OBJ)
 !endif
-	rc $(PSOBJ)$(GS).res $(GS_XE)
+	wrc $(PSOBJ)$(GS).res $(GS_XE)
 
-$(BINDIR)\$(GSDLL).dll: $(GS_ALL) $(ALL_DEVS) 
+$(PSOBJ)gsdll.$(OBJ): $(PSSRC)gsdll.c $(gsdll_h) $(ghost_h) $(gscdefs_h)
+	$(PSCC) $(PSO_)gsdll.$(OBJ) $(C_) $(PSSRC)gsdll.c
+
+$(BINDIR)\$(GSDLL).dll: $(GS_ALL) $(ALL_DEVS) $(PSOBJ)gsdll.$(OBJ)
 !if $(EMX)
-	LINK386 /DEBUG $(COMPBASE)\lib\dll0.obj $(COMPBASE)\lib\end.lib @$(ld_tr) $(PSOBJ)gsromfs$(COMPILE_INITS).$(OBJ), $(BINDIR)\$(GSDLL).dll, ,$(X11LIBS) $(COMPBASE)\lib\gcc.lib $(COMPBASE)\lib\st\c.lib $(COMPBASE)\lib\st\c_dllso.lib $(COMPBASE)\lib\st\sys.lib $(COMPBASE)\lib\c_alias.lib $(COMPBASE)\lib\os2.lib, $(PSSRC)gsdll2.def
+	gcc -Zdll -Zomf -Zmap -o $(BINDIR)\$(GSDLL).dll $(PSSRC)gsdll2.def $(PSOBJ)gsromfs$(COMPILE_INITS).$(OBJ) $(PSOBJ)gsdll.o @$(ld_tr) -ltiff -ljpeg -lpng -lz -lcups -lcupsimage -lpthread
 !endif
 !if $(IBMCPP)
 	LINK386 /NOE /DEBUG @$(ld_tr) $(PSOBJ)gsromfs$(COMPILE_INITS).$(OBJ), $(BINDIR)\$(GSDLL).dll, , , $(PSSRC)gsdll2.def
@@ -622,9 +647,9 @@ GS_ALL=$(PSOBJ)gs.$(OBJ) $(INT_ALL) \
   $(LIB_ALL) $(LIBCTR) $(ld_tr) $(PSOBJ)$(GS).res $(ICONS) $(PSOBJ)gsromfs$(COMPILE_INITS).$(OBJ)
 
 $(GS_XE): $(GS_ALL) $(ALL_DEVS)
-	$(COMPDIR)\$(COMP) $(CGDB) I$(PSSRCDIR) -I$(GLSRCDIR) -o $(PSOBJ)$(GS) $(PSOBJ)gs.$(OBJ) @$(ld_tr) $(PSOBJ)gsromfs$(COMPILE_INITS).$(OBJ) -lm
-	$(COMPDIR)\emxbind -r$(PSOBJ)$(GS).res $(COMPDIR)\emxl.exe $(PSOBJ)$(GS) $(GS_XE) -ac
-	del $(PSOBJ)$(GS)
+	$(CCAUX) $(CGDB) I$(PSSRCDIR) -I$(GLSRCDIR) -Zomf -Zbin-files -o $(PSOBJ)$(GS) $(PSOBJ)gs.$(OBJ) @$(ld_tr) $(PSOBJ)gsromfs$(COMPILE_INITS).$(OBJ) -lm
+#	$(COMPDIR)\emxbind -r$(PSOBJ)$(GS).res $(COMPDIR)\emxl.exe $(PSOBJ)$(GS) $(GS_XE) -ac
+#	del $(PSOBJ)$(GS)
 !endif
 
 # Make the icons from their text form.
@@ -636,21 +661,21 @@ $(GLOBJ)gspmdrv.ico: $(GLSRC)gspmdrv.icx $(ECHOGS_XE)
 	$(ECHOGS_XE) -wb $(GLOBJ)gspmdrv.ico -n -X -r $(GLSRC)gspmdrv.icx
 
 $(PSOBJ)$(GS).res: $(PSSRC)$(GS).rc $(PSOBJ)gsos2.ico
-	rc -i $(COMPBASE)\include -i $(PSSRCDIR) -i $(PSOBJDIR) -r $(PSSRC)$(GS).rc $(PSOBJ)$(GS).res
+	wrc -i=$(PSSRCDIR);$(PSOBJDIR) -r $(PSSRC)$(GS).rc -fo=$(PSOBJ)$(GS).res
 
 
 # PM driver program
 
 $(GLOBJ)gspmdrv.o: $(GLSRC)gspmdrv.c $(GLSRC)gspmdrv.h
-	$(COMPDIR)\$(COMP) $(CGDB) $(CO) -I$(GLSRCDIR) -o $(GLOBJ)gspmdrv.o -c $(GLSRC)gspmdrv.c
+	$(CCAUX) $(CGDB) $(CO) -I$(GLSRCDIR) -o $(GLOBJ)gspmdrv.o -c $(GLSRC)gspmdrv.c
 
 $(GLOBJ)gspmdrv.res: $(GLSRC)gspmdrv.rc $(GLSRC)gspmdrv.h $(GLOBJ)gspmdrv.ico
-	rc -i $(COMPBASE)\include -i $(GLSRCDIR) -i $(GLOBJDIR) -r $(GLSRC)gspmdrv.rc $(GLOBJ)gspmdrv.res
+	wrc -i=$(GLSRCDIR);$(GLOBJDIR) -r $(GLSRC)gspmdrv.rc -fo=$(GLOBJ)gspmdrv.res
 
 $(BINDIR)\gspmdrv.exe: $(GLOBJ)gspmdrv.o $(GLOBJ)gspmdrv.res $(GLSRC)gspmdrv.def
-	$(COMPDIR)\$(COMP) $(CGDB) $(CO) -o $(GLOBJ)gspmdrv $(GLOBJ)gspmdrv.o 
-	$(COMPDIR)\emxbind -p -r$(GLOBJ)gspmdrv.res -d$(GLSRC)gspmdrv.def $(COMPDIR)\emxl.exe $(GLOBJ)gspmdrv $(BINDIR)\gspmdrv.exe
-	del $(GLOBJ)gspmdrv
+	$(CCAUX) $(CGDB) $(CO) -o $(BINDIR)\gspmdrv.exe $(GLOBJ)gspmdrv.o 
+#	$(COMPDIR)\emxbind -p -r$(GLOBJ)gspmdrv.res -d$(GLSRC)gspmdrv.def $(COMPDIR)\emxl.exe $(GLOBJ)gspmdrv $(BINDIR)\gspmdrv.exe
+#	del $(GLOBJ)gspmdrv
 
 # Create a ZIP archive
 # This assumes that the current directory is named gs#.## relative to its
