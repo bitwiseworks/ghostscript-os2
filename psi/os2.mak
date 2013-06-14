@@ -636,6 +636,9 @@ $(PSOBJ)gsdll.$(OBJ): $(PSSRC)gsdll.c $(gsdll_h) $(ghost_h) $(gscdefs_h)
 $(BINDIR)\$(GSDLL).dll: $(GS_ALL) $(ALL_DEVS) $(PSOBJ)gsdll.$(OBJ)
 !if $(EMX)
 	gcc -Zdll -Zomf -Zmap -o $(BINDIR)\$(GSDLL).dll $(PSSRC)gsdll2.def $(PSOBJ)gsromfs$(COMPILE_INITS).$(OBJ) $(PSOBJ)gsdll.o @$(ld_tr) -ltiff -ljpeg -lpng -lz -lcups -lcupsimage -lpthread
+        emximp -o $(PSOBJ)gs.a $(PSSRC)gsdll2.def
+        emximp -o $(PSOBJ)gs.lib $(PSSRC)gsdll2.def
+
 !endif
 !if $(IBMCPP)
 	LINK386 /NOE /DEBUG @$(ld_tr) $(PSOBJ)gsromfs$(COMPILE_INITS).$(OBJ), $(BINDIR)\$(GSDLL).dll, , , $(PSSRC)gsdll2.def
