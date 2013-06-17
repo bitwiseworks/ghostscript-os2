@@ -42,7 +42,7 @@
 
 #define MAXSTR 256
 #define BITMAPINFO2_SIZE 40
-const char *szDllName = "GSDLL2.DLL";
+const char *szDllName = "GSDLL23.DLL";
 char start_string[] = "systemdict /start get exec\n";
 int debug = TRUE /* FALSE */;
 
@@ -201,7 +201,7 @@ gs_load_dll(void)
 	if (debug)
 	    gs_addmess("Loaded Ghostscript DLL\n");
 #endif
-	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_REVISION", 
+	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "_gsapi_revision", 
 		(PFN *) (&gsdll.revision))) != 0) {
 	    sprintf(buf, "Can't find GSAPI_REVISION, rc = %d\n", rc);
 	    gs_addmess(buf);
@@ -223,35 +223,35 @@ gs_load_dll(void)
 	    return FALSE;
 	}
 
-	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_NEW_INSTANCE", 
+	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "_gsapi_new_instance", 
 		(PFN *) (&gsdll.new_instance))) != 0) {
 	    sprintf(buf, "Can't find GSAPI_NEW_INSTANCE, rc = %d\n", rc);
 	    gs_addmess(buf);
 	    gs_load_dll_cleanup();
 	    return FALSE;
 	}
-	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_DELETE_INSTANCE", 
+	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "_gsapi_delete_instance", 
 		(PFN *) (&gsdll.delete_instance))) != 0) {
 	    sprintf(buf, "Can't find GSAPI_DELETE_INSTANCE, rc = %d\n", rc);
 	    gs_addmess(buf);
 	    gs_load_dll_cleanup();
 	    return FALSE;
 	}
-	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_SET_STDIO", 
+	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "_gsapi_set_stdio", 
 		(PFN *) (&gsdll.set_stdio))) != 0) {
 	    sprintf(buf, "Can't find GSAPI_SET_STDIO, rc = %d\n", rc);
 	    gs_addmess(buf);
 	    gs_load_dll_cleanup();
 	    return FALSE;
 	}
-	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_SET_DISPLAY_CALLBACK", 
+	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "_gsapi_set_display_callback", 
 		(PFN *) (&gsdll.set_display_callback))) != 0) {
 	    sprintf(buf, "Can't find GSAPI_SET_DISPLAY_CALLBACK, rc = %d\n", rc);
 	    gs_addmess(buf);
 	    gs_load_dll_cleanup();
 	    return FALSE;
 	}
-	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_SET_POLL", 
+	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "_gsapi_set_poll", 
 		(PFN *) (&gsdll.set_poll))) != 0) {
 	    sprintf(buf, "Can't find GSAPI_SET_POLL, rc = %d\n", rc);
 	    gs_addmess(buf);
@@ -259,21 +259,21 @@ gs_load_dll(void)
 	    return FALSE;
 	}
 	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, 
-		"GSAPI_INIT_WITH_ARGS", 
+		"_gsapi_init_with_args", 
 		(PFN *) (&gsdll.init_with_args))) != 0) {
 	    sprintf(buf, "Can't find GSAPI_INIT_WITH_ARGS, rc = %d\n", rc);
 	    gs_addmess(buf);
 	    gs_load_dll_cleanup();
 	    return FALSE;
 	}
-	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_RUN_STRING", 
+	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "_gsapi_run_string", 
 		(PFN *) (&gsdll.run_string))) != 0) {
 	    sprintf(buf, "Can't find GSAPI_RUN_STRING, rc = %d\n", rc);
 	    gs_addmess(buf);
 	    gs_load_dll_cleanup();
 	    return FALSE;
 	}
-	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_EXIT", 
+	if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "_gsapi_exit", 
 		(PFN *) (&gsdll.exit))) != 0) {
 	    sprintf(buf, "Can't find GSAPI_EXIT, rc = %d\n", rc);
 	    gs_addmess(buf);
