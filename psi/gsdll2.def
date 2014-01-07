@@ -2,6 +2,27 @@ LIBRARY GSDLL23 INITINSTANCE TERMINSTANCE
 DESCRIPTION	'Ghostscript DLL for eCS (OS/2) version 3'
 DATA MULTIPLE NONSHARED
 EXPORTS
+   GSDLL_REVISION = _gsdll_revision		@1
+   GSDLL_INIT = _gsdll_init			@2
+   GSDLL_EXECUTE_BEGIN = _gsdll_execute_begin	@3
+   GSDLL_EXECUTE_CONT = _gsdll_execute_cont	@4
+   GSDLL_EXECUTE_END = _gsdll_execute_end	@5
+   GSDLL_EXIT = _gsdll_exit			@6
+   GSAPI_REVISION = _gsapi_revision
+   GSAPI_NEW_INSTANCE = _gsapi_new_instance
+   GSAPI_DELETE_INSTANCE = _gsapi_delete_instance
+   GSAPI_INIT_WITH_ARGS = _gsapi_init_with_args
+   GSAPI_RUN_STRING_BEGIN = _gsapi_run_string_begin
+   GSAPI_RUN_STRING_CONTINUE = _gsapi_run_string_continue
+   GSAPI_RUN_STRING_END = _gsapi_run_string_end
+   GSAPI_RUN_STRING_WITH_LENGTH = _gsapi_run_string_with_length
+   GSAPI_RUN_STRING = _gsapi_run_string
+   GSAPI_RUN_FILE = _gsapi_run_file
+   GSAPI_EXIT = _gsapi_exit
+   GSAPI_SET_STDIO = _gsapi_set_stdio
+   GSAPI_SET_POLL = _gsapi_set_poll
+   GSAPI_SET_DISPLAY_CALLBACK = _gsapi_set_display_callback
+
    _gsdll_revision
    _gsdll_init
    _gsdll_execute_begin
