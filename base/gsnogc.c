@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsnogc.c 10384 2009-11-25 19:59:11Z henrys $ */
+
 /* Use the normal ghostscript chunk allocator without support for garbage
    collection or strings */
 #include "gx.h"
@@ -19,7 +21,6 @@
 #include "gsnogc.h"
 #include "gsstruct.h"
 #include "gxalloc.h"
-
 
 /* String allocations reduces to simple byte allocations. */
 static byte *
@@ -32,7 +33,7 @@ nogc_alloc_string(gs_memory_t * mem, uint nbytes, client_name_t cname)
 static void
 nogc_free_string(gs_memory_t * mem, byte * str, uint size, client_name_t cname)
 {
-    return gs_free_object(mem, str, cname);
+    gs_free_object(mem, str, cname);
 }
 
 static byte *
@@ -73,19 +74,19 @@ gs_nogc_reclaim(vm_spaces * pspaces, bool global)
     gs_ref_memory_t *mem_prev = 0;
 
     for (space = 0; space < countof(pspaces->memories.indexed); ++space) {
-	gs_ref_memory_t *mem = pspaces->memories.indexed[space];
+        gs_ref_memory_t *mem = pspaces->memories.indexed[space];
 
-	if (mem == 0 || mem == mem_prev)
-	    continue;
+        if (mem == 0 || mem == mem_prev)
+            continue;
 
-	mem_prev = mem;
+        mem_prev = mem;
         set_procs(mem);
-        gs_consolidate_free(mem);
-	if (mem->stable_memory != (gs_memory_t *)mem &&
-	    mem->stable_memory != 0
-	    ) {
-            set_procs(mem->stable_memory);
-            gs_consolidate_free(mem->stable_memory);
+        gs_consolidate_free((gs_memory_t *)mem);
+        if (mem->stable_memory != (gs_memory_t *)mem &&
+            mem->stable_memory != 0
+            ) {
+            set_procs((gs_ref_memory_t *)mem->stable_memory);
+            gs_consolidate_free((gs_memory_t *)mem->stable_memory);
         }
     }
 }

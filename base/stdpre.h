@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2007 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: stdpre.h 8250 2007-09-25 13:31:24Z giles $ */
+
 /* Standard definitions for Ghostscript code not needing arch.h */
 
 #ifndef stdpre_INCLUDED
@@ -19,6 +21,10 @@
 
 /* Ghostscript uses transitional LFS functions. */
 #define _LARGEFILE64_SOURCE 1
+
+#ifndef _FILE_OFFSET_BITS
+#define _FILE_OFFSET_BITS 64
+#endif
 
 /*
  * Here we deal with the vagaries of various C compilers.  We assume that:
@@ -181,9 +187,9 @@ extern_inline int xyz(<<parameters>>)
 
 /*
  * Some versions of gcc have a bug such that after
-	byte *p;
-	...
-	x = *(long *)p;
+        byte *p;
+        ...
+        x = *(long *)p;
  * the compiler then thinks that p always points to long-aligned data.
  * Detect this here so it can be handled appropriately in the few places
  * that (we think) matter.

@@ -1,5 +1,5 @@
 
-Libpng 1.2.42 - January 3, 2010
+Libpng 1.6.2 - April 25, 2013
 
 This is a public release of libpng, intended for use in production codes.
 
@@ -8,65 +8,42 @@ Files available for download:
 Source files with LF line endings (for Unix/Linux) and with a
 "configure" script
 
-   libpng-1.2.42.tar.xz (LZMA-compressed, recommended)
-   libpng-1.2.42.tar.gz
-   libpng-1.2.42.tar.bz2
-
-Source files with LF line endings (for Unix/Linux) without the
-"configure" script
-
-   libpng-1.2.42-no-config.tar.xz (LZMA-compressed, recommended)
-   libpng-1.2.42-no-config.tar.gz
-   libpng-1.2.42-no-config.tar.bz2
+   libpng-1.6.2.tar.xz (LZMA-compressed, recommended)
+   libpng-1.6.2.tar.gz
 
 Source files with CRLF line endings (for Windows), without the
 "configure" script
 
-   lpng1242.zip
-   lpng1242.7z
-   lpng1242.tar.bz2
-
-Project files
-
-   libpng-1.2.42-project-netware.zip
-   libpng-1.2.42-project-wince.zip
+   lpng162.7z  (LZMA-compressed, recommended)
+   lpng162.zip
 
 Other information:
 
-   libpng-1.2.42-README.txt
-   libpng-1.2.42-KNOWNBUGS.txt
-   libpng-1.2.42-LICENSE.txt
-   libpng-1.2.42-Y2K-compliance.txt
-   libpng-1.2.42-[previous version]-diff.txt
+   libpng-1.6.2-README.txt
+   libpng-1.6.2-LICENSE.txt
 
-Changes since the last public release (1.2.41):
+Changes since the last public release (1.6.1):
 
-version 1.2.42 [January 3, 2010]
-
-  Removed "#define PNG_NO_ERROR_NUMBERS" that was inadvertently added
-    to pngconf.h in version 1.2.41.
-  Revised scripts/makefile.netbsd, makefile.openbsd, and makefile.sco
-    to put png.h and pngconf.h in $prefix/include, like the other scripts,
-    instead of in $prefix/include/libpng.  Also revised makefile.sco
-    to put them in $prefix/include/libpng12 instead of in
-    $prefix/include/libpng/libpng12.
-  Removed leftover "-DPNG_CONFIGURE_LIBPNG" from scripts/makefile.darwin
-    and contrib/pngminim/*/makefile
-  Relocated png_do_chop() to its original position in pngrtran.c; the
-    change in version 1.2.41beta08 caused transparency to be handled wrong
-    in some 16-bit datastreams (Yusaku Sugai).
-  Renamed libpng-pc.in back to libpng.pc.in and revised CMakeLists.txt
-    (revising changes made in 1.2.41)
-  Swapped PNG_UNKNOWN_CHUNKS_SUPPORTED and PNG_HANDLE_AS_UNKNOWN_SUPPORTED
-    in pngset.c to be consistent with other changes in version 1.2.38.
-  Avoid deprecated references to png_ptr-io_ptr and png_ptr->error_ptr
-    in pngtest.c
-
+  Updated documentation of 1.5.x to 1.6.x changes in iCCP chunk handling.
+  Fixed incorrect warning of excess deflate data. End condition - the
+    warning would be produced if the end of the deflate stream wasn't read
+    in the last row.  The warning is harmless.
+  Corrected the test on user transform changes on read. It was in the
+    png_set of the transform function, but that doesn't matter unless the
+    transform function changes the rowbuf size, and that is only valid if
+    transform_info is called.
+  Corrected a misplaced closing bracket in contrib/libtests/pngvalid.c
+    (Flavio Medeiros).
+  Corrected length written to uncompressed iTXt chunks (Samuli Suominen).
+  Added contrib/tools/fixitxt.c, to repair the erroneous iTXt chunk length
+    written by libpng-1.6.0 and 1.6.1.
+  Disallow storing sRGB information when the sRGB is not supported.
+  Merge pngtest.c with libpng-1.7.0
 
 Send comments/corrections/commendations to png-mng-implement at lists.sf.net
-
 (subscription required; visit
 https://lists.sourceforge.net/lists/listinfo/png-mng-implement
-to subscribe) or to glennrp at users.sourceforge.net
+to subscribe)
+or to glennrp at users.sourceforge.net
 
 Glenn R-P

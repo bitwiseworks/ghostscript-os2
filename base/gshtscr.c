@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gshtscr.c 8526 2008-02-14 08:34:56Z ray $ */
+
 /* Screen (Type 1) halftone processing for Ghostscript library */
 #include "math_.h"
 #include "gx.h"
@@ -21,7 +23,6 @@
 #include "gzstate.h"
 #include "gxdevice.h"           /* for gzht.h */
 #include "gzht.h"
-#include "gswts.h"
 
 /* Define whether to force all halftones to be strip halftones, */
 /* for debugging. */
@@ -31,7 +32,7 @@ static const bool FORCE_STRIP_HALFTONES = false;
 private_st_gs_screen_enum();
 
 /* GC procedures */
-static 
+static
 ENUM_PTRS_WITH(screen_enum_enum_ptrs, gs_screen_enum *eptr)
 {
     if (index < 1 + st_ht_order_max_ptrs) {
@@ -56,50 +57,35 @@ static RELOC_PTRS_WITH(screen_enum_reloc_ptrs, gs_screen_enum *eptr)
 }
 RELOC_PTRS_END
 
-/* Define the default value of AccurateScreens that affects setscreen
-   and setcolorscreen. Note that this is effectively a global, and
-   thus gets in the way of reentrancy. We'll want to fix that. */
-static bool screen_accurate_screens;
-
 /* Default AccurateScreens control */
 void
-gs_setaccuratescreens(bool accurate)
+gs_setaccuratescreens(gs_memory_t *mem, bool accurate)
 {
-    screen_accurate_screens = accurate;
+    gs_lib_ctx_t *ctx = gs_lib_ctx_get_interp_instance(mem);
+
+    ctx->screen_accurate_screens = accurate;
 }
 bool
-gs_currentaccuratescreens(void)
+gs_currentaccuratescreens(gs_memory_t *mem)
 {
-    return screen_accurate_screens;
-}
+    gs_lib_ctx_t *ctx = gs_lib_ctx_get_interp_instance(mem);
 
-/* As with AccurateScreens, this is also effectively a global. However,
-   it is going away soon. */
-static bool screen_use_wts;
+    return ctx->screen_accurate_screens;
+}
 
 void
-gs_setusewts(bool use_wts)
+gs_setminscreenlevels(gs_memory_t *mem, uint levels)
 {
-    screen_use_wts = use_wts;
-}
-bool
-gs_currentusewts(void)
-{
-    return screen_use_wts;
-}
+    gs_lib_ctx_t *ctx = gs_lib_ctx_get_interp_instance(mem);
 
-/* Define the MinScreenLevels user parameter similarly. */
-static uint screen_min_screen_levels;
-
-void
-gs_setminscreenlevels(uint levels)
-{
-    screen_min_screen_levels = levels;
+    ctx->screen_min_screen_levels = levels;
 }
 uint
-gs_currentminscreenlevels(void)
+gs_currentminscreenlevels(gs_memory_t *mem)
 {
-    return screen_min_screen_levels;
+    gs_lib_ctx_t *ctx = gs_lib_ctx_get_interp_instance(mem);
+
+    return ctx->screen_min_screen_levels;
 }
 
 /* Initialize the screen control statics at startup. */
@@ -107,8 +93,8 @@ init_proc(gs_gshtscr_init);     /* check prototype */
 int
 gs_gshtscr_init(gs_memory_t *mem)
 {
-    gs_setaccuratescreens(false);
-    gs_setminscreenlevels(1);
+    gs_setaccuratescreens(mem, false);
+    gs_setminscreenlevels(mem, 1);
     return 0;
 }
 
@@ -181,7 +167,7 @@ gx_compute_cell_values(gx_ht_cell_params_t * phcp)
 /* Forward references */
 static int pick_cell_size(gs_screen_halftone * ph,
      const gs_matrix * pmat, ulong max_size, uint min_levels, bool accurate,
-			   gx_ht_cell_params_t * phcp);
+                           gx_ht_cell_params_t * phcp);
 
 /* Allocate a screen enumerator. */
 gs_screen_enum *
@@ -195,8 +181,10 @@ int
 gs_screen_init(gs_screen_enum * penum, gs_state * pgs,
                gs_screen_halftone * phsp)
 {
+    gs_lib_ctx_t *ctx = gs_lib_ctx_get_interp_instance(pgs->memory);
+
     return gs_screen_init_accurate(penum, pgs, phsp,
-                                   screen_accurate_screens);
+                                   ctx->screen_accurate_screens);
 }
 int
 gs_screen_init_memory(gs_screen_enum * penum, gs_state * pgs,
@@ -251,12 +239,13 @@ gs_screen_order_init_memory(gx_ht_order * porder, const gs_state * pgs,
     gs_matrix imat;
     ulong max_size = gx_ht_cache_default_bits_size();
     int code;
+    gs_lib_ctx_t *ctx = gs_lib_ctx_get_interp_instance(mem);
 
     if (phsp->frequency < 0.1)
         return_error(gs_error_rangecheck);
     gs_deviceinitialmatrix(gs_currentdevice(pgs), &imat);
     code = pick_cell_size(phsp, &imat, max_size,
-                          screen_min_screen_levels, accurate,
+                          ctx->screen_min_screen_levels, accurate,
                           &porder->params);
     if (code < 0)
         return code;
@@ -416,18 +405,18 @@ pick_cell_size(gs_screen_halftone * ph, const gs_matrix * pmat, ulong max_size,
 
                 {
                     /*
-		     * Compute the error in position between ideal location.
-		     * and the current integer location.
-		     */
+                     * Compute the error in position between ideal location.
+                     * and the current integer location.
+                     */
 
-		    double error =
-			(fn0 - p.N) * (fn0 - p.N) + (fm0 - p.M) * (fm0 - p.M);
-		    /*
-		     * Adjust the error by the length of the vector.  This gives
-		     * a slight bias toward larger cell sizzes.
-		     */
-		    error /= p.N * p.N + p.M * p.M;
-		    error = sqrt(error); /* The previous calcs. gave value squared */
+                    double error =
+                        (fn0 - p.N) * (fn0 - p.N) + (fm0 - p.M) * (fm0 - p.M);
+                    /*
+                     * Adjust the error by the length of the vector.  This gives
+                     * a slight bias toward larger cell sizzes.
+                     */
+                    error /= p.N * p.N + p.M * p.M;
+                    error = sqrt(error); /* The previous calcs. gave value squared */
                     if (error > e_best)
                         continue;
                     e_best = error;
@@ -488,46 +477,44 @@ gs_screen_enum_init_memory(gs_screen_enum * penum, const gx_ht_order * porder,
     penum->halftone.params.screen = *phsp;
     penum->x = penum->y = 0;
 
-    if (porder->wse == NULL) {
-	penum->strip = porder->num_levels / porder->width;
-	penum->shift = porder->shift;
-	/*
-	 * We want a transformation matrix that maps the parallelogram
-	 * (0,0), (U,V), (U-V',V+U'), (-V',U') to the square (+/-1, +/-1).
-	 * If the coefficients are [a b c d e f] and we let
-	 *      u = U = M/R, v = V = N/R,
-	 *      r = -V' = -N'/R', s = U' = M'/R',
-	 * then we just need to solve the equations:
-	 *      a*0 + c*0 + e = -1      b*0 + d*0 + f = -1
-	 *      a*u + c*v + e = 1       b*u + d*v + f = 1
-	 *      a*r + c*s + e = -1      b*r + d*s + f = 1
-	 * This has the following solution:
-	 *      Q = 2 / (M*M' + N*N')
-	 *      a = Q * R * M'
-	 *      b = -Q * R' * N
-	 *      c = Q * R * N'
-	 *      d = Q * R' * M
-	 *      e = -1
-	 *      f = -1
-	 */
-	{
-	    const int M = porder->params.M, N = porder->params.N, R = porder->params.R;
-	    const int M1 = porder->params.M1, N1 = porder->params.N1, R1 = porder->params.R1;
-	    double Q = 2.0 / ((long)M * M1 + (long)N * N1);
+    penum->strip = porder->num_levels / porder->width;
+    penum->shift = porder->shift;
+    /*
+     * We want a transformation matrix that maps the parallelogram
+     * (0,0), (U,V), (U-V',V+U'), (-V',U') to the square (+/-1, +/-1).
+     * If the coefficients are [a b c d e f] and we let
+     *      u = U = M/R, v = V = N/R,
+     *      r = -V' = -N'/R', s = U' = M'/R',
+     * then we just need to solve the equations:
+     *      a*0 + c*0 + e = -1      b*0 + d*0 + f = -1
+     *      a*u + c*v + e = 1       b*u + d*v + f = 1
+     *      a*r + c*s + e = -1      b*r + d*s + f = 1
+     * This has the following solution:
+     *      Q = 2 / (M*M' + N*N')
+     *      a = Q * R * M'
+     *      b = -Q * R' * N
+     *      c = Q * R * N'
+     *      d = Q * R' * M
+     *      e = -1
+     *      f = -1
+     */
+    {
+        const int M = porder->params.M, N = porder->params.N, R = porder->params.R;
+        const int M1 = porder->params.M1, N1 = porder->params.N1, R1 = porder->params.R1;
+        double Q = 2.0 / ((long)M * M1 + (long)N * N1);
 
-	    penum->mat.xx = Q * (R * M1);
-	    penum->mat.xy = Q * (-R1 * N);
-	    penum->mat.yx = Q * (R * N1);
-	    penum->mat.yy = Q * (R1 * M);
-	    penum->mat.tx = -1.0;
-	    penum->mat.ty = -1.0;
-	    gs_matrix_invert(&penum->mat, &penum->mat_inv);
-	}
-	if_debug7('h', "[h]Screen: (%dx%d)/%d [%f %f %f %f]\n",
-		  porder->width, porder->height, porder->params.R,
-		  penum->mat.xx, penum->mat.xy,
-		  penum->mat.yx, penum->mat.yy);
+        penum->mat.xx = Q * (R * M1);
+        penum->mat.xy = Q * (-R1 * N);
+        penum->mat.yx = Q * (R * N1);
+        penum->mat.yy = Q * (R1 * M);
+        penum->mat.tx = -1.0;
+        penum->mat.ty = -1.0;
+        gs_matrix_invert(&penum->mat, &penum->mat_inv);
     }
+    if_debug7('h', "[h]Screen: (%dx%d)/%d [%f %f %f %f]\n",
+              porder->width, porder->height, porder->params.R,
+              penum->mat.xx, penum->mat.xy,
+              penum->mat.yx, penum->mat.yy);
     return 0;
 }
 
@@ -539,12 +526,6 @@ gs_screen_currentpoint(gs_screen_enum * penum, gs_point * ppt)
     int code;
     double sx, sy; /* spot center in spot coords (integers) */
     gs_point spot_center; /* device coords */
-
-    if (penum->order.wse) {
-	int code;
-	code = gs_wts_screen_enum_currentpoint(penum->order.wse, ppt);
-	return code;
-    }
 
     if (penum->y >= penum->strip) {     /* all done */
         gx_ht_construct_spot_order(&penum->order);
@@ -567,7 +548,7 @@ gs_screen_currentpoint(gs_screen_enum * penum, gs_point * ppt)
     spot_center.y = floor(spot_center.y) + 0.5;
 
     /* compute the spot function arguments for the shifted spot : */
-    if ((code = gs_distance_transform(penum->x - spot_center.x + 0.501, 
+    if ((code = gs_distance_transform(penum->x - spot_center.x + 0.501,
                                       penum->y - spot_center.y + 0.498,
                                       &penum->mat, &pt)) < 0)
         return code;
@@ -590,30 +571,26 @@ gs_screen_currentpoint(gs_screen_enum * penum, gs_point * ppt)
 int
 gs_screen_next(gs_screen_enum * penum, floatp value)
 {
-    if (penum->order.wse) {
-	return gs_wts_screen_enum_next (penum->order.wse, value);
-    } else {
-	ht_sample_t sample;
-	int width = penum->order.width;
-	gx_ht_bit *bits = (gx_ht_bit *)penum->order.bit_data;
+    ht_sample_t sample;
+    int width = penum->order.width;
+    gx_ht_bit *bits = (gx_ht_bit *)penum->order.bit_data;
 
-	if (value < -1.0 || value > 1.0)
-	    return_error(gs_error_rangecheck);
-	sample = (ht_sample_t) ((value + 1) * max_ht_sample);
-#ifdef DEBUG
-	if (gs_debug_c('H')) {
-	    gs_point pt;
+    if (value < -1.0 || value > 1.0)
+        return_error(gs_error_rangecheck);
+    sample = (ht_sample_t) ((value + 1) * max_ht_sample);
+#if defined(DEBUG) && !defined(GS_THREADSAFE)
+    if (gs_debug_c('H')) {
+        gs_point pt;
 
-	    gs_screen_currentpoint(penum, &pt);
-	    dlprintf6("[H]sample x=%d y=%d (%f,%f): %f -> %u\n",
-		      penum->x, penum->y, pt.x, pt.y, value, sample);
-	}
-#endif
-	bits[penum->y * width + penum->x].mask = sample;
-	if (++(penum->x) >= width)
-	    penum->x = 0, ++(penum->y);
-	return 0;
+        gs_screen_currentpoint(penum, &pt);
+        dlprintf6("[H]sample x=%d y=%d (%f,%f): %f -> %u\n",
+                  penum->x, penum->y, pt.x, pt.y, value, sample);
     }
+#endif
+    bits[penum->y * width + penum->x].mask = sample;
+    if (++(penum->x) >= width)
+        penum->x = 0, ++(penum->y);
+    return 0;
 }
 
 /* Install a fully constructed screen in the gstate. */

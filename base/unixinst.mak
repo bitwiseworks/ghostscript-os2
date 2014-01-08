@@ -1,16 +1,17 @@
-#  Copyright (C) 2001-2006 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: unixinst.mak 10349 2009-11-19 00:09:15Z giles $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 # Partial makefile common to all Unix and Desqview/X configurations,
 # containing the `install' targets.
 # This is the very last part of the makefile for these configurations.
@@ -24,7 +25,7 @@ install: install-exec install-scripts install-data $(INSTALL_SHARED) $(INSTALL_C
 # We include mkdirs for datadir, gsdir, and gsdatadir in all 3 install
 # rules, just in case bindir or scriptdir is a subdirectory of any of these.
 
-install-exec: STDDIRS $(GS_XE)
+install-exec: $(GS_XE) $(MAKEDIRS)
 	-mkdir -p $(DESTDIR)$(datadir)
 	-mkdir -p $(DESTDIR)$(gsdir)
 	-mkdir -p $(DESTDIR)$(gsdatadir)
@@ -38,8 +39,8 @@ install-scripts: $(PSLIBDIR)/gsnd
 	-mkdir -p $(DESTDIR)$(scriptdir)
 	$(SH) -c 'for f in \
 gsbj gsdj gsdj500 gslj gslp gsnd \
-bdftops dumphint dvipdf eps2eps font2c \
-pdf2dsc pdf2ps pdfopt pf2afm pfbtopfa printafm \
+bdftops dvipdf eps2eps font2c \
+pdf2dsc pdf2ps pf2afm pfbtopfa pphs printafm \
 ps2ascii ps2epsi ps2pdf ps2pdf12 ps2pdf13 ps2pdf14 ps2pdfwr ps2ps ps2ps2 \
 wftopfa fixmswrd.pl lprsetup.sh pj-gs.sh pv.sh sysvlp.sh unix-lpr.sh ;\
 	do if ( test -f $(PSLIBDIR)/$$f ); then \
@@ -49,11 +50,12 @@ wftopfa fixmswrd.pl lprsetup.sh pj-gs.sh pv.sh sysvlp.sh unix-lpr.sh ;\
 	done'
 
 PSRESDIR=$(PSLIBDIR)/../Resource
+ICCRESDIR=$(PSLIBDIR)/../iccprofiles
 PSDOCDIR=$(PSLIBDIR)/../doc
 PSEXDIR=$(PSLIBDIR)/../examples
 PSMANDIR=$(PSLIBDIR)/../man
 
-install-data: install-libdata install-resdata install-doc install-man install-examples
+install-data: install-libdata install-resdata$(COMPILE_INITS) install-iccdata$(COMPILE_INITS) install-doc install-man install-examples
 
 # There's no point in providing a complete dependency list: we include
 # one file from each subdirectory just as a sanity check.
@@ -67,12 +69,12 @@ install-libdata:
 $(EXTRA_INIT_FILES) Fontmap.GS \
 ht_ccsto.ps \
 acctest.ps addxchar.ps align.ps bdftops.ps \
-caption.ps cid2code.ps decrypt.ps docie.ps dumphint.ps \
+caption.ps cid2code.ps decrypt.ps docie.ps \
 errpage.ps font2c.ps font2pcl.ps gslp.ps gsnup.ps image-qa.ps impath.ps \
 jispaper.ps landscap.ps level1.ps lines.ps markhint.ps markpath.ps \
-mkcidfm.ps opdfread.ps PDFA_def.ps PDFX_def.ps \
+mkcidfm.ps PDFA_def.ps PDFX_def.ps \
 packfile.ps pcharstr.ps pf2afm.ps pfbtopfa.ps ppath.ps \
-pphs pphs.ps \
+pphs.ps \
 prfont.ps printafm.ps \
 ps2ai.ps ps2ascii.ps ps2epsi.ps quit.ps rollconv.ps \
 showchar.ps showpage.ps stcinfo.ps stcolor.ps stocht.ps \
@@ -80,7 +82,7 @@ traceimg.ps traceop.ps type1enc.ps type1ops.ps uninfo.ps unprot.ps \
 viewcmyk.ps viewgif.ps viewjpeg.ps viewmiff.ps \
 viewpcx.ps viewpbm.ps viewps2a.ps \
 winmaps.ps wftopfa.ps wrfont.ps zeroline.ps \
-pdf2dsc.ps pdfopt.ps ;\
+pdf2dsc.ps ;\
 	do if ( test -f $(PSLIBDIR)/$$f ); then $(INSTALL_DATA) $(PSLIBDIR)/$$f $(DESTDIR)$(gsdatadir)/lib; fi;\
 	done'
 	$(SH) -c 'for f in $(PSLIBDIR)/gs_*.ps $(PSLIBDIR)/pdf*.ps;\
@@ -93,7 +95,7 @@ pdf2dsc.ps pdfopt.ps ;\
 # install the default resource files
 # copy in every category (directory) but CVS
 RES_CATEGORIES=`ls $(PSRESDIR) | grep -v CVS` 
-install-resdata: $(PSRESDIR)/Decoding/Unicode
+install-resdata0 : $(PSRESDIR)/Decoding/Unicode
 	-mkdir -p $(DESTDIR)$(datadir)
 	-mkdir -p $(DESTDIR)$(gsdir)
 	-mkdir -p $(DESTDIR)$(gsdatadir)/Resource
@@ -105,22 +107,34 @@ install-resdata: $(PSRESDIR)/Decoding/Unicode
 	  done \
 	done'
 
+# install default iccprofiles
+install-iccdata0 : $(ICCRESDIR)
+	-mkdir -p $(DESTDIR)$(datadir)
+	-mkdir -p $(DESTDIR)$(gsdir)
+	-mkdir -p $(DESTDIR)$(gsdatadir)/iccprofiles
+	$(SH) -c 'for file in $(ICCRESDIR)/*; do \
+	    if test -f $$file; then $(INSTALL_DATA) $$file $(DESTDIR)$(gsdatadir)/iccprofiles ; fi \
+	done'
+
+#COMPILE_INITS=1 don't need Resources, nor ICC
+
+install-resdata1 :
+
+install-iccdata1 :
+
 # install html documentation
-DOC_PAGES=PUBLIC README index.html gs.css \
-	   API.htm Bug-form.htm Bug-info.htm \
-	   C-style.htm Changes.htm Commprod.htm Copying.htm \
-	   Current.htm Deprecated.htm \
-	   DLL.htm Deprecated.htm Develop.htm Devices.htm Drivers.htm \
-	   Fonts.htm Helpers.htm Hershey.htm \
-	   History1.htm History2.htm History3.htm History4.htm \
-	   History5.htm History6.htm History7.htm History8.htm \
-	   Details.htm Details8.htm \
-	   Htmstyle.htm Humor.htm Issues.htm Install.htm Language.htm \
-	   Lib.htm Maintain.htm Make.htm New-user.htm \
-	   News.htm Projects.htm Ps-style.htm Ps2epsi.htm Ps2pdf.htm \
-	   Psfiles.htm Public.htm Readme.htm Release.htm \
-	   Source.htm Testing.htm Unix-lpr.htm \
-	   Use.htm Xfonts.htm
+DOC_PAGES=API.htm C-style.htm Develop.htm GS9_Color_Management.pdf Helpers.htm \
+          History4.htm History9.htm Lib.htm Ps2pdf.htm Readme.htm Use.htm \
+          AUTHORS Deprecated.htm Devices.htm GS9_Color_Management.tex\
+          Hershey.htm History5.htm index.html Make.htm Ps2ps2.htm Release.htm \
+          WhatIsGS.htm Changes.htm Details8.htm DLL.htm gs.css History1.htm \
+          History6.htm Install.htm News.htm pscet_status.txt Source.htm \
+          Xfonts.htm Commprod.htm Details9.htm Drivers.htm gsdoc.el  History2.htm \
+          History7.htm Issues.htm Projects.htm Psfiles.htm thirdparty.htm \
+          COPYING Details.htm Fonts.htm gs-vms.hlp History3.htm History8.htm\
+          Language.htm Ps2epsi.htm Ps-style.htm Unix-lpr.htm
+
+
 install-doc: $(PSDOCDIR)/News.htm
 	-mkdir -p $(DESTDIR)$(docdir)
 	$(SH) -c 'for f in $(DOC_PAGES) ;\
@@ -130,7 +144,7 @@ install-doc: $(PSDOCDIR)/News.htm
 # install the man pages for each locale
 MAN_LCDIRS=. de
 MAN1_LINKS_PS2PS=eps2eps
-MAN1_LINKS_PS2PDF=ps2pdf12 ps2pdf13
+MAN1_LINKS_PS2PDF=ps2pdf12 ps2pdf13 ps2pdf14
 MAN1_LINKS_GSLP=gsbj gsdj gsdj500 gslj
 install-man: $(PSMANDIR)/gs.1
 	$(SH) -c 'test -d $(DESTDIR)$(mandir) || mkdir -p $(DESTDIR)$(mandir)'
@@ -151,7 +165,7 @@ install-man: $(PSMANDIR)/gs.1
 			  ln -s ps2pdf.$(man1ext) $$f.$(man1ext) ) ;\
 	      done ;\
 	    fi ;\
-	    if ( test -f $$man1dir/ps2lp.$(man1ext) ) ;\
+            if ( test -f $$man1dir/gslp.$(man1ext) ) ;\
 	      then for f in $(MAN1_LINKS_GSLP) ;\
 	        do ( cd $$man1dir; rm -f $$f.$(man1ext) ;\
 			  ln -s gslp.$(man1ext) $$f.$(man1ext) ) ;\
@@ -164,10 +178,17 @@ install-man: $(PSMANDIR)/gs.1
 install-examples:
 	-mkdir -p $(DESTDIR)$(exdir)
 	for f in \
-alphabet.ps annots.pdf chess.ps colorcir.ps doretree.ps escher.ps \
-golfer.eps grayalph.ps snowflak.ps tiger.eps vasarely.ps waterfal.ps \
-ridt91.eps ;\
+        alphabet.ps chess.ps colorcir.ps escher.ps grayalph.ps snowflak.ps \
+        text_graph_image_cmyk_rgb.pdf transparency_example.ps waterfal.ps \
+        annots.pdf doretree.ps golfer.eps ridt91.eps text_graphic_image.pdf \
+        tiger.eps vasarely.ps;\
 	do $(INSTALL_DATA) $(PSEXDIR)/$$f $(DESTDIR)$(exdir) ;\
+	done
+	-mkdir -p $(DESTDIR)$(exdir)/cjk
+	for f in \
+all_ac1.ps all_aj1.ps all_ak1.ps gscjk_ac.ps gscjk_aj.ps iso2022.ps \
+all_ag1.ps all_aj2.ps article9.ps gscjk_ag.ps gscjk_ak.ps iso2022v.ps ;\
+	do $(INSTALL_DATA) $(PSEXDIR)/cjk/$$f $(DESTDIR)$(exdir)/cjk ;\
 	done
 
 install-shared: $(GS_SHARED_OBJS)

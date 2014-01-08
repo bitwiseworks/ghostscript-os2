@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gspcolor.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Client interface to Pattern color */
 
 #ifndef gspcolor_INCLUDED
@@ -108,7 +110,7 @@ int gs_setpatternspace(gs_state *);
  * uses rc_alloc_struct_1 to allocate pattern instances.
  */
 int gs_make_pattern(gs_client_color *, const gs_pattern_template_t *,
-		    const gs_matrix *, gs_state *, gs_memory_t *);
+                    const gs_matrix *, gs_state *, gs_memory_t *);
 const gs_pattern_template_t *gs_get_pattern(const gs_client_color *);
 
 /*

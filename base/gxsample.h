@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxsample.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Sample lookup and expansion */
 
 #ifndef gxsample_INCLUDED
@@ -56,8 +58,8 @@ typedef struct sample_map_s sample_map;
  */
 #define SAMPLE_UNPACK_PROC(proc)\
   const byte *proc(byte *bptr, int *pdata_x, const byte * data, int data_x,\
-		   uint dsize, const sample_map *smap, int spread,\
-		   int num_components_per_plane)
+                   uint dsize, const sample_map *smap, int spread,\
+                   int num_components_per_plane)
 typedef SAMPLE_UNPACK_PROC((*sample_unpack_proc_t));
 
 /*

@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsfunc.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Generic definitions for Functions */
 
 #ifndef gsfunc_INCLUDED
@@ -77,7 +79,7 @@ typedef FN_EVALUATE_PROC((*fn_evaluate_proc_t));
 /* Test whether a function is monotonic. */
 #define FN_IS_MONOTONIC_PROC(proc)\
   int proc(const gs_function_t * pfn, const float *lower,\
-	   const float *upper, uint *mask)
+           const float *upper, uint *mask)
 typedef FN_IS_MONOTONIC_PROC((*fn_is_monotonic_proc_t));
 
 /* Get function information. */
@@ -102,7 +104,7 @@ typedef FN_GET_PARAMS_PROC((*fn_get_params_proc_t));
  */
 #define FN_MAKE_SCALED_PROC(proc)\
   int proc(const gs_function_t *pfn, gs_function_t **ppsfn,\
-	   const gs_range_t *pranges, gs_memory_t *mem)
+           const gs_range_t *pranges, gs_memory_t *mem)
 typedef FN_MAKE_SCALED_PROC((*fn_make_scaled_proc_t));
 
 /* Free function parameters. */
@@ -168,17 +170,17 @@ typedef struct gs_function_XxYy_params_s {
  * and one to free the parameters of that type.
 
 int gs_function_XxYy_init(gs_function_t **ppfn,
-			  const gs_function_XxYy_params_t *params,
-			  gs_memory_t *mem));
+                          const gs_function_XxYy_params_t *params,
+                          gs_memory_t *mem));
 
 void gs_function_XxYy_free_params(gs_function_XxYy_params_t *params,
-				  gs_memory_t *mem);
+                                  gs_memory_t *mem);
 
  */
 
 /* Allocate an array of function pointers. */
 int alloc_function_array(uint count, gs_function_t *** pFunctions,
-			 gs_memory_t *mem);
+                         gs_memory_t *mem);
 
 /* Evaluate a function. */
 #define gs_function_evaluate(pfn, in, out)\
@@ -187,8 +189,8 @@ int alloc_function_array(uint count, gs_function_t *** pFunctions,
 /*
  * Test whether a function is monotonic on a given (closed) interval.
  * return 1 = monotonic, 0 = not or don't know, <0 = error..
- * Sets mask : 1 bit per dimension : 
- *    1 - non-monotonic or don't know, 
+ * Sets mask : 1 bit per dimension :
+ *    1 - non-monotonic or don't know,
  *    0 - monotonic.
  * If lower[i] > upper[i], the result may be not defined.
  */

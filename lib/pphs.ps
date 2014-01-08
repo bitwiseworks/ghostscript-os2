@@ -1,19 +1,18 @@
-%    Copyright (C) 2001 Aladdin Enterprises.  All rights reserved.
-% 
+% Copyright (C) 2001-2012 Artifex Software, Inc.
+% All Rights Reserved.
+%
 % This software is provided AS-IS with no warranty, either express or
 % implied.
-% 
+%
 % This software is distributed under license and may not be copied,
 % modified or distributed except as expressly authorized under the terms
 % of the license contained in the file LICENSE in this distribution.
-% 
-% For more information about licensing, please refer to
-% http://www.ghostscript.com/licensing/. For information on
-% commercial licensing, go to http://www.artifex.com/licensing/ or
-% contact Artifex Software, Inc., 101 Lucas Valley Road #110,
-% San Rafael, CA  94903, U.S.A., +1(415)492-9861.
+%
+% Refer to licensing information at http://www.artifex.com or contact
+% Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+% CA  94903, U.S.A., +1(415)492-9861, for further information.
+%
 
-% $Id: pphs.ps 6300 2005-12-28 19:56:24Z giles $
 % Print Linearized PDF hint streams
 
 % Utilities
@@ -39,9 +38,9 @@
   dup type /nametype eq 1 index xcheck and {
     dup dup (<<) cvn eq exch ([) eq or {
       exec exch {
-	dup pdftoken dup dup (>>) cvn eq exch (]) eq or {
-	  exch pop exec exit
-	} if exch
+        dup pdftoken dup dup (>>) cvn eq exch (]) eq or {
+          exch pop exec exit
+        } if exch
       } loop
     } {
       exch pop
@@ -87,7 +86,7 @@
 /plpdict {	% <dict> plpdict -
   (<<) = plpkeys {
     2 index 2 index .knownget {
-	% Stack: dict key label value
+        % Stack: dict key label value
       (  ) print 3 -1 roll ===only ( ) print ===only
       (        % ) print =
     } {
@@ -170,7 +169,7 @@
 /pphs {		% <file> pphs -
   /pdf exch def
 
-	% Read the linearization parameter dictionary.
+        % Read the linearization parameter dictionary.
   { pdf pdftoken /obj eq { exit } if } loop
   pdf pdftoken /lpdict exch def
   /lpdict type /dicttype eq { lpdict /Linearized known } { false } ifelse {
@@ -179,13 +178,13 @@
 
   lpdict plpdict flush
 
-	% Read the primary hint stream.
+        % Read the primary hint stream.
   null {
     pdf pdftoken dup /stream eq { pop exit } if
     exch pop
   } loop
   /phsdict exch def
-	% Remove Length if indirect reference.
+        % Remove Length if indirect reference.
   phsdict 0 known {
     phsdict 0 undef  phsdict /Length undef
   } if
@@ -194,14 +193,14 @@
   dup 64000 string readstring pop exch closefile
   sread /phsdata exch def
 
-	% Decode the hint stream data if necessary.
+        % Decode the hint stream data if necessary.
   phsdict /Filter .knownget {
     phsdata exch filter
     dup 5000 string readstring pop exch closefile
     sread /phsdata exch def
   } if
 
-	% Adobe says we can assume /P = 0.
+        % Adobe says we can assume /P = 0.
   (Page Offset Hint Table:) =
   lpdict /N get
   phsdata phsdict /S get string readstring pop sread

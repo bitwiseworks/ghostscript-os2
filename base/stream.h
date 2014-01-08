@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: stream.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Definitions for Ghostscript stream package */
 /* Requires stdio.h */
 
@@ -38,13 +40,13 @@ typedef struct {
     /* Store # available for reading. */
     /* Return 0 if OK, ERRC if error or not implemented. */
 #define stream_proc_available(proc)\
-  int proc(stream *, long *)
+  int proc(stream *, gs_offset_t *)
     stream_proc_available((*available));
 
     /* Set position. */
     /* Return 0 if OK, ERRC if error or not implemented. */
 #define stream_proc_seek(proc)\
-  int proc(stream *, long)
+  int proc(stream *, gs_offset_t)
     stream_proc_seek((*seek));
 
     /* Clear buffer and, if relevant, unblock channel. */
@@ -126,7 +128,7 @@ struct stream_s {
      *      CALLC if a callout is required.
      */
     short end_status;		/* status at end of buffer (when */
-				/* reading) or now (when writing) */
+                                /* reading) or now (when writing) */
     byte foreign;		/* true if buffer is outside heap */
     byte modes;			/* access modes allowed for this stream */
 #define s_mode_read 1
@@ -138,19 +140,19 @@ struct stream_s {
 #define s_is_writing(s) (((s)->modes & s_mode_write) != 0)
 #define s_can_seek(s) (((s)->modes & s_mode_seek) != 0)
     gs_string cbuf_string;	/* cbuf/cbsize if cbuf is a string, */
-				/* 0/? if not */
-    long position;		/* file position of beginning of */
-				/* buffer */
+                                /* 0/? if not */
+    gs_offset_t position;		/* file position of beginning of */
+                                /* buffer */
     stream_procs procs;
     stream *strm;		/* the underlying stream, non-zero */
-				/* iff this is a filter stream */
+                                /* iff this is a filter stream */
     int is_temp;		/* if >0, this is a temporary */
-				/* stream and should be freed */
-				/* when its source/sink is closed; */
-				/* if >1, the buffer is also */
-				/* temporary */
+                                /* stream and should be freed */
+                                /* when its source/sink is closed; */
+                                /* if >1, the buffer is also */
+                                /* temporary */
     int inline_temp;		/* temporary for inline access */
-				/* (see spgetc_inline below) */
+                                /* (see spgetc_inline below) */
     stream_state *state;	/* state of process */
     /*
      * The following are for the use of the interpreter.
@@ -159,8 +161,8 @@ struct stream_s {
      * zfilter.c for more information on close_strm.
      */
     ushort read_id;		/* "unique" serial # for detecting */
-				/* references to closed streams */
-				/* and for validating read access */
+                                /* references to closed streams */
+                                /* and for validating read access */
     ushort write_id;		/* ditto to validate write access */
     stream *prev, *next;	/* keep track of all files */
     bool close_strm;		/* CloseSource/CloseTarget */
@@ -173,12 +175,12 @@ struct stream_s {
      */
     FILE *file;			/* file handle for C library */
     gs_const_string file_name;	/* file name (optional) -- clients must */
-				/* access only through procedures */
+                                /* access only through procedures */
     uint file_modes;		/* access modes for the file, */
-				/* may be a superset of modes */
+                                /* may be a superset of modes */
     /* Clients must only set the following through sread_subfile. */
-    long file_offset;		/* starting point in file (reading) */
-    long file_limit;		/* ending point in file (reading) */
+    gs_offset_t file_offset;		/* starting point in file (reading) */
+    gs_offset_t file_limit;		/* ending point in file (reading) */
 };
 
 /* The descriptor is only public for subclassing. */
@@ -215,7 +217,7 @@ extern_st(st_stream);
 /* it actively disables them. */
 /* The close routine must do a flush if needed. */
 #define sseekable(s) s_can_seek(s)
-int savailable(stream *, long *);
+int savailable(stream *, gs_offset_t *);
 
 #define sreset(s) (*(s)->procs.reset)(s)
 #define sflush(s) (*(s)->procs.flush)(s)
@@ -244,7 +246,7 @@ int sungetc(stream *, byte);	/* ERRC on error, 0 if OK */
 #define sputback(s) ((s)->srptr--)	/* can only do this once! */
 #define seofp(s) (sendrp(s) && (s)->end_status == EOFC)
 #define serrorp(s) (sendrp(s) && (s)->end_status == ERRC)
-int spskip(stream *, long, long *);
+int spskip(stream *, gs_offset_t, gs_offset_t *);
 
 #define sskip(s,nskip,pskipped) spskip(s, (long)(nskip), pskipped)
 /*
@@ -275,10 +277,10 @@ int sputs(stream *, const byte *, uint, uint *);
 int s_process_write_buf(stream *, bool);
 
 /* Following are only valid for positionable streams. */
-long stell(stream *);
-int spseek(stream *, long);
+gs_offset_t stell(stream *);
+int spseek(stream *, gs_offset_t);
 
-#define sseek(s,pos) spseek(s, (long)(pos))
+#define sseek(s,pos) spseek(s, (gs_offset_t)(pos))
 
 /* Following are for high-performance reading clients. */
 /* bufptr points to the next item. */
@@ -336,15 +338,15 @@ void s_init_state(stream_state *, const stream_template *, gs_memory_t *);
 
 /* create a stream for a file object */
 int file_prepare_stream(const char *, uint, const char *,
-		 uint, stream **, char[4], gs_memory_t *);
+                 uint, stream **, char[4], gs_memory_t *);
 
 /* Set up a file stream on an OS file.  */
 void file_init_stream(stream *, FILE *, const char *, byte *, uint);
 
 /* Open a file stream, optionally on an OS file. */
 int file_open_stream(const char *, uint, const char *,
-		 uint, stream **, gx_io_device *,
-		 iodev_proc_fopen_t, gs_memory_t *);
+                 uint, stream **, gx_io_device *,
+                 iodev_proc_fopen_t, gs_memory_t *);
 
 /* Allocate and return a file stream. */
 stream * file_alloc_stream(gs_memory_t *, client_name_t);
@@ -381,7 +383,7 @@ void sread_file(stream *, FILE *, byte *, uint),
     sappend_file(stream *, FILE *, byte *, uint);
 
 /* Confine reading to a subfile.  This is primarily for reusable streams. */
-int sread_subfile(stream *s, long start, long length);
+int sread_subfile(stream *s, gs_offset_t start, gs_offset_t length);
 
 /* Set the file name of a stream, copying the name. */
 /* Return <0 if the copy could not be allocated. */
@@ -404,8 +406,8 @@ void s_disable(stream *);
 /* Generic stream procedures exported for templates */
 int s_std_null(stream *);
 void s_std_read_reset(stream *), s_std_write_reset(stream *);
-int s_std_read_flush(stream *), s_std_write_flush(stream *), s_std_noavailable(stream *, long *),
-     s_std_noseek(stream *, long), s_std_close(stream *), s_std_switch_mode(stream *, bool);
+int s_std_read_flush(stream *), s_std_write_flush(stream *), s_std_noavailable(stream *, gs_offset_t *),
+     s_std_noseek(stream *, gs_offset_t), s_std_close(stream *), s_std_switch_mode(stream *, bool);
 
 /* Generic procedures for filters. */
 int s_filter_write_flush(stream *), s_filter_close(stream *);
@@ -422,9 +424,9 @@ extern const stream_procs s_filter_read_procs, s_filter_write_procs;
  * an additional filter to provide it.
  */
 int s_init_filter(stream *fs, stream_state *fss, byte *buf, uint bsize,
-		  stream *target);
+                  stream *target);
 stream *s_add_filter(stream **ps, const stream_template *template,
-		     stream_state *ss, gs_memory_t *mem);
+                     stream_state *ss, gs_memory_t *mem);
 
 /*
  * Close the filters in a pipeline, up to a given target stream, freeing
@@ -437,7 +439,7 @@ int s_close_filters(stream **ps, stream *target);
 extern const stream_template s_NullE_template;
 extern const stream_template s_NullD_template;
 
-	/* for ziodev.c */
+        /* for ziodev.c */
 int file_close_finish(stream *);
 int file_close_disable(stream *);
 

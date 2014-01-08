@@ -1,22 +1,25 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxline.h 10445 2009-12-04 00:33:04Z robin $ */
+
 /* Private line parameter definitions */
 
 #ifndef gxline_INCLUDED
 #  define gxline_INCLUDED
 
+#include "math_.h"
 #include "gslparam.h"
 #include "gsmatrix.h"
 
@@ -43,19 +46,19 @@ typedef struct gx_line_params_s {
     gs_line_cap dash_cap;       /* Cap to use on start/end of dash segment */
     gs_line_join join;
     int curve_join;		/* <0 means use join between segments of */
-				/* flattened curves, >=0 means use this join */
+                                /* flattened curves, >=0 means use this join */
     float miter_limit;
     float miter_check;		/* computed from miter limit, */
-				/* see gx_set_miter_limit and gs_stroke */
+                                /* see gx_set_miter_limit and gs_stroke */
     float dot_length;
     bool dot_length_absolute;	/* if true, dot_length is 1/72" units */
     gs_matrix dot_orientation;	/* dot length is aligned with (1,0); */
-				/* must be xxyy or xyyx */
+                                /* must be xxyy or xyyx */
     gx_dash_params dash;
 } gx_line_params;
 
 #define gx_set_line_width(plp, wid)\
-  ((plp)->half_width = (wid) / 2)
+  ((plp)->half_width = fabs(wid) / 2)
 #define gx_current_line_width(plp)\
   ((plp)->half_width * 2)
 int gx_set_miter_limit(gx_line_params *, floatp);
@@ -71,6 +74,6 @@ int gx_set_dot_length(gx_line_params *, floatp, bool);
 #define gx_line_params_initial\
  0.0, gs_cap_butt, gs_cap_butt, gs_cap_butt, gs_join_miter, -1,\
  10.0, (float)0.20305866, 0.0, 0/*false*/,\
-  { identity_matrix_body }, { gx_dash_params_initial }
+ { identity_matrix_body }, { gx_dash_params_initial }
 
 #endif /* gxline_INCLUDED */

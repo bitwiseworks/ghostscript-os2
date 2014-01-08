@@ -1,16 +1,18 @@
-#  Copyright (C) 2001-2007 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: all-arch.mak 8954 2008-08-08 04:22:38Z ray $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
+#
 #
 # Author:
 # 	Nelson H. F. Beebe
@@ -157,6 +159,8 @@ DD			= $(GLD)
 GLD			= $(GLGENDIR)/
 GLGENDIR		= ./obj
 GLOBJ			= ./obj/
+AUXDIR                  = $(GLGENDIR)/aux
+AUX                     = $(AUX)/
 PSD			= $(PSGENDIR)/
 PSGENDIR		= ./obj
 
@@ -275,6 +279,7 @@ clean mostlyclean clobber distclean maintainer-clean:
 
 init:
 	-if test ! -d obj ; then mkdir obj ; fi
+	-if test ! -d obj/aux ; then mkdir obj/aux ; fi
 
 install:	install-binary install-fontmap install-pdfsec
 

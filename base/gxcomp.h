@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxcomp.h 10200 2009-10-21 03:50:46Z mvrhel $ */
+
 /* Definitions for implementing compositing functions */
 
 #ifndef gxcomp_INCLUDED
@@ -46,11 +48,10 @@
 #define GX_COMPOSITOR_OVERPRINT    0x02   /* overprint/overprintmode compositor */
 #define GX_COMPOSITOR_PDF14_TRANS  0x03   /* PDF 1.4 transparency compositor */
 
-
 /*
  * Define the abstract superclass for all compositing function types.
  */
-						   /*typedef struct gs_composite_s gs_composite_t; *//* in gscompt.h */
+                                                   /*typedef struct gs_composite_s gs_composite_t; *//* in gscompt.h */
 
 #ifndef gs_imager_state_DEFINED
 #  define gs_imager_state_DEFINED
@@ -118,7 +119,7 @@ typedef struct gs_composite_type_procs_s {
      * Checks whether a next compositor operation closes this one.
      * Must set the 2nd argument with a pointer to the opening compositor operation.
      * Return coides : <0 - error, 0 - not closing,
-     * 1 - closing with annihilation, 2 - execute immediately, 
+     * 1 - closing with annihilation, 2 - execute immediately,
      * 3 - closing and replacing, 4 - replace one, 5 - drop queue.
      */
 #define composite_is_closing_proc(proc)\
@@ -138,7 +139,7 @@ typedef struct gs_composite_type_procs_s {
      */
 #define composite_clist_write_update(proc)\
   int proc(const gs_composite_t * pcte, gx_device * dev, gx_device ** pcdev,\
-			gs_imager_state * pis, gs_memory_t * mem)
+                        gs_imager_state * pis, gs_memory_t * mem)
     composite_clist_write_update((*clist_compositor_write_update));
 
     /*
@@ -146,7 +147,7 @@ typedef struct gs_composite_type_procs_s {
      */
 #define composite_clist_read_update(proc)\
   int proc(gs_composite_t * pcte, gx_device * cdev, gx_device * tdev,\
-			gs_imager_state * pis, gs_memory_t * mem)
+                        gs_imager_state * pis, gs_memory_t * mem)
     composite_clist_read_update((*clist_compositor_read_update));
 
     /*
@@ -196,10 +197,10 @@ composite_get_cropping_proc(gx_default_composite_get_cropping);
  * structure type is needed for it.
  */
 #define gs_composite_common\
-	const gs_composite_type_t *type;\
-	gs_id id;		/* see gscompt.h */\
-	bool idle;		/* Doesn't paint anything. */\
-	struct gs_composite_s *prev, *next /* Queue links for clist_playback_band. */ 
+        const gs_composite_type_t *type;\
+        gs_id id;		/* see gscompt.h */\
+        bool idle;		/* Doesn't paint anything. */\
+        struct gs_composite_s *prev, *next /* Queue links for clist_playback_band. */
 
 struct gs_composite_s {
     gs_composite_common;

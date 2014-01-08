@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: imemory.h 9043 2008-08-28 22:48:19Z giles $ */
+
 /* Ghostscript memory allocator extensions for interpreter level */
 
 #ifndef imemory_INCLUDED
@@ -33,34 +35,33 @@
 typedef struct gs_ref_memory_s gs_ref_memory_t;
 #endif
 
-	/* Allocate a ref array. */
+        /* Allocate a ref array. */
 
 int gs_alloc_ref_array(gs_ref_memory_t * mem, ref * paref,
-		       uint attrs, uint num_refs, client_name_t cname);
+                       uint attrs, uint num_refs, client_name_t cname);
 
-	/* Resize a ref array. */
-	/* Currently this is only implemented for shrinking, */
-	/* not growing. */
+        /* Resize a ref array. */
+        /* Currently this is only implemented for shrinking, */
+        /* not growing. */
 
 int gs_resize_ref_array(gs_ref_memory_t * mem, ref * paref,
-			uint new_num_refs, client_name_t cname);
+                        uint new_num_refs, client_name_t cname);
 
-	/* Free a ref array. */
+        /* Free a ref array. */
 
 void gs_free_ref_array(gs_ref_memory_t * mem, ref * paref,
-		       client_name_t cname);
+                       client_name_t cname);
 
-	/* Allocate a string ref. */
+        /* Allocate a string ref. */
 
 int gs_alloc_string_ref(gs_ref_memory_t * mem, ref * psref,
-			uint attrs, uint nbytes, client_name_t cname);
+                        uint attrs, uint nbytes, client_name_t cname);
 
 /* Register a ref root.  This just calls gs_register_root. */
 /* Note that ref roots are a little peculiar: they assume that */
 /* the ref * that they point to points to a *statically* allocated ref. */
 int gs_register_ref_root(gs_memory_t *mem, gs_gc_root_t *root,
-			 void **pp, client_name_t cname);
-
+                         void **pp, client_name_t cname);
 
 /*
  * The interpreter allocator can allocate in either local or global VM,

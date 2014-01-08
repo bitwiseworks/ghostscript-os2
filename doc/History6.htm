@@ -1,8 +1,8 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
 <html>
 <head>
+<meta http-equiv="content-type" content="text/html; charset=us-ascii">
 <title>History of Ghostscript versions 6.n</title>
-<!-- $Id: History6.htm 10732 2010-02-10 18:17:48Z giles $ -->
 <!--
 	WARNING: do not use Pete Kaiser's emacs function "gs-toc" alone to
 	re-create the table of contents here, because it will replace the
@@ -253,7 +253,7 @@ PDF 1.4 transparency.
 to /usr/X11R6. 
 
 
-<h2><a name="6.64-Documentation"></a>Documentation</h2><pre>
+</pre><h2><a name="6.64-Documentation"></a>Documentation</h2><pre>
 
 1. Removing the article "Minor Bugs. kshow doesn't restore currentfont after
 running proc." due to fixed. 2. Adding article "Buffering in input filters"
@@ -546,7 +546,7 @@ declarations. Patch from Dan Coby. Sourceforge bug #414328.
 Removes \r\n line ends inadvertently added. (icclib/icc.c [1.3],
 icclib/icc.h [1.3]: 2001/04/07 08:07:16 raph)
 
-<hr>
+</pre><hr>
 
 <h1><a name="Version6.63"></a>Version 6.63 (2001-03-31)</h1>
 
@@ -576,7 +576,7 @@ operations when drawing text.
 documents.
 
 
-<h2><a name="6.63-Documentation"></a>Documentation</h2><pre>
+</pre><h2><a name="6.63-Documentation"></a>Documentation</h2><pre>
 
 Moves the following SourceForge bugs to the Issues.htm documentation:
 201955, 220967, 223992. (doc/Issues.htm [1.2]: 2001/03/20 07:36:30 rayjj)
@@ -876,7 +876,7 @@ with the standard function change the name to stream_write. Also change
 #410772. Fix by Ray Johnston. (gdevpsf1.c [1.9], gdevpsfm.c [1.5],
 gdevpsft.c [1.7], gsfunc4.c [1.4]: 2001/04/01 00:35:26 raph)
 
-<hr>
+</pre><hr>
 
 <h1><a name="Version6.62"></a>Version 6.62 (2001-03-19)</h1>
 
@@ -1350,7 +1350,7 @@ icclib. Thanks to L. Peter Deutsch for pointing out the need.
 icclib/README [1.1], icclib/icc.c [1.1], icclib/icc.h [1.1],
 icclib/icc9809.h [1.1]: 2001/03/19 17:11:14 raph)
 
-<hr>
+</pre><hr>
 
 <h1><a name="Version6.61"></a>Version 6.61 (2001-02-21)</h1>
 
@@ -1572,7 +1572,7 @@ branches: 1.1.2; file _type1.h was initially added on branch HINTER.
 branches: 1.1.2; file vdtrace.h was initially added on branch HINTER.
 (vdtrace.h [1.1]: 2001/02/02 20:27:09 igorm)
 
-<hr>
+</pre><hr>
 
 <h1><a name="Version6.60"></a>Version 6.60 (2000-12-31)</h1>
 
@@ -1606,7 +1606,7 @@ following the ID operator.
 corrected to ViewingOrientation.
 (Streams)
 	- All decoding filters that recognize an EOD in the source data
-must now have an init procedure that sets state->min_left = 1.
+must now have an init procedure that sets state-&gt;min_left = 1.
 (Library)
 	- The glyph_data, subr_data, and seac_data procedures in a Type 1
 font (gs_type1_data_procs), and the glyph_data procedure passed to
@@ -1621,7 +1621,7 @@ the DSC parsing structure are corrected to viewing_orientation.
 
 
 
-<h2><a name="6.60-Documentation"></a>Documentation</h2><pre>
+</pre><h2><a name="6.60-Documentation"></a>Documentation</h2><pre>
 
 Fixes problems:
 	- An isolated ampersand needed to be converted to the HTML form.
@@ -1873,9 +1873,9 @@ passed, and this is used in the named anchors within the html output.
 (toolbin/cvs2hist.py [1.6]: 2000/12/23 09:38:10 giles)
 
 Adds support for localized manpages to the make 'install' target. On unix
-the makefile will now intall any files with the $MAN1EXT extension it finds
+the makefile will now intall any files with the &#36;MAN1EXT extension it finds
 under locale subdirs of the man directory that are listed in the MAN_LCDIRS
-variable. The $man1dir is correspondingly removed from unix-gcc.mak. Also
+variable. The &#36;man1dir is correspondingly removed from unix-gcc.mak. Also
 adds separate targets: install-doc install-man install-examples
 install-libdata (unix-gcc.mak [1.9], unixinst.mak [1.15]: 2000/12/23
 10:10:37 giles)
@@ -2416,7 +2416,7 @@ FILE_IMPLEMENTATION=fd The implementation of streams using direct OS calls
 is extended to support MSVC &amp;&amp; Win32. close_.h is replaced by more
 general unistd_.h (close_.h [1.3]: 2000/12/19 03:35:40 alexcher)
 
-<hr>
+</pre><hr>
 
 <h1><a name="Version6.30"></a>Version 6.30 (2000-10-03)</h1>
 
@@ -2437,9 +2437,8 @@ The following projects are in a partially completed state:
 
 </ul>
 
-<pre>
 
-<h2><a name="6.24_Incompatible_changes"></a>Incompatible changes</h2>
+<h2><a name="6.24_Incompatible_changes"></a>Incompatible changes</h2><pre>
 
 (Procedures)
 	- The -Zv and -ZV switches now trace alpha/transparency features.
@@ -2458,7 +2457,7 @@ than XFlush().
 	- Color space types now have a new, required, "equal" procedure.
 
 
-<h2><a name="6.30 Documentation"></a>Documentation</h2><pre>
+</pre><h2><a name="6.30 Documentation"></a>Documentation</h2><pre>
 
 Fixes problems:
 	- the "User parameters" section was incorrectly titled "Device
@@ -2911,7 +2910,7 @@ Fixes problems:
 	- The SrcPg entry in ANN pdfmarks was (effectively) ignored. (bug
 introduced between 5.50 and 6.01.) (gdevpdfm.c [1.5]: 2000/08/31 18:49:59
 lpd)
-	- When CompatibilityLevel < 1.4, transparency was ignored rather
+	- When CompatibilityLevel &lt; 1.4, transparency was ignored rather
 than being rendered explicitly. (gdevpdfg.c [1.9]: 2000/09/11 21:13:49 lpd)
 
 Works around the bug in Acrobat Reader (all versions) that apparently treats
@@ -3331,7 +3330,7 @@ gscsepr.c [1.5], gscspace.c [1.3], gscspace.h [1.3], gspcolor.c [1.3],
 gxcspace.h [1.3]: 2000/08/24 05:42:30 lpd)
 
 Changes the band list representation of mask images to allow
-BitsPerComponent > 1 (for soft masks). (gximage1.c [1.2]: 2000/08/24
+BitsPerComponent &gt; 1 (for soft masks). (gximage1.c [1.2]: 2000/08/24
 17:58:18 lpd)
 
 Adds Matte and has_Matte members to ImageType 1 images. These are only used
@@ -3584,7 +3583,7 @@ Updates the license notices to reflect the name change from Aladdin
 Ghostscript to AFPL Ghostscript, as well as some internal references to the
 program name. (iutilasm.asm [1.2]: 2000/09/19 19:00:46 lpd)
 
-<hr>
+</pre><hr>
 
 <h1><a name="Version6.23"></a>Version 6.23 (2000-08-07)</h1>
 
@@ -3605,9 +3604,8 @@ The following projects are in a partially completed state in the PDF writer:
 
 </ul>
 
-<pre>
 
-<h2><a name="6.23_Incompatible_changes"></a>Incompatible changes</h2>
+<h2><a name="6.23_Incompatible_changes"></a>Incompatible changes</h2><pre>
 
 (Drivers)
 	- With high-level drivers ([e]pswrite, pdfwrite, pxl*, cgm*),
@@ -3622,7 +3620,7 @@ gs_context, gs_condition, gs_lock.
 	- By default, gs_copydevice[2] will only copy a device prototype.
 
 
-<h2><a name="6.23 Documentation"></a>Documentation</h2><pre>
+</pre><h2><a name="6.23 Documentation"></a>Documentation</h2><pre>
 
 Fixes problems:
 	- Local GC in a multi-context system caused a crash. Also updates
@@ -3684,7 +3682,7 @@ doc/Use.htm [1.9], man/ps2ps.1 [1.6]: 2000/08/07 17:48:09 lpd)
 </pre><h2><a name="6.23 Procedures"></a>Procedures</h2><pre>
 
 Fixes problems:
-	- $(GLGEN)/md5.h wasn't deleted after compilation. (lib.mak [1.26]:
+	- &#36;(GLGEN)/md5.h wasn't deleted after compilation. (lib.mak [1.26]:
 2000/07/09 23:19:59 lpd)
 	- TrueType font loading now requires the Adobe glyph list, but this
 dependency was missing from the makefile. (int.mak [1.26]: 2000/07/19
@@ -3692,7 +3690,7 @@ dependency was missing from the makefile. (int.mak [1.26]: 2000/07/19
 	- During compilation, GLSRCDIR was searched before GLGENDIR. (We're
 very surprised that this didn't cause detectable trouble before.)
 (lib.mak [1.27]: 2000/07/19 14:32:00 lpd)
-	- The dependency on gsparamx.$(OBJ) was incorrectly attached to
+	- The dependency on gsparamx.&#36;(OBJ) was incorrectly attached to
 pdfwrite.dev rather than psdf.dev. (devs.mak [1.30]: 2000/08/03 17:42:52
 lpd)
 	- 'pre' didn't work with dates in August or September (Tcl doesn't
@@ -3778,7 +3776,7 @@ in 6.22) (lib/pdf_main.ps [1.10]: 2000/07/14 05:30:19 lpd)
 	- As a result of some recent changes to fix other problems, setting
 certain text state parameters (Tf, Ts, Tz) outside of text mode (BT/ET)
 caused an error. (lib/pdf_ops.ps [1.6]: 2000/07/19 15:57:54 lpd)
-	- Setting a singular text matrix (e.g., 0 0 0 0 <x> <y> Tm) caused
+	- Setting a singular text matrix (e.g., 0 0 0 0 &lt;x&gt; &lt;y&gt; Tm) caused
 an error. (lib/pdf_ops.ps [1.7]: 2000/08/04 16:08:05 lpd)
 
 </pre><h2><a name="6.23 Interpreter"></a>Interpreter</h2><pre>
@@ -3789,7 +3787,7 @@ convenience of users who don't read the documentation and which interfered
 with the operation of some code produced by the Adobe PS5 Windows driver.
 (lib/gs_init.ps [1.18]: 2000/07/09 22:34:30 lpd)
 	- A constant 1 should have been 1L, causing a warning on systems
-where sizeof(long) > sizeof(int). (zarith.c [1.3]: 2000/07/09 23:10:58 lpd)
+where sizeof(long) &gt; sizeof(int). (zarith.c [1.3]: 2000/07/09 23:10:58 lpd)
 	- The workaround for attempting to set a 4-element PageSize value in
 a page device sometimes caused an error. (bug introduced in 6.21)
 (lib/gs_setpd.ps [1.4]: 2000/07/10 12:48:54 lpd)
@@ -3818,7 +3816,7 @@ in PDF files to produce a rangecheck error. (lib/gs_ttf.ps [1.6]: 2000/07/19
 	- When NOPROMPT was set, no flush or flushpage occurred at the end
 of a page. (fix from an anonymous user on SourceForge)
 (lib/gs_init.ps [1.19]: 2000/07/20 01:40:50 lpd)
-	- Type 1 or Type 2 fonts with invalid LanguageGroup values < 0
+	- Type 1 or Type 2 fonts with invalid LanguageGroup values &lt; 0
 caused an error. (Such fonts are invalid, but some real fonts have garbage
 LanguageGroup values, and Adobe software doesn't give an error.)
 (zfont1.c [1.6]: 2000/07/24 18:08:38 lpd)
@@ -3920,7 +3918,7 @@ Improves the smoothness of ShadingType 4 - 7 gradient fills.
 Updates dates and version #s for the 6.23 fileset. (gscdef.c [1.6]:
 2000/08/07 17:48:10 lpd)
 
-<hr>
+</pre><hr>
 
 <h1><a name="Version6.22"></a>Version 6.22 (2000-07-05)</h1>
 
@@ -3943,9 +3941,8 @@ The following projects are in a partially completed state in the PDF writer:
 
 </ul>
 
-<pre>
 
-<h2><a name="6.22_Incompatible_changes"></a>Incompatible changes</h2>
+<h2><a name="6.22_Incompatible_changes"></a>Incompatible changes</h2><pre>
 
 (Procedures)
 	- Versions now have odd numbers during development, even numbers
@@ -3977,7 +3974,7 @@ structure; there is a new macro for calling it.
 changed.  This is very unfortunate, but it was unavoidable.
 
 
-<h2><a name="6.22 Documentation"></a>Documentation</h2><pre>
+</pre><h2><a name="6.22 Documentation"></a>Documentation</h2><pre>
 
 Fixes problems:
 	- The batch files for MS-DOS, MS Windows, and OS/2 referred to the
@@ -4266,7 +4263,7 @@ effect, and could cause a crash. (This is probably only a partial fix.)
 	- In the ATX drivers, the word count for compressed scan lines was
 written as 2 bytes rather than 1; the drivers wouldn't accept a page width
 greater than 2400 pixels. (gdevatx.c [1.4]: 2000/06/12 04:39:48 lpd)
-	- Works around a bug in the MSVC++ 5.0 compiler that treats (int <<
+	- Works around a bug in the MSVC++ 5.0 compiler that treats (int &lt;&lt;
 unsigned) as unsigned rather than int. (gdevcd8.c [1.2], gdevcdj.c [1.2],
 gdevdj9.c [1.3]: 2000/06/20 14:21:34 lpd)
 	- Uncolored Patterns used with a gray color produced incorrect PDF
@@ -4324,7 +4321,7 @@ devices). (gdevcfax.c [1.1]: 2000/06/06 06:38:31 lpd)
 Notes that the vgalib driver only suppotrs 16-color modes.
 (gdevvglb.c [1.2]: 2000/06/06 15:28:01 lpd)
 
-Adds some code contributed by Leon Bottou <leonb@research.att.com> that
+Adds some code contributed by Leon Bottou &lt;leonb@research.att.com&gt; that
 makes the X driver prefer TrueColor visuals. We aren't sure of the
 ramifications of this.... (gdevxini.c [1.6]: 2000/06/12 04:41:15 lpd)
 
@@ -4586,7 +4583,7 @@ print multiple copies of the same page on separate files if the OutputFile
 name included %d, and some drivers (such as the TIFF drivers) produced
 invalid output. (gdevprn.c [1.4]: 2000/06/05 02:04:26 lpd)
 	- 32-bit sample values in shading data didn't work, because some
-CPUs execute (1 << 32) as (1 << 0). (gxshade.c [1.3]: 2000/06/07 19:07:17
+CPUs execute (1 &lt;&lt; 32) as (1 &lt;&lt; 0). (gxshade.c [1.3]: 2000/06/07 19:07:17
 lpd)
 	- Type 1 fonts without eexec encryption still included the 4 eexec
 padding bytes. (bug probably introduced since 6.0) (gdevpsf1.c [1.4]:
@@ -4662,7 +4659,7 @@ Between numbered filesets, GS_PRODUCT will say "CVS PRE-RELEASE".
 Updates GS_PRODUCT for making a fileset. (gscdef.c [1.4]: 2000/07/06
 00:01:03 lpd)
 
-<hr>
+</pre><hr>
 
 <h1><a name="Version6.21"></a>Version 6.21 (2000-04-28)</h1>
 
@@ -4690,9 +4687,8 @@ The following projects are in a partially completed state in the PDF writer:
 
 </ul>
 
-<pre>
 
-<h2><a name="6.21_Incompatible_changes"></a>Incompatible changes</h2>
+<h2><a name="6.21_Incompatible_changes"></a>Incompatible changes</h2><pre>
 
 (Drivers)
 	- The downsampling filters now require WidthIn and HeightIn,
@@ -4720,7 +4716,7 @@ gx_code_map_t.
 	- The library must no longer reference stdin/out/err directly.
 
 
-<h2><a name="6.21 Documentation"></a>Documentation</h2><pre>
+</pre><h2><a name="6.21 Documentation"></a>Documentation</h2><pre>
 
 Fixes problems:
 	- The PDF writer could get an ioerror when downsampling images whose
@@ -5291,7 +5287,7 @@ Fixes problems:
 	- Automatic loading of fonts from resource files didn't work
 (usually caused an unmatchedmark or typecheck error).
 (lib/gs_fonts.ps [1.5], lib/gs_res.ps [1.9]: 2000/04/08 03:45:41 lpd)
-	- A -> should have been a . (only shows up on 64-bit systems).
+	- A -&gt; should have been a . (only shows up on 64-bit systems).
 (zfunc4.c [1.3]: 2000/04/09 20:04:00 lpd)
 	- the most recent 'fixes' for loading font resources caused all
 built-in fonts to be returned as null. (lib/gs_res.ps [1.10]: 2000/04/09
@@ -5397,7 +5393,7 @@ sread_subfile). (sfxfd.c [1.3]: 2000/04/10 02:41:48 lpd)
 target was a procedure, and closefile didn't actually close them. (This is a
 very old bug.) (stream.c [1.6]: 2000/04/18 05:50:15 lpd)
 	- The PixelDifference filters (Predictor = 2) weren't implemented
-for Colors > 4 and BitsPerComponent != 8, and they dropped trailing bytes if
+for Colors &gt; 4 and BitsPerComponent != 8, and they dropped trailing bytes if
 the length of the data wasn't an exact multiple of the pixel size.
 (spdiff.c [1.2]: 2000/04/22 03:55:22 lpd)
 
@@ -5429,7 +5425,7 @@ for Linux. (gdevpsf.h [1.3], gdevpsf2.c [1.6]: 2000/04/10 07:42:31 lpd)
 	- gsmisc.c didn't compile in DEBUG mode on systems with a
 non-standard prototype for the sqrt function. (gsmisc.c [1.3]: 2000/04/10
 16:00:31 lpd)
-	- One picky compiler complained about (1L << 31). (gsmisc.c [1.4]:
+	- One picky compiler complained about (1L &lt;&lt; 31). (gsmisc.c [1.4]:
 2000/04/10 17:21:41 lpd)
 	- putdeviceparams allowed a PageSize or .MediaSize value with the
 wrong number of elements to take effect. (gsdparam.c [1.2]: 2000/04/19
@@ -5482,7 +5478,7 @@ Adds template macros for printer devices that implement print_page_copies
 rather than print_page. (gdevprn.c [1.2], gdevprn.h [1.3]: 2000/04/28
 13:36:16 lpd)
 
-<hr>
+</pre><hr>
 
 <h1><a name="Version6.20"></a>Version 6.20 (2000-04-06)</h1>
 
@@ -5509,9 +5505,8 @@ All problems registered on SourceForge numbered 103963 or lower are closed,
 except for the following: 101549, 101814, 101829, 101905, 101955, 102046,
 102047, 102132, 102146, 102735, 102901, 103016, 103528, 103963.
 
-<pre>
 
-<h2><a name="6.20_Incompatible_changes"></a>Incompatible changes</h2>
+<h2><a name="6.20_Incompatible_changes"></a>Incompatible changes</h2><pre>
 
 (Procedures)
 	- The default value of FPU_TYPE in all Windows and OS/2 makefiles
@@ -5564,10 +5559,10 @@ client.
 rather than a pointer to a const structure.
 
 
-<h2><a name="6.20 Documentation"></a>Documentation</h2><pre>
+</pre><h2><a name="6.20 Documentation"></a>Documentation</h2><pre>
 
 Fixes problems:
-	- If log2_transfer_map_size > 8, identity transfer functions
+	- If log2_transfer_map_size &gt; 8, identity transfer functions
 returned garbage. The fix requires that if a client wants to set a transfer
 function to the identity mapping, it must call gx_set_identity_transfer
 rather than simply setting the procedure to gs_identity_transfer.
@@ -5761,7 +5756,7 @@ Fixes problems:
 (msvccmd.mak [1.2]: 2000/03/31 05:06:53 lpd)
 	- MSVC versions before 5, not before 6, recognize /FPi87.
 (msvccmd.mak [1.3]: 2000/03/31 05:50:33 lpd)
-	- Removes some occurrences of $,I,d,: that shouldn't be substituted.
+	- Removes some occurrences of &#36;Id: that shouldn't be substituted.
 (toolbin/pre [1.2]: 2000/04/07 05:20:35 lpd)
 
 Increments the version number to 6.20, in anticipation of the next release.
@@ -5798,7 +5793,7 @@ lpd)
 Updates dependencies to reflect today's batches of checked-in changes.
 (devs.mak [1.5], int.mak [1.7], lib.mak [1.6]: 2000/03/20 07:16:35 lpd)
 
-Updates the makefile for the renaming of gdevpsdf.c => gdevpsdu.c.
+Updates the makefile for the renaming of gdevpsdf.c =&gt; gdevpsdu.c.
 (devs.mak [1.6]: 2000/03/20 19:30:35 lpd)
 
 Starts to move support for CIDFontType 0 and 2 into C code, needed by the
@@ -6149,7 +6144,7 @@ returned garbage for the keys. (iparam.c [1.2]: 2000/03/19 15:13:13 lpd)
 PLRM3 says PostScript interpreters do not make this check, even though the
 PLRM2 says compatibility is required (!). (zfcmap.c [1.2]: 2000/03/19
 16:53:50 lpd)
-	- If log2_transfer_map_size > 8, identity transfer functions
+	- If log2_transfer_map_size &gt; 8, identity transfer functions
 returned garbage. The fix requires that if a client wants to set a transfer
 function to the identity mapping, it must call gx_set_identity_transfer
 rather than simply setting the procedure to gs_identity_transfer.
@@ -6297,7 +6292,7 @@ lpd)
 Changes Subr loading for CIDFontType 0 fonts from lazy to immediate, so that
 C code can be guaranteed access to the Subrs. (In every CIDFontType 0 font
 that we have seen, SubrCount is 5, so this has no significant time or space
-cost.) Also adds support for FDBytes > 1 in GlyphDirectory definitions.
+cost.) Also adds support for FDBytes &gt; 1 in GlyphDirectory definitions.
 (lib/gs_cidfn.ps [1.7]: 2000/03/21 20:06:44 lpd)
 
 Splits off the ReusableStreamDecode filter as a separate module, since
@@ -6372,7 +6367,7 @@ Fixes problems:
 	- s_add_filter didn't ensure enough buffering. This entailed moving
 the NullEncode/Decode filters to stream.[hc]. (sfilter.h [1.3],
 stream.c [1.3], stream.h [1.3]: 2000/03/19 03:15:02 lpd)
-	- When FPU_TYPE <= 0, the image interpolation code lost too much
+	- When FPU_TYPE &lt;= 0, the image interpolation code lost too much
 accuracy, producing color streaks in the output. (Fix by DanCoby.)
 (siscale.c [1.2]: 2000/03/29 20:34:45 lpd)
 	- Fixes a couple of typos in the recently checked-in image
@@ -6422,7 +6417,7 @@ gxfont42.h [1.2]: 2000/03/19 03:58:51 lpd)
 	- ImageType 4 images didn't give an error for out-of-range MaskColor
 values. The file also had an unnecessary #include. (gximage4.c [1.2]:
 2000/03/19 04:10:09 lpd)
-	- If log2_transfer_map_size > 8, identity transfer functions
+	- If log2_transfer_map_size &gt; 8, identity transfer functions
 returned garbage. The fix requires that if a client wants to set a transfer
 function to the identity mapping, it must call gx_set_identity_transfer
 rather than simply setting the procedure to gs_identity_transfer.
@@ -6573,7 +6568,7 @@ Finishes implementing the ability to write CIDFontType 0 CFFs. This involved
 a surprising number of changes in other font-related files. (gsfcid.c [1.2],
 gxfcid.h [1.4]: 2000/04/02 07:38:46 lpd)
 
-<hr>
+</pre><hr>
 
 <h1><a name="Version6.01"></a>Version 6.01 (2000-03-17)</h1>
 
@@ -6583,7 +6578,7 @@ This release fixes the following reported bugs: #101555, #101813, #101816,
 #101818, #101827, #101830, #101871, #101853, #101906, #101949, #101950,
 #102003, #102004, #102038, #102081, #102936.
 
-<h2><a name="6.01_Incompatible_changes"></a>Incompatible changes</h2>
+<h2><a name="6.01_Incompatible_changes"></a>Incompatible changes</h2><pre>
 
 (Platforms)
 	- OpenVMS using VAX C is no longer supported.  (OpenVMS with DEC C
@@ -6601,7 +6596,7 @@ gsropt.h.
 RasterOp when TRANSPARENCY_PER_H_P is defined is changed slightly.
 
 
-<h2><a name="6.01 Documentation"></a>Documentation</h2><pre>
+</pre><h2><a name="6.01 Documentation"></a>Documentation</h2><pre>
 
 Fixes problems:
 	- Fixes a typo. (man/ps2pdf.1 [1.2]: 2000/03/10 03:11:06 lpd)
@@ -6702,13 +6697,13 @@ doc/History6.htm [1.2], doc/News.htm [1.5]: 2000/03/18 04:13:40 lpd)
 </pre><h2><a name="6.01 Procedures"></a>Procedures</h2><pre>
 
 Fixes problems:
-	- The terminating $ on the $Id: line in gsmalloc.c was missing, and
-dwuninst.rc lacked a $Id: line. (dwuninst.rc [1.2]: 2000/03/10 03:44:33 lpd)
+	- The terminating &#36; on the &#36;Id: line in gsmalloc.c was missing, and
+dwuninst.rc lacked a &#36;Id: line. (dwuninst.rc [1.2]: 2000/03/10 03:44:33 lpd)
 	- The %ram% IODevice was defined, but should not be (it represents a
 RAM-based file system, which Ghostscript does not provide). Fix: The type of
 the %null% IODevice was /FileSystem rather than /Special. (int.mak [1.2]:
 2000/03/10 07:02:07 lpd)
-	- The dependency list for coslwxl omitted a $(DD).
+	- The dependency list for coslwxl omitted a &#36;(DD).
 (contrib.mak [1.2]: 2000/03/10 07:30:54 lpd)
 	- The makefile still referred to a long-gone driver for the DEC
 LA70. (contrib.mak [1.3]: 2000/03/10 07:32:43 lpd)
@@ -6837,7 +6832,7 @@ lpd)
 	- The mswinpr2 driver didn't handle setting BitsPerPixel to the same
 value when the device was already open, possibly causing an error on restore
 or grestore. (gdevwpr2.c [1.2]: 2000/03/10 04:26:07 lpd)
-	- When operating in buffered mode (MaxBitmap > 0), the X driver
+	- When operating in buffered mode (MaxBitmap &gt; 0), the X driver
 sometimes failed to copy all of the updated area to the screen.
 (gdevx.c [1.2], gdevx.h [1.2], gdevxini.c [1.2], gdevxxf.c [1.2]: 2000/03/10
 06:56:27 lpd)
@@ -7027,8 +7022,8 @@ InitializeAction, Mounted, Removable, Searchable, SearchOrder, and
 Writeable, or (meaningful) values for BlockSize, Free, and LogicalSize.
 Currently, the latter values are dummies. (gsiodev.c [1.2]: 2000/03/10
 03:43:06 lpd)
-	- The terminating $ on the $Id: line in gsmalloc.c was missing, and
-dwuninst.rc lacked a $Id: line. (gsmalloc.c [1.2]: 2000/03/10 03:44:33 lpd)
+	- The terminating &#36; on the &#36;Id: line in gsmalloc.c was missing, and
+dwuninst.rc lacked a &#36;Id: line. (gsmalloc.c [1.2]: 2000/03/10 03:44:33 lpd)
 	- RasterOps with source transparency = 0, texture transparency = 1
 didn't match the (very peculiar) H-P specification even if
 TRANSPARENCY_PER_H_P was defined. (gdevdrop.c [1.2], gdevmrop.h [1.2],
@@ -7076,7 +7071,7 @@ from f(k) = k to f(k) = 0. This fixes some, but not all, of the reported
 problems with color inkjet output in 6.0. (gxdcconv.c [1.2]: 2000/03/10
 18:47:31 lpd)
 
-<hr>
+</pre><hr>
 
 <h1><a name="Version6.0"></a>Version 6.0 (2000-02-03)</h1>
 
@@ -7084,7 +7079,7 @@ This is the first public release since 5.50.  See <a href="Current.htm">the
 release summary</a> for information about new capabilities and known
 problems.
 
-<h2><a name="6.0_Documentation"></a>Documentation</h2>
+<h2><a name="6.0_Documentation"></a>Documentation</h2><pre>
 
 Documents the fact that the plane_depths of a gx_image_enum structure may
 vary, and that planes_wanted procedure of a gx_image_enum must return false
@@ -7135,7 +7130,7 @@ Adds a number of new user-contributed man pages.  (unixinst.mak, man/gslp.1,
 man/wftopfa.1, man/printafm.1, man/pfbtopfa.1, man/font2c.1, man/dvipdf.1,
 man/ps2pdfwr.1, man/gsnd.1, man/pf2afm.1, man/ps2pdf.1)
 
-<h2><a name="6.0_Procedures"></a>Procedures</h2>
+</pre><h2><a name="6.0_Procedures"></a>Procedures</h2><pre>
 
 Fixes problems:
 	- Building on BSDI didn't work.  The simplest way to fix this was to
@@ -7147,7 +7142,7 @@ user) (lib.mak, unix-gcc.mak, unixansi.mak, unixtrad.mak)
 
 Updates the user-contributed all-architectures makefile.  (all-arch.mak)
 
-<h2><a name="6.0_Utilities"></a>Utilities</h2>
+</pre><h2><a name="6.0_Utilities"></a>Utilities</h2><pre>
 
 Fixes problems:
 	- A needed #include was missing.  (geninit.c)
@@ -7165,7 +7160,7 @@ Enhances the prfont.ps utility to print CIDFonts.  (lib/prfont.ps)
 Adds a utility file that patches the PDF interpreter to allow garbage after
 the %%EOF (or the %%EOF to be missing completely).  (lib/pdfeof.ps)
 
-<h2><a name="6.0_Drivers"></a>Drivers</h2>
+</pre><h2><a name="6.0_Drivers"></a>Drivers</h2><pre>
 
 Fixes problems:
 	- The X driver compared too many bits of color value, leading to
@@ -7175,7 +7170,7 @@ printers.  (gdevps.c)
 	- Anti-aliasing had stopped working on MS Windows and OS/2. (bug
 probably introduced in 5.65) (gdevmswn.c, gdevpm.c)
 
-<h2><a name="6.0_Platforms"></a>Platforms</h2>
+</pre><h2><a name="6.0_Platforms"></a>Platforms</h2><pre>
 
 Adds a conditional definition of PTHREAD_CREATE_DETACHED for old versions of
 the pthreads library.  (gp_psync.c)
@@ -7184,7 +7179,7 @@ Updates the Microsoft Visual C++ library makefile for VC++ 6.  (msvclib.mak)
 
 Updates some copyright dates.  (winint.mak, dwsetup.rc)
 
-<h2><a name="6.0_Fonts"></a>Fonts</h2>
+</pre><h2><a name="6.0_Fonts"></a>Fonts</h2><pre>
 
 Updates the URW fonts to include the expanded Adobe character set, including
 many Eastern European accented characters.  (doc/New-user.htm)
@@ -7192,7 +7187,7 @@ many Eastern European accented characters.  (doc/New-user.htm)
 Removes a 'readonly' that inconvenienced the authors of ttf2pf.
 (lib/gs_ttf.ps)
 
-<h2><a name="6.0_PDF_writer"></a>PDF writer</h2>
+</pre><h2><a name="6.0_PDF_writer"></a>PDF writer</h2><pre>
 
 Fixes problems:
 	- The Dest key was deleted from GoTo and GoToR link annotation
@@ -7218,12 +7213,12 @@ Disables embedding Multiple Master font instances, since Acrobat Reader
 doesn't accept what appear to be correct output and we don't have time
 before the release to track down the problem.  (gdevpdft.c)
 
-<h2><a name="6.0_Interpreter_PDF"></a>Interpreter (PDF)</h2>
+</pre><h2><a name="6.0_Interpreter_PDF"></a>Interpreter (PDF)</h2><pre>
 
 Factors some code to allow patching the PDF reader to allow garbage after
 the %%EOF (or the %%EOF to be missing completely).  (lib/pdf_main.ps)
 
-<h2><a name="6.0_Interpreter"></a>Interpreter</h2>
+</pre><h2><a name="6.0_Interpreter"></a>Interpreter</h2><pre>
 
 Fixes problems:
 	- Type 1 fonts with non-standard OtherSubrs had stopped working.
@@ -7247,14 +7242,14 @@ invalid accesses or memory corruption.  (iname.c)
 
 Removes an unused variable.  (zmisc.c)
 
-<h2><a name="6.0_Streams"></a>Streams</h2>
+</pre><h2><a name="6.0_Streams"></a>Streams</h2><pre>
 
 Fixes problems:
 	- sgets didn't reset the cursor pointers, so sgets into a client
 buffer followed by sseek (for some kinds of streams, including files) could
 get confused.  (stream.c)
 
-<h2><a name="6.0_Library"></a>Library</h2>
+</pre><h2><a name="6.0_Library"></a>Library</h2><pre>
 
 Fixes problems:
 	- A 'const' qualifier was omitted, leading to a type mismatch.
@@ -7329,7 +7324,7 @@ or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
 San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
 
 <p>
-<small>Ghostscript version 8.71, 10 February 2010
+<small>Ghostscript version 9.10, 30 August 2013
 
 <!-- [3.0 end visible trailer] ============================================= -->
 

@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: stdint_.h 8541 2008-02-24 01:12:18Z alexcher $ */
+
 /* Generic substitute for stdint.h */
 
 #ifndef stdint__INCLUDED
@@ -57,7 +59,7 @@
    typedef unsigned int            uint32_t;
    typedef unsigned __int64        uint64_t;
 #  define STDINT_TYPES_DEFINED
-# elif defined(__VMS) /* OpenVMS provides these types in inttypes.h */
+# elif defined(__VMS) || defined(__osf__) /* OpenVMS and Tru64 provide these types in inttypes.h */
 #  include <inttypes.h>
 #  define STDINT_TYPES_DEFINED
 # elif defined(__CYGWIN__)
@@ -68,7 +70,7 @@
    typedef unsigned long long uint64_t;
 #  define STDINT_TYPES_DEFINED
 # endif
-   /* other archs may want to add defines here, 
+   /* other archs may want to add defines here,
       or use the fallbacks in std.h */
 #endif
 
@@ -121,7 +123,52 @@ typedef unsigned long long uint64_t;
 #   endif
 #  endif
 # endif
+
 #  define STDINT_TYPES_DEFINED
 #endif /* STDINT_TYPES_DEFINED */
+
+#if defined(HAVE_INTTYPES_H) && HAVE_INTTYPES_H == 1
+# include <inttypes.h>
+#else
+# if defined(__WIN32__)
+#  define PRId32 "I32d"
+#  define PRId64 "I64d"
+#  define PRIi32 "I32i"
+#  define PRIi64 "I64i"
+#  define PRIu32 "I32u"
+#  define PRIu64 "I64u"
+#  define PRIx64 "I64x"
+# else
+
+#  ifndef PRId32
+#   define PRId32 "d"
+#  endif
+
+#  ifndef PRId64
+#   define PRId64 "lld"
+#  endif
+
+#  ifndef PRIi32
+#   define PRIi32 "i"
+#  endif
+
+#  ifndef PRIi64
+#   define PRIi64 "lli"
+#  endif
+
+#  ifndef PRIu32
+#   define PRIu32 "u"
+#  endif
+
+#  ifndef PRIu64
+#   define PRIu64 "llu"
+#  endif
+
+#  ifndef PRIx64
+#   define PRIx64 "llx"
+#  endif
+
+# endif
+#endif
 
 #endif /* stdint__INCLUDED */

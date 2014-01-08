@@ -1,16 +1,18 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
-/* $Id: gdevdflt.c 10200 2009-10-21 03:50:46Z mvrhel $ */
+
 /* Default device implementation */
 #include "math_.h"
 #include "gx.h"
@@ -18,6 +20,7 @@
 #include "gsropt.h"
 #include "gxcomp.h"
 #include "gxdevice.h"
+#include "gxdevsop.h"
 
 /* ---------------- Default device procedures ---------------- */
 
@@ -32,7 +35,7 @@ set_cinfo_polarity(gx_device * dev, gx_color_polarity_t new_polarity)
 #ifdef DEBUG
     /* sanity check */
     if (new_polarity == GX_CINFO_POLARITY_UNKNOWN) {
-        dprintf("set_cinfo_polarity: illegal operand\n");
+        dmprintf(dev->memory, "set_cinfo_polarity: illegal operand\n");
         return;
     }
 #endif
@@ -45,7 +48,6 @@ set_cinfo_polarity(gx_device * dev, gx_color_polarity_t new_polarity)
         dev->color_info.polarity = new_polarity;
 }
 
-
 static gx_color_index
 (*get_encode_color(gx_device *dev))(gx_device *, const gx_color_value *)
 {
@@ -53,11 +55,11 @@ static gx_color_index
 
     /* use encode_color if it has been provided */
     if ((encode_proc = dev_proc(dev, encode_color)) == 0) {
-	if (dev->color_info.num_components == 1                          &&
-	    dev_proc(dev, map_rgb_color) != 0) {
-	    set_cinfo_polarity(dev, GX_CINFO_POLARITY_ADDITIVE);
-	    encode_proc = gx_backwards_compatible_gray_encode;
-	} else  if ( (dev->color_info.num_components == 3    )           &&
+        if (dev->color_info.num_components == 1                          &&
+            dev_proc(dev, map_rgb_color) != 0) {
+            set_cinfo_polarity(dev, GX_CINFO_POLARITY_ADDITIVE);
+            encode_proc = gx_backwards_compatible_gray_encode;
+        } else  if ( (dev->color_info.num_components == 3    )           &&
              (encode_proc = dev_proc(dev, map_rgb_color)) != 0  )
             set_cinfo_polarity(dev, GX_CINFO_POLARITY_ADDITIVE);
         else if ( dev->color_info.num_components == 4                    &&
@@ -235,7 +237,7 @@ gx_default_cmyk_decode_color(
 {
     /* The device may have been determined to be 'separable'. */
     if (dev->color_info.separable_and_linear == GX_CINFO_SEP_LIN)
-	return gx_default_decode_color(dev, color, cv);
+        return gx_default_decode_color(dev, color, cv);
     else {
         int i, code = dev_proc(dev, map_color_rgb)(dev, color, cv);
         gx_color_value min_val = gx_max_color_value;
@@ -288,7 +290,7 @@ static int
         if (is_like_DeviceRGB(dev))
             return dev_proc(dev, map_color_rgb);
 
-	/* If separable ande linear then use default */
+        /* If separable ande linear then use default */
         if ( dev->color_info.separable_and_linear == GX_CINFO_SEP_LIN )
             return &gx_default_decode_color;
 
@@ -351,7 +353,7 @@ set_linear_color_bits_mask_shift(gx_device * dev)
 #define comp_shift (dev->color_info.comp_shift)
     comp_shift[num_components - 1] = 0;
     for ( i = num_components - 1 - 1; i >= 0; i-- ) {
-        comp_shift[i] = comp_shift[i + 1] + 
+        comp_shift[i] = comp_shift[i + 1] +
             ( i == gray_index ? ilog2(max_gray + 1) : ilog2(max_color + 1) );
     }
     for ( i = 0; i < num_components; i++ ) {
@@ -378,7 +380,7 @@ set_linear_color_bits_mask_shift(gx_device * dev)
  * a value of zero then the bits associated with that colorant are zero.
  * These criteria allows the graphics library to build gx_color_index values
  * from the colorant values and not using the encode_color routine. This is
- * useful and necessary for overprinting, the WTS screeening, halftoning more
+ * useful and necessary for overprinting, halftoning more
  * than four colorants, and the fast shading logic.  However this information
  * is not setup by the default device macros.  Thus we attempt to derive this
  * information.
@@ -404,10 +406,10 @@ check_device_separable(gx_device * dev)
 
     /* If this is already known then we do not need to do anything. */
     if (pinfo->separable_and_linear != GX_CINFO_UNKNOWN_SEP_LIN)
-	return;
+        return;
     /* If there is not an encode_color_routine then we cannot proceed. */
     if (dev_proc(dev, encode_color) == NULL)
-	return;
+        return;
     /*
      * If these values do not check then we should have an error.  However
      * we do not know what to do so we are simply exitting and hoping that
@@ -415,10 +417,10 @@ check_device_separable(gx_device * dev)
      */
     if (pinfo->gray_index < num_components &&
         (!pinfo->dither_grays || pinfo->dither_grays != (pinfo->max_gray + 1)))
-	    return;
+            return;
     if ((num_components > 1 || pinfo->gray_index != 0) &&
-	(!pinfo->dither_colors || pinfo->dither_colors != (pinfo->max_color + 1)))
-	return;
+        (!pinfo->dither_colors || pinfo->dither_colors != (pinfo->max_color + 1)))
+        return;
     /*
      * If dither_grays or dither_colors is not a power of two then we assume
      * that the device is not separable.  In theory this not a requirement
@@ -426,57 +428,57 @@ check_device_separable(gx_device * dev)
      * This assumption also makes the logic in the next section easier.
      */
     if (!is_power_of_two(pinfo->dither_grays)
-		    || !is_power_of_two(pinfo->dither_colors))
-	return;
+                    || !is_power_of_two(pinfo->dither_colors))
+        return;
     /*
      * Use the encode_color routine to try to verify that the device is
      * separable and to determine the shift count, etc. for each colorant.
-     */ 
+     */
     color_index = dev_proc(dev, encode_color)(dev, colorants);
     if (color_index != 0)
-	return;		/* Exit if zero colorants produce a non zero index */
+        return;		/* Exit if zero colorants produce a non zero index */
     for (i = 0; i < num_components; i++) {
-	/* Check this colorant = max with all others = 0 */
+        /* Check this colorant = max with all others = 0 */
         for (j = 0; j < num_components; j++)
-	    colorants[j] = 0;
-	colorants[i] = gx_max_color_value;
-	color_index = dev_proc(dev, encode_color)(dev, colorants);
-	if (color_index == 0)	/* If no bits then we have a problem */
-	    return;
-	if (color_index & current_bits)	/* Check for overlapping bits */
-	    return;
-	current_bits |= color_index;
-	comp_mask[i] = color_index;
-	/* Determine the shift count for the colorant */
-	for (j = 0; (color_index & 1) == 0 && color_index != 0; j++)
-	    color_index >>= 1;
-	comp_shift[i] = j;
-	/* Determine the bit count for the colorant */
-	for (j = 0; color_index != 0; j++) {
-	    if ((color_index & 1) == 0) /* check for non-consecutive bits */
-		return;
-	    color_index >>= 1;
-	}
-	comp_bits[i] = j;
-	/*
-	 * We could verify that the bit count matches the dither_grays or
-	 * dither_colors values, but this is not really required unless we
-	 * are halftoning.  Thus we are allowing for non equal colorant sizes.
-	 */
-	/* Check for overlap with other colorant if they are all maxed */
+            colorants[j] = 0;
+        colorants[i] = gx_max_color_value;
+        color_index = dev_proc(dev, encode_color)(dev, colorants);
+        if (color_index == 0)	/* If no bits then we have a problem */
+            return;
+        if (color_index & current_bits)	/* Check for overlapping bits */
+            return;
+        current_bits |= color_index;
+        comp_mask[i] = color_index;
+        /* Determine the shift count for the colorant */
+        for (j = 0; (color_index & 1) == 0 && color_index != 0; j++)
+            color_index >>= 1;
+        comp_shift[i] = j;
+        /* Determine the bit count for the colorant */
+        for (j = 0; color_index != 0; j++) {
+            if ((color_index & 1) == 0) /* check for non-consecutive bits */
+                return;
+            color_index >>= 1;
+        }
+        comp_bits[i] = j;
+        /*
+         * We could verify that the bit count matches the dither_grays or
+         * dither_colors values, but this is not really required unless we
+         * are halftoning.  Thus we are allowing for non equal colorant sizes.
+         */
+        /* Check for overlap with other colorant if they are all maxed */
         for (j = 0; j < num_components; j++)
-	    colorants[j] = gx_max_color_value;
-	colorants[i] = 0;
-	color_index = dev_proc(dev, encode_color)(dev, colorants);
-	if (color_index & comp_mask[i])	/* Check for overlapping bits */
-	    return;
+            colorants[j] = gx_max_color_value;
+        colorants[i] = 0;
+        color_index = dev_proc(dev, encode_color)(dev, colorants);
+        if (color_index & comp_mask[i])	/* Check for overlapping bits */
+            return;
     }
     /* If we get to here then the device is very likely to be separable. */
     pinfo->separable_and_linear = GX_CINFO_SEP_LIN;
     for (i = 0; i < num_components; i++) {
-	pinfo->comp_shift[i] = comp_shift[i];
-	pinfo->comp_bits[i] = comp_bits[i];
-	pinfo->comp_mask[i] = comp_mask[i];
+        pinfo->comp_shift[i] = comp_shift[i];
+        pinfo->comp_bits[i] = comp_bits[i];
+        pinfo->comp_mask[i] = comp_mask[i];
     }
     /*
      * The 'gray_index' value allows one colorant to have a different number
@@ -486,11 +488,11 @@ check_device_separable(gx_device * dev)
      * and dither_grays to 1.  This is not valid so ignore this case.
      */
     for (i = 0; i < num_components; i++) {
-	int dither = 1 << comp_bits[i];
+        int dither = 1 << comp_bits[i];
 
-	if (pinfo->dither_grays != 1 && dither == pinfo->dither_grays) {
-	    pinfo->gray_index = i;
-	    break;
+        if (pinfo->dither_grays != 1 && dither == pinfo->dither_grays) {
+            pinfo->gray_index = i;
+            break;
         }
     }
 }
@@ -541,16 +543,16 @@ gx_device_fill_in_procs(register gx_device * dev)
 #ifdef DEBUG
 #  define CHECK_NON_DEFAULT(proc, default, procname)\
     BEGIN\
-	if ( dev_proc(dev, proc) != NULL && dev_proc(dev, proc) != default )\
-	    dprintf2("**** Warning: device %s implements obsolete procedure %s\n",\
-		     dev->dname, procname);\
+        if ( dev_proc(dev, proc) != NULL && dev_proc(dev, proc) != default )\
+            dmprintf2(dev->memory, "**** Warning: device %s implements obsolete procedure %s\n",\
+                     dev->dname, procname);\
     END
 #else
 #  define CHECK_NON_DEFAULT(proc, default, procname)\
     DO_NOTHING
 #endif
     CHECK_NON_DEFAULT(get_alpha_bits, gx_default_get_alpha_bits,
-		      "get_alpha_bits");
+                      "get_alpha_bits");
     set_dev_proc(dev, get_alpha_bits, gx_default_get_alpha_bits);
     CHECK_NON_DEFAULT(image_data, gx_default_image_data, "image_data");
     set_dev_proc(dev, image_data, gx_default_image_data);
@@ -559,6 +561,8 @@ gx_device_fill_in_procs(register gx_device * dev)
 #undef CHECK_NON_DEFAULT
     fill_dev_proc(dev, strip_tile_rectangle, gx_default_strip_tile_rectangle);
     fill_dev_proc(dev, strip_copy_rop, gx_default_strip_copy_rop);
+    fill_dev_proc(dev, strip_copy_rop2, gx_default_strip_copy_rop2);
+    fill_dev_proc(dev, strip_tile_rect_devn, gx_default_strip_tile_rect_devn);
     fill_dev_proc(dev, get_clipping_box, gx_default_get_clipping_box);
     fill_dev_proc(dev, begin_typed_image, gx_default_begin_typed_image);
     fill_dev_proc(dev, get_bits_rectangle, gx_default_get_bits_rectangle);
@@ -570,9 +574,9 @@ gx_device_fill_in_procs(register gx_device * dev)
 
     set_dev_proc(dev, encode_color, get_encode_color(dev));
     if (dev->color_info.num_components == 3)
-	set_dev_proc(dev, map_rgb_color, dev_proc(dev, encode_color));
+        set_dev_proc(dev, map_rgb_color, dev_proc(dev, encode_color));
     if (dev->color_info.num_components == 4)
-	set_dev_proc(dev, map_cmyk_color, dev_proc(dev, encode_color));
+        set_dev_proc(dev, map_cmyk_color, dev_proc(dev, encode_color));
 
     if ( dev->color_info.separable_and_linear == GX_CINFO_SEP_LIN ) {
         fill_dev_proc(dev, encode_color, gx_default_encode_color);
@@ -595,25 +599,25 @@ gx_device_fill_in_procs(register gx_device * dev)
      */
     switch (dev->color_info.num_components) {
     case 1:     /* DeviceGray or DeviceInvertGray */
-	if (dev_proc(dev, get_color_mapping_procs) == NULL) {
-	    /*
-	     * If not gray then the device must provide the color
-	     * mapping procs.
-	     */
-	    if (dev->color_info.polarity == GX_CINFO_POLARITY_ADDITIVE) {
-		fill_dev_proc( dev,
+        if (dev_proc(dev, get_color_mapping_procs) == NULL) {
+            /*
+             * If not gray then the device must provide the color
+             * mapping procs.
+             */
+            if (dev->color_info.polarity == GX_CINFO_POLARITY_ADDITIVE) {
+                fill_dev_proc( dev,
                            get_color_mapping_procs,
                            gx_default_DevGray_get_color_mapping_procs );
             } else
-		fill_dev_proc(dev, get_color_mapping_procs, gx_error_get_color_mapping_procs);
-	}
+                fill_dev_proc(dev, get_color_mapping_procs, gx_error_get_color_mapping_procs);
+        }
         fill_dev_proc( dev,
                        get_color_comp_index,
                        gx_default_DevGray_get_color_comp_index );
         break;
 
     case 3:
-	if (dev_proc(dev, get_color_mapping_procs) == NULL) {
+        if (dev_proc(dev, get_color_mapping_procs) == NULL) {
             if (dev->color_info.polarity == GX_CINFO_POLARITY_ADDITIVE) {
                 fill_dev_proc( dev,
                            get_color_mapping_procs,
@@ -622,9 +626,9 @@ gx_device_fill_in_procs(register gx_device * dev)
                            get_color_comp_index,
                            gx_default_DevRGB_get_color_comp_index );
             } else {
-		fill_dev_proc(dev, get_color_mapping_procs, gx_error_get_color_mapping_procs);
-		fill_dev_proc(dev, get_color_comp_index, gx_error_get_color_comp_index);
-	    }
+                fill_dev_proc(dev, get_color_mapping_procs, gx_error_get_color_mapping_procs);
+                fill_dev_proc(dev, get_color_comp_index, gx_error_get_color_comp_index);
+            }
         }
         break;
 
@@ -633,14 +637,16 @@ gx_device_fill_in_procs(register gx_device * dev)
         fill_dev_proc(dev, get_color_comp_index, gx_default_DevCMYK_get_color_comp_index);
         break;
     default:		/* Unknown color model - set error handlers */
-	if (dev_proc(dev, get_color_mapping_procs) == NULL) {
-	    fill_dev_proc(dev, get_color_mapping_procs, gx_error_get_color_mapping_procs);
-	    fill_dev_proc(dev, get_color_comp_index, gx_error_get_color_comp_index);
-	}
+        if (dev_proc(dev, get_color_mapping_procs) == NULL) {
+            fill_dev_proc(dev, get_color_mapping_procs, gx_error_get_color_mapping_procs);
+            fill_dev_proc(dev, get_color_comp_index, gx_error_get_color_comp_index);
+        }
     }
 
     set_dev_proc(dev, decode_color, get_decode_color(dev));
     fill_dev_proc(dev, map_color_rgb, gx_default_map_color_rgb);
+    fill_dev_proc(dev, get_profile, gx_default_get_profile);
+    fill_dev_proc(dev, set_graphics_type_tag, gx_default_set_graphics_type_tag);
 
     /*
      * If the device is known not to support overprint mode, indicate this now.
@@ -650,12 +656,11 @@ gx_device_fill_in_procs(register gx_device * dev)
      * explicit check until this information is explicitly required.
      */
     if ( dev->color_info.opmode == GX_CINFO_OPMODE_UNKNOWN          &&
-         (dev->color_info.num_components < 4                     || 
+         (dev->color_info.num_components < 4                     ||
           dev->color_info.polarity == GX_CINFO_POLARITY_ADDITIVE ||
           dev->color_info.gray_index == GX_CINFO_COMP_NO_INDEX     )  )
-	dev->color_info.opmode = GX_CINFO_OPMODE_NOT;
+        dev->color_info.opmode = GX_CINFO_OPMODE_NOT;
 
-    fill_dev_proc(dev, pattern_manage, gx_default_pattern_manage);
     fill_dev_proc(dev, fill_rectangle_hl_color, gx_default_fill_rectangle_hl_color);
     fill_dev_proc(dev, include_color_space, gx_default_include_color_space);
     fill_dev_proc(dev, fill_linear_color_scanline, gx_default_fill_linear_color_scanline);
@@ -664,6 +669,13 @@ gx_device_fill_in_procs(register gx_device * dev)
     fill_dev_proc(dev, update_spot_equivalent_colors, gx_default_update_spot_equivalent_colors);
     fill_dev_proc(dev, ret_devn_params, gx_default_ret_devn_params);
     fill_dev_proc(dev, fillpage, gx_default_fillpage);
+    fill_dev_proc(dev, copy_alpha_hl_color, gx_default_copy_alpha_hl_color);
+
+    /* NOT push_transparency_state */
+    /* NOT pop_transparency_state */
+    /* NOT put_image */
+    fill_dev_proc(dev, dev_spec_op, gx_default_dev_spec_op);
+    /* NOT copy_planes */
 }
 
 int
@@ -717,8 +729,8 @@ gx_default_get_initial_matrix(gx_device * dev, register gs_matrix * pmat)
         pmat->yy = -ss_res;
         pmat->tx = 0;
         pmat->ty = (float)dev->height;
-	/****** tx/y is WRONG for devices with ******/
-	/****** arbitrary initial matrix ******/
+        /****** tx/y is WRONG for devices with ******/
+        /****** arbitrary initial matrix ******/
         break;
     }
 }
@@ -749,7 +761,7 @@ gx_default_output_page(gx_device * dev, int num_copies, int flush)
     int code = dev_proc(dev, sync_output)(dev);
 
     if (code >= 0)
-	code = gx_finish_output_page(dev, num_copies, flush);
+        code = gx_finish_output_page(dev, num_copies, flush);
     return code;
 }
 
@@ -786,7 +798,7 @@ int
 gx_default_get_alpha_bits(gx_device * dev, graphics_object_type type)
 {
     return (type == go_text ? dev->color_info.anti_alias.text_bits :
-	    dev->color_info.anti_alias.graphics_bits);
+            dev->color_info.anti_alias.graphics_bits);
 }
 
 int
@@ -814,23 +826,26 @@ gx_get_largest_clipping_box(gx_device * dev, gs_fixed_rect * pbox)
 
 int
 gx_no_create_compositor(gx_device * dev, gx_device ** pcdev,
-			const gs_composite_t * pcte,
-			gs_imager_state * pis, gs_memory_t * memory)
+                        const gs_composite_t * pcte,
+                        gs_imager_state * pis, gs_memory_t * memory,
+                        gx_device *cdev)
 {
     return_error(gs_error_unknownerror);	/* not implemented */
 }
 int
 gx_default_create_compositor(gx_device * dev, gx_device ** pcdev,
-			     const gs_composite_t * pcte,
-			     gs_imager_state * pis, gs_memory_t * memory)
+                             const gs_composite_t * pcte,
+                             gs_imager_state * pis, gs_memory_t * memory,
+                             gx_device *cdev)
 {
     return pcte->type->procs.create_default_compositor
-	(pcte, pcdev, dev, pis, memory);
+        (pcte, pcdev, dev, pis, memory);
 }
 int
 gx_null_create_compositor(gx_device * dev, gx_device ** pcdev,
-			  const gs_composite_t * pcte,
-			  gs_imager_state * pis, gs_memory_t * memory)
+                          const gs_composite_t * pcte,
+                          gs_imager_state * pis, gs_memory_t * memory,
+                          gx_device *cdev)
 {
     *pcdev = dev;
     return 0;
@@ -840,7 +855,7 @@ gx_null_create_compositor(gx_device * dev, gx_device ** pcdev,
  * Default handler for creating a compositor device when writing the clist. */
 int
 gx_default_composite_clist_write_update(const gs_composite_t *pcte, gx_device * dev,
-		gx_device ** pcdev, gs_imager_state * pis, gs_memory_t * mem)
+                gx_device ** pcdev, gs_imager_state * pis, gs_memory_t * mem)
 {
     *pcdev = dev;		/* Do nothing -> return the same device */
     return 0;
@@ -854,7 +869,7 @@ gx_default_composite_adjust_ctm(gs_composite_t *pcte, int x0, int y0, gs_imager_
 }
 
 /*
- * Default check for closing compositor. 
+ * Default check for closing compositor.
  */
 int
 gx_default_composite_is_closing(const gs_composite_t *this, gs_composite_t **pcte, gx_device *dev)
@@ -877,7 +892,7 @@ gx_default_composite_is_friendly(const gs_composite_t *this, byte cmd0, byte cmd
  */
 int
 gx_default_composite_clist_read_update(gs_composite_t *pxcte, gx_device * cdev,
-		gx_device * tdev, gs_imager_state * pis, gs_memory_t * mem)
+                gx_device * tdev, gs_imager_state * pis, gs_memory_t * mem)
 {
     return 0;			/* Do nothing */
 }
@@ -900,19 +915,53 @@ gx_default_finish_copydevice(gx_device *dev, const gx_device *from_dev)
 }
 
 int
-gx_default_pattern_manage(gx_device *pdev, gx_bitmap_id id,
-		gs_pattern1_instance_t *pinst, pattern_manage_t function)
+gx_default_dev_spec_op(gx_device *pdev, int dev_spec_op, void *data, int size)
 {
-    if (function == pattern_manage__shfill_doesnt_need_path) {
-	if (pdev->procs.fill_path == gx_default_fill_path)
-	    return 1;
+    switch(dev_spec_op) {
+        case gxdso_pattern_can_accum:
+        case gxdso_pattern_start_accum:
+        case gxdso_pattern_finish_accum:
+        case gxdso_pattern_load:
+        case gxdso_pattern_shading_area:
+        case gxdso_pattern_is_cpath_accum:
+        case gxdso_pattern_handles_clip_path:
+        case gxdso_is_pdf14_device:
+        case gxdso_is_native_planar:
+        case gxdso_supports_devn:
+        case gxdso_supports_hlcolor:
+        case gxdso_needs_invariant_palette:
+            return 0;
+        case gxdso_pattern_shfill_doesnt_need_path:
+            return (pdev->procs.fill_path == gx_default_fill_path);
+        case gxdso_is_std_cmyk_1bit:
+            return (pdev->procs.map_cmyk_color == cmyk_1bit_map_cmyk_color);
+        case gxdso_interpolate_antidropout:
+            if ((pdev->color_info.num_components == 1 &&
+                 pdev->color_info.max_gray < 15) ||
+                (pdev->color_info.num_components > 1 &&
+                 pdev->color_info.max_color < 15)) {
+                /* If we are are limited color device (i.e. we are halftoning)
+                 * then use the antidropout interpolators. */
+                return 1;
+            }
+            return 0;
+        case gxdso_interpolate_threshold:
+            if ((pdev->color_info.num_components == 1 &&
+                 pdev->color_info.max_gray < 15) ||
+                (pdev->color_info.num_components > 1 &&
+                 pdev->color_info.max_color < 15)) {
+                /* If we are a limited color device (i.e. we are halftoning)
+                 * then only interpolate if we are upscaling by at least 4 */
+                return 4;
+            }
+            return 0; /* Otherwise no change */
     }
-    return 0;
+    return gs_error_undefined;
 }
 
 int
-gx_default_fill_rectangle_hl_color(gx_device *pdev, 
-    const gs_fixed_rect *rect, 
+gx_default_fill_rectangle_hl_color(gx_device *pdev,
+    const gs_fixed_rect *rect,
     const gs_imager_state *pis, const gx_drawing_color *pdcolor,
     const gx_clip_path *pcpath)
 {
@@ -920,8 +969,8 @@ gx_default_fill_rectangle_hl_color(gx_device *pdev,
 }
 
 int
-gx_default_include_color_space(gx_device *pdev, gs_color_space *cspace, 
-	const byte *res_name, int name_length)
+gx_default_include_color_space(gx_device *pdev, gs_color_space *cspace,
+        const byte *res_name, int name_length)
 {
     return 0;
 }
@@ -965,4 +1014,11 @@ int
 gx_default_end_page(gx_device * dev, int reason, gs_state * pgs)
 {
     return (reason != 2 ? 1 : 0);
+}
+
+void
+gx_default_set_graphics_type_tag(gx_device *dev, gs_graphics_type_tag_t graphics_type_tag)
+{
+    /* set the tag but carefully preserve GS_DEVICE_ENCODES_TAGS */
+    dev->graphics_type_tag = (dev->graphics_type_tag & GS_DEVICE_ENCODES_TAGS) | graphics_type_tag;
 }

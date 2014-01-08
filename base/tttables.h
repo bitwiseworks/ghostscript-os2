@@ -1,20 +1,21 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: tttables.h 8022 2007-06-05 22:23:38Z giles $ */
+
 
 /* Changes after FreeType: cut out the TrueType instruction interpreter. */
-
 
 /*******************************************************************
  *
@@ -61,7 +62,6 @@
   typedef struct _TTTCHeader  TTTCHeader;
   typedef TTTCHeader*         PTTCHeader;
 
-
   /* TrueType Table Directory type */
 
   struct  _TTableDir
@@ -77,7 +77,6 @@
   typedef struct _TTableDir  TTableDir;
   typedef TTableDir*         PTableDir;
 
-
   /* The 'TableDir' is followed by 'numTables' TableDirEntries */
 
   struct  _TTableDirEntry
@@ -90,7 +89,6 @@
 
   typedef struct _TTableDirEntry  TTableDirEntry;
   typedef TTableDirEntry*         PTableDirEntry;
-
 
   /* 'cmap' tables */
 
@@ -112,7 +110,6 @@
 
   typedef struct _TCMapDirEntry  TCMapDirEntry;
   typedef TCMapDirEntry*         PCMapDirEntries;
-
 
   /* 'maxp' Maximum Profiles table */
 
@@ -138,7 +135,6 @@
   typedef struct _TMaxProfile  TMaxProfile;
   typedef TMaxProfile*         PMaxProfile;
 
-
   /* table "gasp" */
 
 #  define GASP_GRIDFIT  0x01
@@ -152,7 +148,6 @@
 
   typedef struct _GaspRange  GaspRange;
 
-
   struct  _TGasp
   {
     UShort      version;
@@ -162,10 +157,8 @@
 
   typedef struct _TGasp  TGasp;
 
-
   /* table "head" - now defined in freetype.h */
   /* table "hhea" - now defined in freetype.h */
-
 
   /* table "HMTX" */
 
@@ -178,10 +171,8 @@
   typedef struct _TLongHorMetric  TLongHorMetric;
   typedef TLongHorMetric*         PTableHorMetrics;
 
-
   /* 'OS/2' table - now defined in freetype.h */
   /* "post" table - now defined in freetype.h */
-
 
   /* 'loca' location table type */
 
@@ -192,7 +183,6 @@
   };
 
   typedef struct _TLoca  TLoca;
-
 
   /* table "name" */
 
@@ -213,7 +203,6 @@
 
   typedef struct _TNameRec  TNameRec;
 
-
   struct  _TName_Table
   {
     UShort     format;
@@ -225,12 +214,10 @@
 
   typedef struct _TName_Table  TName_Table;
 
-
 #ifdef __cplusplus
   }
 #endif
 
 #endif /* TTTABLES_H */
-
 
 /* END */

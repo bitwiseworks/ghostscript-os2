@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsovrc.c 10200 2009-10-21 03:50:46Z mvrhel $ */
+
 /* overprint/overprint mode compositor implementation */
 
 #include "memory_.h"
@@ -27,7 +29,6 @@
 #include "gxoprect.h"
 #include "gsbitops.h"
 #include "gxistate.h"
-
 
 /* GC descriptor for gs_overprint_t */
 private_st_gs_overprint_t();
@@ -124,6 +125,7 @@ c_overprint_equal(const gs_composite_t * pct0, const gs_composite_t * pct1)
  */
 #define OVERPRINT_ANY_COMPS     1
 #define OVERPRINT_SPOT_COMPS    2
+#define OVERPRINT_BLEND         4
 
 /*
  * Convert an overprint compositor to string form for use by the command
@@ -139,20 +141,32 @@ c_overprint_write(const gs_composite_t * pct, byte * data, uint * psize, gx_devi
     /* encoded the booleans in a single byte */
     if (pparams->retain_any_comps) {
         flags |= OVERPRINT_ANY_COMPS;
-
-        /* write out the component bits only if necessary (and possible) */
+        if (pparams->blendspot)
+            flags |= OVERPRINT_BLEND;
         if (pparams->retain_spot_comps)
             flags |= OVERPRINT_SPOT_COMPS;
-        else {
-            uint    tmp_size = (avail > 0 ? avail - 1 : 0);
-            int     code = write_color_index( pparams->drawn_comps,
-                                              data + 1,
-                                              &tmp_size );
-
+        /* write out the component bits only if necessary (and possible) */
+        if (!pparams->retain_spot_comps || pparams->blendspot) {
+            uint tmp_size = (avail > 0 ? avail - 1 : 0);
+            int code = write_color_index(pparams->drawn_comps, data + 1, 
+                                             &tmp_size);
+            /* It would be nice to do have an If RGB OP case, then write out 
+               K value, but on the reader side, there is no way to find this
+               out so we will always write it out if we are writing the
+               drawn_comps */
+            if (code == 0) {
+                /* Actually writing not getting size */
+                int pos = tmp_size + 1;
+                memcpy(&(data[pos]), &(pparams->k_value), sizeof(pparams->k_value));
+                pos = pos + sizeof(pparams->k_value);
+                memcpy(&(data[pos]), &(pparams->blendspot), sizeof(pparams->blendspot));
+            }   
+            used += sizeof(pparams->k_value);
+            used += sizeof(pparams->blendspot);
             if (code < 0 && code != gs_error_rangecheck)
                 return code;
             used += tmp_size;
-        }            
+        }
     }
 
     /* check for overflow */
@@ -160,7 +174,7 @@ c_overprint_write(const gs_composite_t * pct, byte * data, uint * psize, gx_devi
     if (used > avail)
         return_error(gs_error_rangecheck);
     data[0] = flags;
-    if_debug1('v', "[v]c_overprint_write(%d)\n", flags);
+    if_debug1m('v', ((const gx_device *)cdev)->memory, "[v]c_overprint_write(%d)\n", flags);
     return 0;
 }
 
@@ -182,32 +196,36 @@ c_overprint_read(
     if (size < 1)
         return_error(gs_error_rangecheck);
     flags = *data;
-    if_debug1('v', "[v]c_overprint_read(%d)\n", flags);
+    if_debug1m('v', mem, "[v]c_overprint_read(%d)\n", flags);
     params.retain_any_comps = (flags & OVERPRINT_ANY_COMPS) != 0;
     params.retain_spot_comps = (flags & OVERPRINT_SPOT_COMPS) != 0;
     params.idle = 0;
+    params.blendspot = (flags & OVERPRINT_BLEND) != 0;
+    params.k_value = 0;
 
     /* check if the drawn_comps array is present */
-    if (params.retain_any_comps && !params.retain_spot_comps) {
+    if (params.retain_any_comps && (!params.retain_spot_comps || params.blendspot)) {
         code = read_color_index(&params.drawn_comps, data + 1, size - 1);
         if (code < 0)
             return code;
-         nbytes += code;
+        nbytes += code;
+        memcpy(&(params.k_value), &(data[nbytes]), sizeof(params.k_value));
+        nbytes += sizeof(params.k_value);
+        memcpy(&(params.blendspot), &(data[nbytes]), sizeof(params.blendspot));
+        nbytes += sizeof(params.blendspot);
     }
-
     code = gs_create_overprint(ppct, &params, mem);
-
     return code < 0 ? code : nbytes;
 }
 
 /*
- * Check for closing compositor. 
+ * Check for closing compositor.
  */
 static int
 c_overprint_is_closing(const gs_composite_t *this, gs_composite_t **ppcte, gx_device *dev)
 {
     if (*ppcte != NULL && (*ppcte)->type->comp_id != GX_COMPOSITOR_OVERPRINT)
-	return 0;
+        return 0;
     return 3;
 }
 
@@ -226,15 +244,14 @@ const gs_composite_type_t   gs_composite_overprint_type = {
         c_overprint_equal,                      /* procs.equal */
         c_overprint_write,                      /* procs.write */
         c_overprint_read,                       /* procs.read */
-	gx_default_composite_adjust_ctm,
-	c_overprint_is_closing,
-	gx_default_composite_is_friendly,
-	gx_default_composite_clist_write_update,/* procs.composite_clist_write_update */
-	gx_default_composite_clist_read_update,	/* procs.composite_clist_reade_update */
-	gx_default_composite_get_cropping	/* procs.composite_get_cropping */
+        gx_default_composite_adjust_ctm,
+        c_overprint_is_closing,
+        gx_default_composite_is_friendly,
+        gx_default_composite_clist_write_update,/* procs.composite_clist_write_update */
+        gx_default_composite_clist_read_update,	/* procs.composite_clist_reade_update */
+        gx_default_composite_get_cropping	/* procs.composite_get_cropping */
     }                                           /* procs */
 };
-
 
 /*
  * Create an overprint compositor data structure.
@@ -250,9 +267,9 @@ gs_create_overprint(
     gs_overprint_t *                pct;
 
     pct = gs_alloc_struct(mem, gs_overprint_t, &st_overprint,
-			     "gs_create_overprint");
+                              "gs_create_overprint");
     if (pct == NULL)
-	return_error(gs_error_VMerror);
+        return_error(gs_error_VMerror);
     pct->type = &gs_composite_overprint_type;
     pct->id = gs_next_ids(mem, 1);
     pct->params = *pparams;
@@ -260,7 +277,6 @@ gs_create_overprint(
     *ppct = (gs_composite_t *)pct;
     return 0;
 }
-
 
 /*
  * Verify that a compositor data structure is for the overprint compositor.
@@ -272,7 +288,6 @@ gs_is_overprint_compositor(const gs_composite_t * pct)
 {
     return pct->type == &gs_composite_overprint_type;
 }
-
 
 /*
  * The overprint device.
@@ -295,9 +310,18 @@ typedef struct overprint_device_s {
 
     /*
      * The set of components to be drawn. This field is used only if the
-     * target color space is not separable and linear.
+     * target color space is not separable and linear.  It is also used
+     * for the devn color values since we may need more than 8 components
      */
     gx_color_index  drawn_comps;
+    
+    /* This is used to compensate for the use of black overprint for when
+       we are simulating CMYK overprinting with an RGB output device */
+    ushort k_value;
+
+    /* Used to indicate that the CMYK value should be blended to achieve
+       overprint simulation */
+    bool blendspot;
 
     /*
      * The mask of gx_color_index bits to be retained during a drawing
@@ -320,7 +344,17 @@ typedef struct overprint_device_s {
      * is little-endian.
      */
     gx_color_index  retain_mask;
+    
+    bool copy_alpha_hl;
 
+    /* We hold 3 sets of device procedures here. These are initialised from
+     * the equivalently named globals when the device is created, but are
+     * then used from here as we fiddle with them. This ensures that the
+     * globals are only ever read, and as such are safe in multithreaded
+     * environments. */
+    gx_device_procs generic_overprint_procs;
+    gx_device_procs no_overprint_procs;
+    gx_device_procs sep_overprint_procs;
 } overprint_device_t;
 
 gs_private_st_suffix_add0_final( st_overprint_device_t,
@@ -330,7 +364,6 @@ gs_private_st_suffix_add0_final( st_overprint_device_t,
                                  overprint_device_t_reloc_ptrs,
                                  gx_device_finalize,
                                  st_device_forward );
-
 
 /*
  * In the default (overprint false) case, the overprint device is almost
@@ -352,7 +385,7 @@ static dev_proc_get_page_device(overprint_get_page_device);
 static dev_proc_create_compositor(overprint_create_compositor);
 static dev_proc_get_color_comp_index(overprint_get_color_comp_index);
 
-static gx_device_procs no_overprint_procs = {
+static const gx_device_procs no_overprint_procs = {
     overprint_open_device,              /* open_device */
     0,                                  /* get_initial_matrix */
     0,                                  /* sync_output */
@@ -416,8 +449,10 @@ static gx_device_procs no_overprint_procs = {
     0,					/* ret_devn_params */
     gx_forward_fillpage,
     0,                                  /* push_transparency_state */
-    0                                   /* pop_transparency_state */
-
+    0,                                  /* pop_transparency_state */
+    0,                                  /* put_image */
+    0,                                  /* dev_spec_op */
+    gx_forward_copy_planes
 };
 
 /*
@@ -448,9 +483,13 @@ static gx_device_procs no_overprint_procs = {
  */
 static dev_proc_fill_rectangle(overprint_generic_fill_rectangle);
 static dev_proc_fill_rectangle(overprint_sep_fill_rectangle);
+static dev_proc_fill_rectangle_hl_color(overprint_fill_rectangle_hl_color);
+static dev_proc_copy_planes(overprint_copy_planes);
+static dev_proc_copy_alpha_hl_color(overprint_copy_alpha_hl_color);
+
 /* other low-level overprint_sep_* rendering methods prototypes go here */
 
-static gx_device_procs generic_overprint_procs = {
+static const gx_device_procs generic_overprint_procs = {
     overprint_open_device,              /* open_device */
     0,                                  /* get_initial_matrix */
     0,                                  /* sync_output */
@@ -503,10 +542,24 @@ static gx_device_procs generic_overprint_procs = {
     0,                                  /* get_color_mapping_procs */
     overprint_get_color_comp_index,	/* get_color_comp_index */
     0,                                  /* encode_color */
-    0                                   /* decode_color */
+    0,                                  /* decode_color */
+    0,                                  /* pattern_manage */
+    overprint_fill_rectangle_hl_color,  /* fill_rectangle_hl_color */
+    0,                                  /* include_color_space */
+    0,                                  /* fill_linear_color_scanline */
+    0,                                  /* fill_linear_color_trapezoid */
+    0,                                  /* fill_linear_color_triangle */
+    0,                                  /* update_spot_equivalent_colors */
+    0,                                  /* ret_devn_params */
+    0,                                  /* fillpage */
+    0,                                  /* push_transparency_state */
+    0,                                  /* pop_transparency_state */
+    0,                                  /* put_image */
+    0,                                  /* dev_spec_op */
+    gx_forward_copy_planes
 };
 
-static gx_device_procs sep_overprint_procs = {
+static const gx_device_procs sep_overprint_procs = {
     overprint_open_device,              /* open_device */
     0,                                  /* get_initial_matrix */
     0,                                  /* sync_output */
@@ -557,9 +610,28 @@ static gx_device_procs sep_overprint_procs = {
     0,                                  /* end_transparency_mask */
     0,                                  /* discard_transparency_layer */
     0,                                  /* get_color_mapping_procs */
-    overprint_get_color_comp_index,	/* get_color_comp_index */
+    overprint_get_color_comp_index,	    /* get_color_comp_index */
     0,                                  /* encode_color */
-    0                                   /* decode_color */
+    0,                                  /* decode_color */
+    0,                                  /* pattern_manage */
+    overprint_fill_rectangle_hl_color,  /* fill_rectangle_hl_color */
+    0,                                  /* include_color_space */
+    0,                                  /* fill_linear_color_scanline */
+    0,                                  /* fill_linear_color_trapezoid */
+    0,                                  /* fill_linear_color_triangle */
+    0,                                  /* update_spot_equivalent_colors */
+    0,                                  /* ret_devn_params */
+    0,                                  /* fillpage */
+    0,                                  /* push_transparency_state */
+    0,                                  /* pop_transparency_state */
+    0,                                  /* put_image */
+    0,                                  /* dev_spec_op */
+    overprint_copy_planes,              /* copy planes */
+    0,                                  /* get profile */
+    0,                                  /* set graphics type tag */
+    0,                                  /* strip_copy_rop2 */
+    0,                                  /* strip_tile_rect_devn */
+    overprint_copy_alpha_hl_color       /* copy_alpha_hl_color */
 };
 
 /*
@@ -575,8 +647,6 @@ const overprint_device_t    gs_overprint_device = {
                               1, 1 ),               /* HWResolution */
     { 0 }                                           /* procs */
 };
-
-
 
 /*
  * Utility to reorder bytes in a color or mask based on the endianness of
@@ -681,32 +751,35 @@ update_overprint_params(
     overprint_device_t *            opdev,
     const gs_overprint_params_t *   pparams )
 {
-    int                             ncomps = opdev->color_info.num_components;
+    int ncomps = opdev->color_info.num_components;
+    bool degenerate_k = true; /* Used only for RGB simulation case */
 
     /* check if overprint is to be turned off */
     if (!pparams->retain_any_comps || pparams->idle) {
         /* if fill_rectangle forwards, overprint is already off */
         if (dev_proc(opdev, fill_rectangle) != gx_forward_fill_rectangle)
             memcpy( &opdev->procs,
-                    &no_overprint_procs,
-                    sizeof(no_overprint_procs) );
+                    &opdev->no_overprint_procs,
+                    sizeof(opdev->no_overprint_procs) );
         return 0;
     }
 
     /* set the procedures according to the color model */
     if (opdev->color_info.separable_and_linear == GX_CINFO_SEP_LIN)
         memcpy( &opdev->procs,
-                &sep_overprint_procs,
-                sizeof(sep_overprint_procs) );
+                &opdev->sep_overprint_procs,
+                sizeof(opdev->sep_overprint_procs) );
     else
         memcpy( &opdev->procs,
-                &generic_overprint_procs,
-                sizeof(generic_overprint_procs) );
+                &opdev->generic_overprint_procs,
+                sizeof(opdev->generic_overprint_procs) );
 
     /* see if we need to determine the spot color components */
-    if (!pparams->retain_spot_comps)
+    opdev->blendspot = pparams->blendspot;
+    if (!pparams->retain_spot_comps) {
         opdev->drawn_comps = pparams->drawn_comps;
-    else {
+        opdev->k_value = pparams->k_value;
+    } else {
         gx_device *                     dev = (gx_device *)opdev;
         const gx_cm_color_map_procs *   pprocs;
         frac                            cvals[GX_DEVICE_COLOR_MAX_COMPONENTS];
@@ -742,10 +815,14 @@ update_overprint_params(
     }
 
     /* check for degenerate case */
-    if (opdev->drawn_comps == ((gx_color_index)1 << ncomps) - 1) {
+    if (ncomps == 3 && pparams->k_value != 0) {
+        degenerate_k = false;
+    }
+    if (degenerate_k && !(opdev->blendspot) &&
+        opdev->drawn_comps == ((gx_color_index)1 << ncomps) - 1) {
         memcpy( &opdev->procs,
-                &no_overprint_procs,
-                sizeof(no_overprint_procs) );
+                &opdev->no_overprint_procs,
+                sizeof(opdev->no_overprint_procs) );
         return 0;
     }
 
@@ -755,7 +832,6 @@ update_overprint_params(
 
     return 0;
 }
-
 
 /*
  * The open_device method for the overprint device is about as close to
@@ -776,8 +852,10 @@ overprint_open_device(gx_device * dev)
     /* the overprint device must have a target */
     if (tdev == 0)
         return_error(gs_error_unknownerror);
-    if ((code = gs_opendevice(tdev)) >= 0)
+    if ((code = gs_opendevice(tdev)) >= 0) {
         gx_device_copy_params(dev, tdev);
+        opdev->copy_alpha_hl = false;
+    }
     return code;
 }
 
@@ -791,7 +869,6 @@ overprint_put_params(gx_device * dev, gs_param_list * plist)
     overprint_device_t *    opdev = (overprint_device_t *)dev;
     gx_device *             tdev = opdev->target;
     int                     code = 0;
-
 
     if (tdev != 0 && (code = dev_proc(tdev, put_params)(tdev, plist)) >= 0) {
         gx_device_decache_colors(dev);
@@ -807,18 +884,18 @@ overprint_put_params(gx_device * dev, gs_param_list * plist)
  */
 int
 overprint_get_color_comp_index(gx_device * dev, const char * pname,
-					int name_size, int component_type)
+                                        int name_size, int component_type)
 {
     overprint_device_t * opdev = (overprint_device_t *)dev;
     gx_device * tdev = opdev->target;
     int code;
 
     if (tdev == 0)
-	code = gx_error_get_color_comp_index(dev, pname,
-				name_size, component_type);
+        code = gx_error_get_color_comp_index(dev, pname,
+                                name_size, component_type);
     else {
-	code = dev_proc(tdev, get_color_comp_index)(tdev, pname,
-				name_size, component_type);
+        code = dev_proc(tdev, get_color_comp_index)(tdev, pname,
+                                name_size, component_type);
         opdev->color_info = tdev->color_info;
     }
     return code;
@@ -848,15 +925,16 @@ overprint_create_compositor(
     gx_device **            pcdev,
     const gs_composite_t *  pct,
     gs_imager_state *	    pis,
-    gs_memory_t *           memory )
+    gs_memory_t *           memory,
+    gx_device *             cdev)
 {
     if (pct->type != &gs_composite_overprint_type)
-        return gx_default_create_compositor(dev, pcdev, pct, pis, memory);
+        return gx_default_create_compositor(dev, pcdev, pct, pis, memory, cdev);
     else {
-	gs_overprint_params_t params = ((const gs_overprint_t *)pct)->params;
+        gs_overprint_params_t params = ((const gs_overprint_t *)pct)->params;
         int     code;
 
-	params.idle = pct->idle;
+        params.idle = pct->idle;
         /* device must already exist, so just update the parameters */
         code = update_overprint_params(
                        (overprint_device_t *)dev,
@@ -866,7 +944,6 @@ overprint_create_compositor(
         return code;
     }
 }
-
 
 /*
  * The two rectangle-filling routines (which do the actual work) are just
@@ -890,11 +967,254 @@ overprint_generic_fill_rectangle(
     if (tdev == 0)
         return 0;
     else
-        return gx_overprint_generic_fill_rectangle( tdev,
+        return gx_overprint_generic_fill_rectangle( tdev, opdev->blendspot,
                                                     opdev->drawn_comps,
+                                                    opdev->k_value,
                                                     x, y, width, height,
                                                     color,
                                                     dev->memory );
+}
+
+static int
+overprint_copy_alpha_hl_color(gx_device * dev, const byte * data, int data_x,
+           int raster, gx_bitmap_id id, int x, int y, int width, int height,
+                      const gx_drawing_color *pdcolor, int depth)
+{
+    /* copy_alpha_hl_color will end up calling copy_planes which for the
+       copy alpha case we need to make sure we do in a proper overprint 
+       fashion.  Other calls of copy_alpha for example from the pattern
+       tiling call are not done with overprint control.  So we set an 
+       appopriate flag so that we know to handle this properly when we
+       get to copy_alpha */
+
+    overprint_device_t *    opdev = (overprint_device_t *)dev;
+    int code;
+
+    opdev->copy_alpha_hl = true;
+    code = gx_default_copy_alpha_hl_color(dev, data, data_x, raster, id, x, y, 
+                                          width, height, pdcolor, depth);
+    opdev->copy_alpha_hl = false;
+    return code;
+}
+
+/* Currently we really should only be here if the target device is planar
+   AND it supports devn colors AND is 8 bit.  This could use a rewrite to
+   make if more efficient but I had to get something in place that would 
+   work */
+static int
+overprint_copy_planes(gx_device * dev, const byte * data, int data_x, int raster_in, 
+                  gx_bitmap_id id, int x, int y, int w, int h, int plane_height)
+{
+    overprint_device_t *    opdev = (overprint_device_t *)dev;
+    gx_device *             tdev = opdev->target;
+    byte *                  gb_buff = 0;
+    gs_get_bits_params_t    gb_params;
+    gs_int_rect             gb_rect;
+    int                     code = 0, raster;
+    int                     byte_depth;
+    int                     depth, num_comps;
+    int                     k,j;
+    gs_memory_t *           mem = dev->memory;
+    gx_color_index          comps = opdev->drawn_comps;
+    gx_color_index          mask;
+    int                     shift;
+    byte                    *curr_data = (byte *) data + data_x;
+    int                     row, offset;
+
+    if (tdev == 0)
+        return 0;
+
+    if  (opdev->copy_alpha_hl) {
+       /* We are coming here via copy_alpha_hl_color due to the use of AA.
+          We will want to handle the overprinting here */
+
+        depth = tdev->color_info.depth;
+        num_comps = tdev->color_info.num_components;
+
+        fit_fill(tdev, x, y, w, h);
+        byte_depth = depth / num_comps;
+        mask = ((gx_color_index)1 << byte_depth) - 1;
+        shift = 16 - byte_depth;
+
+        /* allocate a buffer for the returned data */
+        raster = bitmap_raster(w * byte_depth);
+        gb_buff = gs_alloc_bytes(mem, raster * num_comps , "overprint_copy_planes");
+        if (gb_buff == 0)
+            return gs_note_error(gs_error_VMerror);
+
+        /* Initialize the get_bits parameters. Here we just get a plane at a  time. */
+        gb_params.options =  GB_COLORS_NATIVE
+                           | GB_ALPHA_NONE
+                           | GB_DEPTH_ALL
+                           | GB_PACKING_PLANAR
+                           | GB_RETURN_COPY
+                           | GB_ALIGN_STANDARD
+                           | GB_OFFSET_0
+                           | GB_RASTER_STANDARD
+                           | GB_SELECT_PLANES;    
+
+        gb_params.x_offset = 0;     
+        gb_params.raster = raster;
+        gb_rect.p.x = x;
+        gb_rect.q.x = x + w;
+        
+        /* step through the height */
+        row = 0;
+        while (h-- > 0 && code >= 0) {
+            comps = opdev->drawn_comps;
+            gb_rect.p.y = y++;
+            gb_rect.q.y = y;
+            offset = row * raster_in + data_x;  
+            row++;
+            curr_data = (byte *) data + offset; /* start us at the start of row */ 
+            /* And now through each plane */
+            for (k = 0; k < tdev->color_info.num_components; k++) {
+                /* First set the params to zero for all planes except the one we want */
+                for (j = 0; j < tdev->color_info.num_components; j++) 
+                        gb_params.data[j] = 0;
+                    gb_params.data[k] = gb_buff + k * raster;
+                    code = dev_proc(tdev, get_bits_rectangle) (tdev, &gb_rect, 
+                                                               &gb_params, 0);
+                    if (code < 0) {
+                        gs_free_object(mem, gb_buff, "overprint_copy_planes" );
+                        return code;
+                    }
+                    /* Skip the plane if this component is not to be drawn.  If
+                       its the one that we want to draw, replace it with our
+                       buffer data */
+                    if ((comps & 0x01) == 1) {
+                        memcpy(gb_params.data[k], curr_data, w);
+                    }
+                    /* Next plane */
+                    curr_data += plane_height * raster_in;
+                    comps >>= 1;
+            }
+            code = dev_proc(tdev, copy_planes)(tdev, gb_buff, 0, raster, 
+                                               gs_no_bitmap_id, x, y - 1, w, 1, 1);
+        }
+        gs_free_object(mem, gb_buff, "overprint_copy_planes" );
+        return code;
+    } else {
+        /* This is not a case where copy planes should be doing overprinting.
+           For example, if we came here via the pattern tiling code, so just
+           pass this along to the target */
+        return (*dev_proc(tdev, copy_planes)) (tdev, data, data_x, raster_in, id, 
+                                               x, y, w, h, plane_height);
+    }
+}
+
+/* Currently we really should only be here if the target device is planar
+   AND it supports devn colors AND is 8 bit. */
+static int 
+overprint_fill_rectangle_hl_color(gx_device *dev,
+    const gs_fixed_rect *rect, const gs_imager_state *pis, 
+    const gx_drawing_color *pdcolor, const gx_clip_path *pcpath)
+{
+    overprint_device_t *    opdev = (overprint_device_t *)dev;
+    gx_device *             tdev = opdev->target;
+    byte *                  gb_buff = 0;
+    gs_get_bits_params_t    gb_params;
+    gs_int_rect             gb_rect;
+    int                     code = 0, raster;
+    int                     byte_depth;
+    int                     depth, num_comps;
+    int                     x,y,w,h,k,j;
+    gs_memory_t *           mem = dev->memory;
+    gx_color_index          comps = opdev->drawn_comps;
+    gx_color_index          mask;
+    int                     shift;
+    bool                    blendspot = opdev->blendspot;
+
+    if (tdev == 0)
+        return 0;
+
+    depth = tdev->color_info.depth;
+    num_comps = tdev->color_info.num_components;
+
+    x = fixed2int(rect->p.x);
+    y = fixed2int(rect->p.y);
+    w = fixed2int(rect->q.x) - x;
+    h = fixed2int(rect->q.y) - y;
+
+    fit_fill(tdev, x, y, w, h);
+    byte_depth = depth / num_comps;
+    mask = ((gx_color_index)1 << byte_depth) - 1;
+    shift = 16 - byte_depth;
+
+    /* allocate a buffer for the returned data */
+    raster = bitmap_raster(w * byte_depth);
+    gb_buff = gs_alloc_bytes(mem, raster * num_comps , "overprint_fill_rectangle_hl_color");
+    if (gb_buff == 0)
+        return gs_note_error(gs_error_VMerror);
+
+    /* Initialize the get_bits parameters. Here we just get a plane at a  time. */
+    gb_params.options =  GB_COLORS_NATIVE
+                       | GB_ALPHA_NONE
+                       | GB_DEPTH_ALL
+                       | GB_PACKING_PLANAR
+                       | GB_RETURN_COPY
+                       | GB_ALIGN_STANDARD
+                       | GB_OFFSET_0
+                       | GB_RASTER_STANDARD
+                       | GB_SELECT_PLANES;    
+
+    gb_params.x_offset = 0;     /* for consistency */
+    gb_params.raster = raster;
+    gb_rect.p.x = x;
+    gb_rect.q.x = x + w;
+
+    /* step through the height */
+    while (h-- > 0 && code >= 0) {
+        comps = opdev->drawn_comps;
+        gb_rect.p.y = y++;
+        gb_rect.q.y = y;
+        /* And now through each plane */
+        for (k = 0; k < tdev->color_info.num_components; k++) {
+            /* First set the params to zero for all planes except the one we want */
+            for (j = 0; j < tdev->color_info.num_components; j++) 
+                gb_params.data[j] = 0;
+            gb_params.data[k] = gb_buff + k * raster;
+            code = dev_proc(tdev, get_bits_rectangle) (tdev, &gb_rect, 
+                                                       &gb_params, 0);
+            if (code < 0) {
+                gs_free_object(mem, gb_buff, 
+                               "overprint_fill_rectangle_hl_color" );
+                return code;
+            }
+            if (blendspot) {
+                /* We need to blend the CMYK colorants as we are simulating
+                   the overprint of a spot colorant with its equivalent CMYK
+                   colorants */
+                if ((comps &  0x01) == 1) {
+                    int kk;
+                    byte *cp = gb_params.data[k];
+                    byte new_val = ((pdcolor->colors.devn.values[k]) >> shift & mask);
+                    for (kk = 0; kk < w; kk++, cp++) {
+                        int temp = (255 - *cp) * (255 - new_val);
+                        temp = temp >> 8;
+                        *cp = (255-temp);
+                    }
+                }
+                comps >>= 1;
+            } else {
+                /* Skip the plane if this component is not to be drawn.  We have
+                   to do a get bits for each plane due to the fact that we have
+                   to do a copy_planes at the end.  If we had a copy_plane 
+                   operation we would just get the ones needed and set those. */
+                if ((comps & 0x01) == 1) {
+                    /* Not sure if a loop or a memset is better here */
+                    memset(gb_params.data[k], 
+                           ((pdcolor->colors.devn.values[k]) >> shift & mask), w);
+                }
+                comps >>= 1;
+            }
+        }
+        code = dev_proc(tdev, copy_planes)(tdev, gb_buff, 0, raster, 
+                                           gs_no_bitmap_id, x, y - 1, w, 1, 1);
+    }
+    gs_free_object(mem, gb_buff,
+                    "overprint_fill_rectangle_hl_color" );
+    return code;
 }
 
 static int
@@ -939,14 +1259,14 @@ overprint_sep_fill_rectangle(
          * depth < 8 * sizeof(mono_fill_chunk).
          */
         if ( depth <= 8 * sizeof(mono_fill_chunk) &&
-             (depth & (depth - 1)) == 0             )
+             (depth & (depth - 1)) == 0 && !(opdev->blendspot))
             return gx_overprint_sep_fill_rectangle_1( tdev,
                                                       opdev->retain_mask,
                                                       x, y, width, height,
                                                       color,
                                                       dev->memory );
         else
-            return gx_overprint_sep_fill_rectangle_2( tdev,
+            return gx_overprint_sep_fill_rectangle_2( tdev, opdev->blendspot,
                                                       opdev->retain_mask,
                                                       x, y, width, height,
                                                       color,
@@ -954,8 +1274,7 @@ overprint_sep_fill_rectangle(
     }
 }
 
-
-/* complete a porcedure set */
+/* complete a procedure set */
 static void
 fill_in_procs(gx_device_procs * pprocs)
 {
@@ -1015,14 +1334,7 @@ c_overprint_create_default_compositor(
     }
     if (pct->idle) {
         *popdev = tdev;
-	return 0;
-    }
-
-    /* check if the procedure arrays have been initialized */
-    if (no_overprint_procs.get_xfont_procs == 0) {
-        fill_in_procs(&no_overprint_procs);
-        fill_in_procs(&generic_overprint_procs);
-        fill_in_procs(&sep_overprint_procs);
+        return 0;
     }
 
     /* build the overprint device */
@@ -1030,12 +1342,26 @@ c_overprint_create_default_compositor(
                                        overprint_device_t,
                                        &st_overprint_device_t,
                                        "create overprint compositor" );
-    if ((*popdev = (gx_device *)opdev) == 0)
+    *popdev = (gx_device *)opdev;
+    if (opdev == NULL)
         return_error(gs_error_VMerror);
-    gx_device_init( (gx_device *)opdev, 
+    gx_device_init( (gx_device *)opdev,
                     (const gx_device *)&gs_overprint_device,
                     mem,
-                    true );
+                    false );
+    memcpy(&opdev->no_overprint_procs,
+           &no_overprint_procs,
+           sizeof(no_overprint_procs));
+    memcpy(&opdev->generic_overprint_procs,
+           &generic_overprint_procs,
+           sizeof(generic_overprint_procs));
+    memcpy(&opdev->sep_overprint_procs,
+           &sep_overprint_procs,
+           sizeof(sep_overprint_procs));
+    fill_in_procs(&opdev->no_overprint_procs);
+    fill_in_procs(&opdev->generic_overprint_procs);
+    fill_in_procs(&opdev->sep_overprint_procs);
+
     gx_device_copy_params((gx_device *)opdev, tdev);
     gx_device_set_target((gx_device_forward *)opdev, tdev);
 

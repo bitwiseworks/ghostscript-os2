@@ -1,16 +1,18 @@
-#  Copyright (C) 2001-2007 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: jpeg.mak 8357 2007-11-09 21:18:04Z giles $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
+# $Id: jpeg.mak 12063 2011-01-26 12:25:36Z chrisl $
 # makefile for Independent JPEG Group library code.
 # Users of this makefile must define the following:
 #	GSSRCDIR - the GS library source directory
@@ -93,35 +95,36 @@ jmorecf__h=$(GLGEN)jmorecf_.h
 jconfig_h=$(GLGEN)jconfig.h
 jmorecfg_h=$(GLGEN)jmorecfg.h
 
-$(GLGEN)jconfig_.h : $(GLGEN)jconfig$(SHARE_JPEG).h $(MAKEFILE)
+$(GLGEN)jconfig_.h : $(GLGEN)jconfig$(SHARE_JPEG).h $(MAKEFILE) $(MAKEDIRS)
 	$(CP_) $(GLGEN)jconfig$(SHARE_JPEG).h $(GLGEN)jconfig_.h
 
-$(GLGEN)jconfig0.h : $(ECHOGS_XE) $(GLSRC)gsjconf.h $(stdpre_h) $(MAKEFILE)
+$(GLGEN)jconfig0.h : $(ECHOGS_XE) $(GLSRC)gsjconf.h $(stdpre_h) $(MAKEFILE)\
+ $(MAKEDIRS)
 	$(EXP)$(ECHOGS_XE) -w $(GLGEN)jconfig0.h -+R $(GLSRC)stdpn.h -+R $(GLSRC)stdpre.h -+R $(GLSRC)gsjconf.h
 	$(RM_) $(GLGEN)jconfig1.h
 
-$(GLGEN)jconfig1.h : $(ECHOGS_XE) $(JPEG_MAK)
+$(GLGEN)jconfig1.h : $(ECHOGS_XE) $(JPEG_MAK) $(MAKEDIRS)
 	$(EXP)$(ECHOGS_XE) -w $(GLGEN)jconfig1.h -x 23 include -x 203c jconfig.h -x 3e
 	$(RMN_) $(GLGEN)jconfig0.h $(GLGEN)jconfig.h
 
-$(GLGEN)jconfig.h : $(GLGEN)jconfig0.h
+$(GLGEN)jconfig.h : $(GLGEN)jconfig0.h $(MAKEDIRS)
 	$(CP_) $(GLGEN)jconfig0.h $(GLGEN)jconfig.h
 
-$(GLGEN)jmorecf_.h : $(GLGEN)jmorecf$(SHARE_JPEG).h $(MAKEFILE)
+$(GLGEN)jmorecf_.h : $(GLGEN)jmorecf$(SHARE_JPEG).h $(MAKEFILE) $(MAKEDIRS)
 	$(CP_) $(GLGEN)jmorecf$(SHARE_JPEG).h $(GLGEN)jmorecf_.h
 
-$(GLGEN)jmorecf0.h : $(GLSRC)gsjmorec.h $(GLGEN)jmcorig.h
+$(GLGEN)jmorecf0.h : $(GLSRC)gsjmorec.h $(GLGEN)jmcorig.h $(MAKEDIRS)
 	$(CP_) $(GLSRC)gsjmorec.h $(GLGEN)jmorecf0.h
 	$(RM_) $(GLGEN)jmorecf1.h
 
-$(GLGEN)jmorecf1.h : $(ECHOGS_XE) $(JPEG_MAK)
+$(GLGEN)jmorecf1.h : $(ECHOGS_XE) $(JPEG_MAK) $(MAKEDIRS)
 	$(EXP)$(ECHOGS_XE) -w $(GLGEN)jmorecf1.h -x 23 include -x 203c jmorecfg.h -x 3e
 	$(RMN_) $(GLGEN)jmorecf0.h $(GLGEN)jmorecfg.h
 
-$(GLGEN)jmorecfg.h : $(GLGEN)jmorecf0.h
+$(GLGEN)jmorecfg.h : $(GLGEN)jmorecf0.h $(MAKEDIRS)
 	$(CP_) $(GLGEN)jmorecf0.h $(GLGEN)jmorecfg.h
 
-$(GLGEN)jmcorig.h : $(JSRC)jmorecfg.h
+$(GLGEN)jmcorig.h : $(JSRC)jmorecfg.h $(MAKEDIRS)
 	$(CP_) $(JSRC)jmorecfg.h $(GLGEN)jmcorig.h
 
 # Contrary to what some portability bigots assert as fact, C compilers are
@@ -137,23 +140,23 @@ $(GLGEN)jmcorig.h : $(JSRC)jmorecfg.h
 
 JHCOPY=$(GLGEN)jinclude.h $(GLGEN)jpeglib.h
 
-$(GLGEN)jinclude.h : $(JSRC)jinclude.h
+$(GLGEN)jinclude.h : $(JSRC)jinclude.h $(MAKEDIRS)
 	$(CP_) $(JSRC)jinclude.h $(GLGEN)jinclude.h
 
 # jpeglib_.h doesn't really depend on jconfig.h or jmcorig.h,
 # but we choose to put the dependencies here rather than in the
 # definition of jpeglib__h.
-$(GLGEN)jpeglib_.h : $(GLGEN)jpeglib$(SHARE_JPEG).h $(MAKEFILE)
+$(GLGEN)jpeglib_.h : $(GLGEN)jpeglib$(SHARE_JPEG).h $(MAKEDIRS)
 	$(CP_) $(GLGEN)jpeglib$(SHARE_JPEG).h $(GLGEN)jpeglib_.h
 
-$(GLGEN)jpeglib0.h : $(JSRC)jpeglib.h $(jconfig_h) $(jmorecfg_h)
+$(GLGEN)jpeglib0.h : $(JSRC)jpeglib.h $(jconfig_h) $(jmorecfg_h) $(MAKEDIRS)
 	$(CP_) $(JSRC)jpeglib.h $(GLGEN)jpeglib0.h
 
-$(GLGEN)jpeglib1.h : $(ECHOGS_XE) $(JPEG_MAK)
+$(GLGEN)jpeglib1.h : $(ECHOGS_XE) $(JPEG_MAK) $(MAKEDIRS)
 	$(EXP)$(ECHOGS_XE) -w $(GLGEN)jpeglib1.h -x 23 include -x 203c jpeglib.h -x 3e
 
 # We also need jpeglib.h for #includes in the library itself.
-$(GLGEN)jpeglib.h : $(JSRC)jpeglib.h
+$(GLGEN)jpeglib.h : $(JSRC)jpeglib.h $(MAKEDIRS)
 	$(CP_) $(JSRC)jpeglib.h $(GLGEN)jpeglib.h
 
 # In order to avoid having to keep the dependency lists for the IJG code
@@ -162,11 +165,11 @@ $(GLGEN)jpeglib.h : $(JSRC)jpeglib.h
 # This is too conservative, but only hurts us if we are changing our own
 # j*.h files, which happens only rarely during development.
 
-JDEP=$(AK) $(jconfig_h) $(jmorecfg_h) $(JHCOPY)
+JDEP=$(AK) $(jconfig_h) $(jmorecfg_h) $(JHCOPY) $(MAKEDIRS)
 
 # Code common to compression and decompression.
 
-jpegc0_=$(JOBJ)jcomapi.$(OBJ) $(JOBJ)jutils.$(OBJ) $(JOBJ)jmemmgr.$(OBJ) $(JOBJ)jerror.$(OBJ)
+jpegc0_=$(JOBJ)jcomapi.$(OBJ) $(JOBJ)jutils.$(OBJ) $(JOBJ)jmemmgr.$(OBJ) $(JOBJ)jerror.$(OBJ) $(JOBJ)jaricom.$(OBJ)
 $(JGEN)jpegc0.dev : $(JPEG_MAK) $(ECHOGS_XE) $(jpegc0_)
 	$(SETMOD) $(JGEN)jpegc0 $(jpegc0_)
 
@@ -190,6 +193,11 @@ $(JOBJ)jerror.$(OBJ) : $(JSRC)jerror.c $(JDEP)
 	$(JCC) $(JO_)jerror.$(OBJ) $(C_) $(GLGEN)jerror.c
 	$(RM_) $(GLGEN)jerror.c
 
+$(JOBJ)jaricom.$(OBJ) : $(JSRC)jaricom.c $(JDEP)
+	$(CP_) $(JSRC)jaricom.c $(GLGEN)jaricom.c
+	$(JCC) $(JO_)jaricom.$(OBJ) $(C_) $(GLGEN)jaricom.c
+	$(RM_) $(GLGEN)jaricom.c
+
 # Encoding (compression) code.
 
 $(JGEN)jpege.dev : $(TOP_MAKEFILES) $(JPEG_MAK) $(JGEN)jpege_$(SHARE_JPEG).dev
@@ -203,7 +211,7 @@ $(JGEN)jpege_0.dev : $(TOP_MAKEFILES) $(JPEG_MAK) $(JGEN)jpege6.dev
 
 jpege6=$(JOBJ)jcapimin.$(OBJ) $(JOBJ)jcapistd.$(OBJ) $(JOBJ)jcinit.$(OBJ)
 
-jpege_1=$(JOBJ)jccoefct.$(OBJ) $(JOBJ)jccolor.$(OBJ) $(JOBJ)jcdctmgr.$(OBJ)
+jpege_1=$(JOBJ)jccoefct.$(OBJ) $(JOBJ)jccolor.$(OBJ) $(JOBJ)jcdctmgr.$(OBJ) $(JOBJ)jcarith.$(OBJ)
 jpege_2=$(JOBJ)jchuff.$(OBJ) $(JOBJ)jcmainct.$(OBJ) $(JOBJ)jcmarker.$(OBJ) $(JOBJ)jcmaster.$(OBJ)
 jpege_3=$(JOBJ)jcparam.$(OBJ) $(JOBJ)jcprepct.$(OBJ) $(JOBJ)jcsample.$(OBJ) $(JOBJ)jfdctint.$(OBJ)
 
@@ -284,6 +292,11 @@ $(JOBJ)jfdctint.$(OBJ) : $(JSRC)jfdctint.c $(JDEP)
 	$(JCC) $(JO_)jfdctint.$(OBJ) $(C_) $(GLGEN)jfdctint.c
 	$(RM_) $(GLGEN)jfdctint.c
 
+$(JOBJ)jcarith.$(OBJ) : $(JSRC)jcarith.c $(JDEP)
+	$(CP_) $(JSRC)jcarith.c $(GLGEN)jcarith.c
+	$(JCC) $(JO_)jcarith.$(OBJ) $(C_) $(GLGEN)jcarith.c
+	$(RM_) $(GLGEN)jcarith.c
+
 # Decompression code
 
 $(JGEN)jpegd.dev : $(TOP_MAKEFILES) $(JPEG_MAK) $(JGEN)jpegd_$(SHARE_JPEG).dev
@@ -295,11 +308,11 @@ $(JGEN)jpegd_1.dev : $(TOP_MAKEFILES) $(JPEG_MAK) $(ECHOGS_XE)
 $(JGEN)jpegd_0.dev : $(TOP_MAKEFILES) $(JPEG_MAK) $(JGEN)jpegd6.dev
 	$(CP_) $(JGEN)jpegd6.dev $(JGEN)jpegd_0.dev
 
-jpegd6=$(JOBJ)jdapimin.$(OBJ) $(JOBJ)jdapistd.$(OBJ) $(JOBJ)jdinput.$(OBJ) $(JOBJ)jdphuff.$(OBJ)
+jpegd6=$(JOBJ)jdapimin.$(OBJ) $(JOBJ)jdapistd.$(OBJ) $(JOBJ)jdinput.$(OBJ) $(JOBJ)jdhuff.$(OBJ)
 
 jpegd_1=$(JOBJ)jdcoefct.$(OBJ) $(JOBJ)jdcolor.$(OBJ)
 jpegd_2=$(JOBJ)jddctmgr.$(OBJ) $(JOBJ)jdhuff.$(OBJ) $(JOBJ)jdmainct.$(OBJ) $(JOBJ)jdmarker.$(OBJ)
-jpegd_3=$(JOBJ)jdmaster.$(OBJ) $(JOBJ)jdpostct.$(OBJ) $(JOBJ)jdsample.$(OBJ) $(JOBJ)jidctint.$(OBJ)
+jpegd_3=$(JOBJ)jdmaster.$(OBJ) $(JOBJ)jdpostct.$(OBJ) $(JOBJ)jdsample.$(OBJ) $(JOBJ)jidctint.$(OBJ) $(JOBJ)jdarith.$(OBJ)
 
 $(JGEN)jpegd6.dev : $(JPEG_MAK) $(ECHOGS_XE) $(JGEN)jpegc0.dev $(jpegd6) $(jpegd_1) $(jpegd_2) $(jpegd_3)
 	$(SETMOD) $(JGEN)jpegd6 $(jpegd6)
@@ -358,10 +371,10 @@ $(JOBJ)jdmaster.$(OBJ) : $(JSRC)jdmaster.c $(JDEP)
 	$(JCC) $(JO_)jdmaster.$(OBJ) $(C_) $(GLGEN)jdmaster.c
 	$(RM_) $(GLGEN)jdmaster.c
 
-$(JOBJ)jdphuff.$(OBJ) : $(JSRC)jdphuff.c $(JDEP)
-	$(CP_) $(JSRC)jdphuff.c $(GLGEN)jdphuff.c
-	$(JCC) $(JO_)jdphuff.$(OBJ) $(C_) $(GLGEN)jdphuff.c
-	$(RM_) $(GLGEN)jdphuff.c
+#$(JOBJ)jdhuff.$(OBJ) : $(JSRC)jdhuff.c $(JDEP)
+#	$(CP_) $(JSRC)jdhuff.c $(GLGEN)jdhuff.c
+#	$(JCC) $(JO_)jdhuff.$(OBJ) $(C_) $(GLGEN)jdhuff.c
+#	$(RM_) $(GLGEN)jdhuff.c
 
 $(JOBJ)jdpostct.$(OBJ) : $(JSRC)jdpostct.c $(JDEP)
 	$(CP_) $(JSRC)jdpostct.c $(GLGEN)jdpostct.c
@@ -377,3 +390,8 @@ $(JOBJ)jidctint.$(OBJ) : $(JSRC)jidctint.c $(JDEP)
 	$(CP_) $(JSRC)jidctint.c $(GLGEN)jidctint.c
 	$(JCC) $(JO_)jidctint.$(OBJ) $(C_) $(GLGEN)jidctint.c
 	$(RM_) $(GLGEN)jidctint.c
+
+$(JOBJ)jdarith.$(OBJ) : $(JSRC)jdarith.c $(JDEP)
+	$(CP_) $(JSRC)jdarith.c $(GLGEN)jdarith.c
+	$(JCC) $(JO_)jdarith.$(OBJ) $(C_) $(GLGEN)jdarith.c
+	$(RM_) $(GLGEN)jdarith.c

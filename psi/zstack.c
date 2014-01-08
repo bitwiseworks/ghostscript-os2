@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: zstack.c 9778 2009-06-05 05:55:54Z alexcher $ */
+
 /* Operand stack operators */
 #include "memory_.h"
 #include "ghost.h"
@@ -66,16 +68,16 @@ zindex(i_ctx_t *i_ctx_p)
 
     check_type(*op, t_integer);
     if ((ulong)op->value.intval >= (ulong)(op - osbot)) {
-	/* Might be in an older stack block. */
-	ref *elt;
+        /* Might be in an older stack block. */
+        ref *elt;
 
-	if (op->value.intval < 0)
-	    return_error(e_rangecheck);
-	elt = ref_stack_index(&o_stack, op->value.intval + 1);
-	if (elt == 0)
-	    return_error(e_stackunderflow);
-	ref_assign(op, elt);
-	return 0;
+        if (op->value.intval < 0)
+            return_error(e_rangecheck);
+        elt = ref_stack_index(&o_stack, op->value.intval + 1);
+        if (elt == 0)
+            return_error(e_stackunderflow);
+        ref_assign(op, elt);
+        return 0;
     }
     opn = op + ~(int)op->value.intval;
     ref_assign_inline(op, opn);
@@ -95,7 +97,7 @@ zargindex(i_ctx_t *i_ctx_p)
      * in fact, the only reason this operator exists.)
      */
     if (code == e_rangecheck && osp->value.intval >= 0)
-	code = gs_note_error(e_stackunderflow);
+        code = gs_note_error(e_stackunderflow);
     return code;
 }
 
@@ -113,55 +115,55 @@ zroll(i_ctx_t *i_ctx_p)
     check_type(*op1, t_integer);
     check_type(*op, t_integer);
     if ((uint) op1->value.intval > (uint)(op1 - osbot)) {
-	/*
-	 * The data might span multiple stack blocks.
-	 * There are efficient ways to handle this situation,
-	 * but they're more complicated than seems worth implementing;
-	 * for now, do something very simple and inefficient.
-	 */
-	int left, i;
+        /*
+         * The data might span multiple stack blocks.
+         * There are efficient ways to handle this situation,
+         * but they're more complicated than seems worth implementing;
+         * for now, do something very simple and inefficient.
+         */
+        int left, i;
 
-	if (op1->value.intval < 0) 
-	    return_error(e_rangecheck);
-	if (op1->value.intval + 2 > (int)ref_stack_count(&o_stack))
-	    return_error(e_stackunderflow);
-	count = op1->value.intval;
-	if (count <= 1) {
-	    pop(2);
-	    return 0;
-	}
-	mod = op->value.intval;
-	if (mod >= count)
-	    mod %= count;
-	else if (mod < 0) {
-	    mod %= count;
-	    if (mod < 0)
-		mod += count;	/* can't assume % means mod! */
-	}
-	/* Use the chain rotation algorithm mentioned below. */
-	for (i = 0, left = count; left; i++) {
-	    ref *elt = ref_stack_index(&o_stack, i + 2);
-	    ref save;
-	    int j, k;
-	    ref *next;
+        if (op1->value.intval < 0)
+            return_error(e_rangecheck);
+        if (op1->value.intval + 2 > (int)ref_stack_count(&o_stack))
+            return_error(e_stackunderflow);
+        count = op1->value.intval;
+        if (count <= 1) {
+            pop(2);
+            return 0;
+        }
+        mod = op->value.intval;
+        if (mod >= count)
+            mod %= count;
+        else if (mod < 0) {
+            mod %= count;
+            if (mod < 0)
+                mod += count;	/* can't assume % means mod! */
+        }
+        /* Use the chain rotation algorithm mentioned below. */
+        for (i = 0, left = count; left; i++) {
+            ref *elt = ref_stack_index(&o_stack, i + 2);
+            ref save;
+            int j, k;
+            ref *next;
 
-	    save = *elt;
-	    for (j = i, left--;; j = k, elt = next, left--) {
-		k = (j + mod) % count;
-		if (k == i)
-		    break;
-		next = ref_stack_index(&o_stack, k + 2);
-		ref_assign(elt, next);
-	    }
-	    *elt = save;
-	}
-	pop(2);
-	return 0;
+            save = *elt;
+            for (j = i, left--;; j = k, elt = next, left--) {
+                k = (j + mod) % count;
+                if (k == i)
+                    break;
+                next = ref_stack_index(&o_stack, k + 2);
+                ref_assign(elt, next);
+            }
+            *elt = save;
+        }
+        pop(2);
+        return 0;
     }
     count = op1->value.intval;
     if (count <= 1) {
-	pop(2);
-	return 0;
+        pop(2);
+        return 0;
     }
     mod = op->value.intval;
     /*
@@ -173,65 +175,65 @@ zroll(i_ctx_t *i_ctx_p)
      * in *either* direction.
      */
     switch (mod) {
-	case 1:		/* common special case */
-	    pop(2);
-	    op -= 2;
-	    {
-		ref top;
+        case 1:		/* common special case */
+            pop(2);
+            op -= 2;
+            {
+                ref top;
 
-		ref_assign_inline(&top, op);
-		for (from = op, n = count; --n; from--)
-		    ref_assign_inline(from, from - 1);
-		ref_assign_inline(from, &top);
-	    }
-	    return 0;
-	case -1:		/* common special case */
-	    pop(2);
-	    op -= 2;
-	    {
-		ref bot;
+                ref_assign_inline(&top, op);
+                for (from = op, n = count; --n; from--)
+                    ref_assign_inline(from, from - 1);
+                ref_assign_inline(from, &top);
+            }
+            return 0;
+        case -1:		/* common special case */
+            pop(2);
+            op -= 2;
+            {
+                ref bot;
 
-		to = op - count + 1;
-		ref_assign_inline(&bot, to);
-		for (n = count; --n; to++)
-		    ref_assign(to, to + 1);
-		ref_assign_inline(to, &bot);
-	    }
-	    return 0;
+                to = op - count + 1;
+                ref_assign_inline(&bot, to);
+                for (n = count; --n; to++)
+                    ref_assign(to, to + 1);
+                ref_assign_inline(to, &bot);
+            }
+            return 0;
     }
     if (mod < 0) {
-	mod += count;
-	if (mod < 0) {
-	    mod %= count;
-	    if (mod < 0)
-		mod += count;	/* can't assume % means mod! */
-	}
+        mod += count;
+        if (mod < 0) {
+            mod %= count;
+            if (mod < 0)
+                mod += count;	/* can't assume % means mod! */
+        }
     } else if (mod >= count)
-	mod %= count;
+        mod %= count;
     if (mod <= count >> 1) {
-	/* Move everything up, then top elements down. */
-	if (mod >= ostop - op) {
-	    o_stack.requested = mod;
-	    return_error(e_stackoverflow);
-	}
-	pop(2);
-	op -= 2;
-	for (to = op + mod, from = op, n = count; n--; to--, from--)
-	    ref_assign(to, from);
-	memcpy((char *)(from + 1), (char *)(op + 1), mod * sizeof(ref));
+        /* Move everything up, then top elements down. */
+        if (mod >= ostop - op) {
+            o_stack.requested = mod;
+            return_error(e_stackoverflow);
+        }
+        pop(2);
+        op -= 2;
+        for (to = op + mod, from = op, n = count; n--; to--, from--)
+            ref_assign(to, from);
+        memcpy((char *)(from + 1), (char *)(op + 1), mod * sizeof(ref));
     } else {
-	/* Move bottom elements up, then everything down. */
-	mod = count - mod;
-	if (mod >= ostop - op) {
-	    o_stack.requested = mod;
-	    return_error(e_stackoverflow);
-	}
-	pop(2);
-	op -= 2;
-	to = op - count + 1;
-	memcpy((char *)(op + 1), (char *)to, mod * sizeof(ref));
-	for (from = to + mod, n = count; n--; to++, from++)
-	    ref_assign(to, from);
+        /* Move bottom elements up, then everything down. */
+        mod = count - mod;
+        if (mod >= ostop - op) {
+            o_stack.requested = mod;
+            return_error(e_stackoverflow);
+        }
+        pop(2);
+        op -= 2;
+        to = op - count + 1;
+        memcpy((char *)(op + 1), (char *)to, mod * sizeof(ref));
+        for (from = to + mod, n = count; n--; to++, from++)
+            ref_assign(to, from);
     }
     return 0;
 }
@@ -275,7 +277,7 @@ zcleartomark(i_ctx_t *i_ctx_p)
     uint count = ref_stack_counttomark(&o_stack);
 
     if (count == 0)
-	return_error(e_unmatchedmark);
+        return_error(e_unmatchedmark);
     ref_stack_pop(&o_stack, count);
     return 0;
 }
@@ -289,7 +291,7 @@ zcounttomark(i_ctx_t *i_ctx_p)
     uint count = ref_stack_counttomark(&o_stack);
 
     if (count == 0)
-	return_error(e_unmatchedmark);
+        return_error(e_unmatchedmark);
     push(1);
     make_int(op, count - 1);
     return 0;

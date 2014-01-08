@@ -1,16 +1,17 @@
-#  Copyright (C) 2001-2006 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: msvccmd.mak 10592 2010-01-07 10:53:36Z robin $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 # Command definition section for Microsoft Visual C++ 4.x/5.x,
 # Windows NT or Windows 95 platform.
 # Created 1997-05-22 by L. Peter Deutsch from msvc4/5 makefiles.
@@ -33,14 +34,17 @@ QI0f=
 QI0f=/QI0f
 
 # Define separate CCAUX command-line switch that must be at END of line.
+!if $(TDEBUG)!=0
+CCAUX_TAIL_DEBUG=/DEBUG
+!endif
 
 !if $(MSVC_VERSION) < 7
-CCAUX_TAIL= /link
+CCAUX_TAIL= /link $(COMPAUXLDFLAGS) $(CCAUX_TAIL_DEBUG)
 !else
 !ifdef WIN64
-CCAUX_TAIL= /link $(LINKLIBPATH)
+CCAUX_TAIL= /link $(COMPAUXLDFLAGS) $(LINKLIBPATH) $(CCAUX_TAIL_DEBUG)
 !else
-CCAUX_TAIL= /link /LIBPATH:"$(COMPBASE)\lib"
+CCAUX_TAIL= /link $(COMPAUXLDFLAGS) /LIBPATH:"$(COMPBASE)\lib" $(CCAUX_TAIL_DEBUG)
 !endif
 !endif
 
@@ -56,7 +60,7 @@ SH=
 
 # Define switches for the compilers.
 
-C_=
+C_=/c
 O_=-Fo
 RO_=$(O_)
 
@@ -150,7 +154,8 @@ CD=
 !if $(MSVC_VERSION) >= 8
 CPCH=/Fp$(GLOBJDIR)\gs.pch
 !else
-CPCH=/YX /Fp$(GLOBJDIR)\gs.pch
+# Precompiled headers don't work with #include MACRO used by freetype
+CPCH=
 !endif
 
 !ifndef DEBUGSYM
@@ -218,7 +223,7 @@ COMPILE_FOR_CONSOLE_EXE=
 GENOPT=$(CP) $(CD) $(CT) $(CS) $(WARNOPT) $(VC8WARN) /nologo $(CMT)
 
 CCFLAGS=$(PLATOPT) $(FPFLAGS) $(CPFLAGS) $(CFLAGS) $(XCFLAGS) $(MSINCFLAGS) $(SBRFLAGS)
-CC=$(COMP) /c $(CCFLAGS) @$(GLGENDIR)\ccf32.tr
+CC=$(COMP) /c $(CCFLAGS) $(COMPILE_FULL_OPTIMIZED) @$(GLGENDIR)\ccf32.tr
 CPP=$(COMPCPP) /c $(CCFLAGS) @$(GLGENDIR)\ccf32.tr
 !if $(MAKEDLL)
 WX=$(COMPILE_FOR_DLL)
@@ -235,14 +240,14 @@ ZM=
 
 # /Za disables the MS-specific extensions & enables ANSI mode.
 CC_WX=$(CC) $(WX)
-CC_=$(CC_WX) $(COMPILE_FULL_OPTIMIZED) /Za $(ZM)
-CC_D=$(CC_WX) $(COMPILE_WITH_FRAMES)
-CC_INT=$(CC_)
+CC_=$(CC_WX) /Za $(ZM)
 CC_NO_WARN=$(CC_)
 
 # Compiler for auxiliary programs
 
-CCAUX=$(COMPAUX) $(VC8WARN) $(CFLAGS)
+CCAUX=$(COMPAUX) $(VC8WARN) $(CCFLAGS) @$(GLGENDIR)\ccf32.tr
+CCAUX_=$(COMPAUX) $(VC8WARN) $(CCFLAGS) @$(GLGENDIR)\ccf32.tr
+CCAUX_NO_WARN=$(COMPAUX) $(CCFLAGS) @$(GLGENDIR)\ccf32.tr
 
 # Compiler for Windows programs.
 CCWINFLAGS=$(COMPILE_FULL_OPTIMIZED)

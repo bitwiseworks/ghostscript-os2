@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/*$Id: gxcldev.h 9288 2008-12-13 20:05:37Z leonardo $ */
+
 /* Internal definitions for Ghostscript command lists. */
 
 #ifndef gxcldev_INCLUDED
@@ -27,21 +29,33 @@
 #include "srlx.h"		/* ditto */
 #include "gsdcolor.h"
 
+#define CMM_THREAD_SAFE 0        
+
 /* ---------------- Commands ---------------- */
 
 /* Define the compression modes for bitmaps. */
 /*#define cmd_compress_none 0 *//* (implicit) */
 #define cmd_compress_rle 1
 #define cmd_compress_cfe 2
+#define cmd_compress_const 3
 #define cmd_mask_compress_any\
-  ((1 << cmd_compress_rle) | (1 << cmd_compress_cfe))
+  ((1 << cmd_compress_rle) | (1 << cmd_compress_cfe) | (1 << cmd_compress_const))
 /* Exported by gxclutil.c */
 void clist_rle_init(stream_RLE_state *ss);
 void clist_rld_init(stream_RLD_state *ss);
 void clist_cfe_init(stream_CFE_state *ss, int width, gs_memory_t *mem);
 void clist_cfd_init(stream_CFD_state *ss, int width, int height,
-		    gs_memory_t *mem);
+                    gs_memory_t *mem);
 
+/* Write out a block of data of arbitrary size and content to a      */
+/* specified band at the given offset PAST the last band in the page */
+/* Used for various data such as the icc profile table and the       */
+/* per band color_usage array                                        */
+/*                                                                   */
+/* If the size is not well defined, then the data itself should      */
+/* contain information for length or logical end-of-data.            */
+int cmd_write_pseudo_band(gx_device_clist_writer *cldev, unsigned char *pbuf,
+                          int data_size, int pseudo_band_offset);
 /*
  * A command always consists of an operation followed by operands;
  * the syntax of the operands depends on the operation.
@@ -59,15 +73,15 @@ typedef enum {
     cmd_op_misc = 0x00,		/* (see below) */
     cmd_opv_end_run = 0x00,	/* (nothing) */
     cmd_opv_set_tile_size = 0x01,   /* rs?(1)nry?(1)nrx?(1)depth(5, encoded), */
-				/* rep_width#, rep_height#, */
-				/* [, nreps_x#][, nreps_y #] */
-				/* [, rep_shift#] */
+                                /* rep_width#, rep_height#, */
+                                /* [, nreps_x#][, nreps_y #] */
+                                /* [, rep_shift#] */
     cmd_opv_set_tile_phase = 0x02,	/* x#, y# */
     cmd_opv_set_tile_bits = 0x03,	/* index#, offset#, <bits> */
     cmd_opv_set_bits = 0x04,	/* depth*4+compress, width#, height#, */
-				/* index#, offset#, <bits> */
+                                /* index#, offset#, <bits> */
     cmd_opv_set_tile_color = 0x05,	/* (nothing; next set/delta_color */
-				/* refers to tile) */
+                                /* refers to tile) */
     cmd_opv_set_misc = 0x06,
 #define cmd_set_misc_lop (0 << 6)	/* 00: lop_lsb(6), lop_msb# */
 #define cmd_set_misc_data_x (1 << 6)	/* 01: more(1)dx_lsb(5)[, dx_msb#] */
@@ -76,13 +90,6 @@ typedef enum {
 #define cmd_set_misc_halftone (3 << 6)	/* 11: type(6), num_comp# */
     cmd_opv_enable_lop = 0x07,	/* (nothing) */
     cmd_opv_disable_lop = 0x08,	/* (nothing) */
-    /* obsolete */
-    /* cmd_opv_set_ht_order = 0x09, */	/* component+1#[, cname#], */
-				/* width#, height#, raster#, */
-				/* shift#, num_levels#, num_bits#, */
-				/* order_procs_index */
-    /* obsolete */
-    /* cmd_opv_set_ht_data = 0x0a, */	/* n, n x (uint|gx_ht_bit|ushort) */
     cmd_opv_end_page = 0x0b,	/* (nothing) */
     cmd_opv_delta_color0 = 0x0c,	/* See cmd_put_color in gxclutil.c */
     cmd_opv_delta_color1 = 0x0d,	/* <<same as color0>> */
@@ -97,18 +104,18 @@ typedef enum {
     cmd_op_tile_rect = 0x60,	/* +dy2dh2, x#, w# | +0, rect# */
     cmd_op_tile_rect_short = 0x70,	/* +dh, dx, dw | +0, rect_short */
     cmd_op_tile_rect_tiny = 0x80,	/* +dw+0, rect_tiny | +dw+8 */
-    cmd_op_copy_mono = 0x90,	/* +compress, x#, y#, (w+data_x)#, */
-				/* h#, <bits> | */
+    cmd_op_copy_mono_planes = 0x90,	/* +compress, plane_height, x#, y#, (w+data_x)#, */
+                                        /* h#, <bits> | */
 #define cmd_copy_ht_color 4
-				/* +4+compress, x#, y#, (w+data_x)#, */
-				/* h#, <bits> | */
+                                /* +4+compress, x#, y#, (w+data_x)#, */
+                                /* h#, <bits> | */
 #define cmd_copy_use_tile 8
-				/* +8 (use tile), x#, y# | */
-				/* +12 (use tile), x#, y# */
+                                /* +8 (use tile), x#, y# | */
+                                /* +12 (use tile), x#, y# */
     cmd_op_copy_color_alpha = 0xa0,	/* (same as copy_mono, except: */
-				/* if color, ignore ht_color; */
-				/* if alpha & !use_tile, depth is */
-				/*   first operand) */
+                                /* if color, ignore ht_color; */
+                                /* if alpha & !use_tile, depth is */
+                                /*   first operand) */
     cmd_op_delta_tile_index = 0xb0,	/* +delta+8 */
     cmd_op_set_tile_index = 0xc0	/* +index[11:8], index[7:0] */
 } gx_cmd_op;
@@ -116,13 +123,13 @@ typedef enum {
 #define cmd_op_name_strings\
   "(misc)", "set_color[0]", "set_color[1]", "fill_rect",\
   "fill_rect_short", "fill_rect_tiny", "tile_rect", "tile_rect_short",\
-  "tile_rect_tiny", "copy_mono", "copy_color_alpha", "delta_tile_index",\
+  "tile_rect_tiny", "copy_mono_planes", "copy_color_alpha", "delta_tile_index",\
   "set_tile_index", "(misc2)", "(segment)", "(path)"
 
 #define cmd_misc_op_name_strings\
   "end_run", "set_tile_size", "set_tile_phase", "set_tile_bits",\
   "set_bits", "set_tile_color", "set_misc", "enable_lop",\
-  "disable_lop", "set_ht_order", "set_ht_data", "end_page",\
+  "disable_lop", "invalid", "invalid", "end_page",\
   "delta2_color0", "delta2_color1", "set_copy_color", "set_copy_alpha",
 
 #ifdef DEBUG
@@ -138,8 +145,15 @@ extern const char *const *const cmd_sub_op_names[16];
  */
 #define cmd_max_intsize(siz)\
   (((siz) * 8 + 6) / 7)
+
+/* NB: Assume that the largest size is for dash patterns. Larger that this
+ *     need to be read from the cbuf in a loop.
+ */
 #define cmd_largest_size\
-  (2 + (1 + cmd_max_dash) * sizeof(float))
+  (2 + sizeof(float)		/* dot_length */\
+     + sizeof(float)           /* offset */\
+     + (cmd_max_dash * sizeof(float))\
+  )
 
 /* ---------------- Command parameters ---------------- */
 
@@ -170,17 +184,32 @@ typedef struct {
  * Encoding for tile depth information.
  *
  * The cmd_opv_set_tile_size command code stores tile depth information
- * as part of the first byte following the command code. Only 5 bits of
- * this byte are available, which held the value depth - 1. The DeviceN
- * code requires depths of > 32 bits, so a new encoding is required. The
- * encoding selected represents depth information either directly (for
- * depth <= 15), or as a multiple of 8. The high-order bit determines
- * which is the case; it is cleared if the depth is represented directly,
- * and set if the depth is represented as a multiple of 8.
+ * as part of the first byte following the command code. Throughout
+ * the history of ghostscript, at least 3 different encodings have been used
+ * here.
+ *
+ * Originally, we used 5 bits of the byte to hold 'depth-1'.
+ *
+ * Later, the DeviceN code required it to cope with depths of >32 bits, so
+ * a new encoding was used that represented depth information either directly
+ * (for depth <= 15), or as a multiple of 8. The high-order bit determined
+ * which was the case; it was cleared if the depth is represented directly,
+ * and set if the depth was represented as a multiple of 8.
+ *
+ * #define cmd_depth_to_code(d)    ((d) > 0xf ? 0x10 | ((d) >> 3) : (d))
+ * #define cmd_code_to_depth(v)    \
+ *    (((v) & 0x10) != 0 ? ((v) & 0xf) << 3 : (v) & 0xf)
+ *
+ * With the advent of the planar device, we needed to use one fewer bit in
+ * the byte, so adopted the following encoding scheme:
+ *   depth:  1  2 (3) 4 (5) (6) (7) 8  12  16  24  32  40  48  56  64
+ *   value:  0  1 (2) 3 (4) (5) (6) 7   8   9  10  11  12  13  14  15
+ * The numbers in brackets represent depths that are represented, but aren't
+ * used by ghostscript (i.e. are available for future use).
  */
-#define cmd_depth_to_code(d)    ((d) > 0xf ? 0x10 | ((d) >> 3) : (d))
+#define cmd_depth_to_code(d)    ((d) > 8 ? 8 | (((d)-5) >> 3) : ((d)-1))
 #define cmd_code_to_depth(v)    \
-    (((v) & 0x10) != 0 ? ((v) & 0xf) << 3 : (v) & 0xf)
+    (((v) & 8) == 0 ? ((v) & 0x7)+1 : ((v) & 0x7 ? ((((v) & 7) << 3) + 8) : 12))
 
 /*
  * When we write bitmaps, we remove raster padding selectively:
@@ -200,8 +229,8 @@ typedef struct {
  * Return the total size of the bitmap.
  */
 uint clist_bitmap_bytes(uint width_bits, uint height,
-			int compression_mask,
-			uint * width_bytes, uint * raster);
+                        int compression_mask,
+                        uint * width_bytes, uint * raster);
 
 /*
  * For halftone cells, we always write an unreplicated bitmap, but we
@@ -216,8 +245,6 @@ typedef struct cmd_block_s {
     int band_min, band_max;
 #define cmd_band_end (-1)	/* end of band file */
     int64_t pos;		/* starting position in cfile */
-    gx_band_complexity_t band_complexity;  
-    
 } cmd_block;
 
 /* ---------------- Band state ---------------- */
@@ -238,15 +265,17 @@ struct gx_clist_state_s {
     gs_id pattern_id;		/* the last stored pattern id. */
     gs_int_point tile_phase;	/* most recent tile phase */
     gx_color_index tile_colors[2];	/* most recent tile colors */
+    gx_device_color tile_color_devn[2];  /* devn tile colors */
     gx_cmd_rect rect;		/* most recent rectangle */
     gs_logical_operation_t lop;	/* most recent logical op */
     short lop_enabled;		/* 0 = don't use lop, 1 = use lop, */
-				/* -1 is used internally */
+                                /* -1 is used internally */
     short clip_enabled;		/* 0 = don't clip, 1 = do clip, */
-				/* -1 is used internally */
+                                /* -1 is used internally */
     bool color_is_alpha;	/* for copy_color_alpha */
+    bool color_is_devn;     /* more overload of copy_color_alpha for devn support */ 
     uint known;			/* flags for whether this band */
-				/* knows various misc. parameters */
+                                /* knows various misc. parameters */
     /* We assign 'known' flags here from the high end; */
     /* gxclpath.h assigns them from the low end. */
 #define tile_params_known (1<<15)
@@ -255,24 +284,29 @@ struct gx_clist_state_s {
     /* Following are only used when writing */
     cmd_list list;		/* list of commands for band */
     /* Following are set when writing, read when reading */
-    gx_band_complexity_t band_complexity; 
-    gx_colors_used_t colors_used;
+    gx_color_usage_t color_usage;
 };
 
 /* The initial values for a band state */
 /*static const gx_clist_state cls_initial */
 #define cls_initial_values\
-	 { gx_no_color_index, gx_no_color_index },\
-	{ gx_dc_type_none },\
-	0, gx_no_bitmap_id, gs_no_id,\
-	 { 0, 0 }, { gx_no_color_index, gx_no_color_index },\
-	 { 0, 0, 0, 0 }, lop_default, 0, 0, 0, initial_known,\
-	{ 0, 0 }, { 0, 0 }, { 0, 0 }
+         { gx_no_color_index, gx_no_color_index },\
+        { gx_dc_type_none },\
+        0, gx_no_bitmap_id, gs_no_id,\
+         { 0, 0 }, { gx_no_color_index, gx_no_color_index },\
+        { {NULL}, {NULL} },\
+         { 0, 0, 0, 0 }, lop_default, 0, 0, 0, 0, initial_known,\
+        { 0, 0 }, /* cmd_list */\
+        { 0, /* or */\
+          0, /* slow rop */\
+          { { max_int, max_int }, /* p */ { min_int, min_int } /* q */ } /* trans_bbox */\
+        } /* color_usage */
 
 /* Define the size of the command buffer used for reading. */
+#define cbuf_size 4096
 /* This is needed to split up operations with a large amount of data, */
 /* primarily large copy_ operations. */
-#define cbuf_size 4096
+#define data_bits_size 4096
 
 /* ---------------- Driver procedures ---------------- */
 
@@ -283,11 +317,16 @@ dev_proc_copy_mono(clist_copy_mono);
 dev_proc_copy_color(clist_copy_color);
 dev_proc_copy_alpha(clist_copy_alpha);
 dev_proc_strip_tile_rectangle(clist_strip_tile_rectangle);
+dev_proc_strip_tile_rect_devn(clist_strip_tile_rect_devn);
 dev_proc_strip_copy_rop(clist_strip_copy_rop);
+dev_proc_strip_copy_rop2(clist_strip_copy_rop2);
 dev_proc_fill_trapezoid(clist_fill_trapezoid);
 dev_proc_fill_linear_color_trapezoid(clist_fill_linear_color_trapezoid);
 dev_proc_fill_linear_color_triangle(clist_fill_linear_color_triangle);
-dev_proc_pattern_manage(clist_pattern_manage);
+dev_proc_dev_spec_op(clist_dev_spec_op);
+dev_proc_copy_planes(clist_copy_planes);
+dev_proc_fill_rectangle_hl_color(clist_fill_rectangle_hl_color);
+dev_proc_copy_alpha_hl_color(clist_copy_alpha_hl_color);
 
 /* In gxclimag.c */
 dev_proc_fill_mask(clist_fill_mask);
@@ -365,13 +404,13 @@ int clist_VMerror_recover_flush(gx_device_clist_writer *, int);
 int cmd_put_params(gx_device_clist_writer *, gs_param_list *);
 
 /* Conditionally keep command statistics. */
-#ifdef DEBUG
-int cmd_count_op(int op, uint size);
+#if defined(DEBUG) && !defined(GS_THREADSAFE)
+int cmd_count_op(int op, uint size, const gs_memory_t *mem);
 void cmd_uncount_op(int op, uint size);
-void cmd_print_stats(void);
+void cmd_print_stats(const gs_memory_t *);
 #  define cmd_count_add1(v) (v++)
 #else
-#  define cmd_count_op(op, size) (op)
+#  define cmd_count_op(op, size, mem) (op)
 #  define cmd_uncount_op(op, size) DO_NOTHING
 #  define cmd_count_add1(v) DO_NOTHING
 #endif
@@ -380,7 +419,7 @@ void cmd_print_stats(void);
 /* and allocate space for its data. */
 byte *cmd_put_list_op(gx_device_clist_writer * cldev, cmd_list * pcl, uint size);
 
-/* Request a space in the buffer. 
+/* Request a space in the buffer.
    Writes out the buffer if necessary.
    Returns the size of available space. */
 int cmd_get_buffer_space(gx_device_clist_writer * cldev, gx_clist_state * pcls, uint size);
@@ -395,11 +434,11 @@ byte *cmd_put_op(gx_device_clist_writer * cldev, gx_clist_state * pcls, uint siz
 #define set_cmd_put_op(dp, cldev, pcls, op, csize)\
   ( (dp = cmd_put_op(cldev, pcls, csize)) == 0 ?\
       (cldev)->error_code :\
-    (*dp = cmd_count_op(op, csize), 0) )
+    (*dp = cmd_count_op(op, csize, cldev->memory), 0) )
 
 /* Add a command for all bands or a range of bands. */
 byte *cmd_put_range_op(gx_device_clist_writer * cldev, int band_min,
-		       int band_max, uint size);
+                       int band_max, uint size);
 
 #define cmd_put_all_op(cldev, size)\
   cmd_put_range_op(cldev, 0, (cldev)->nbands - 1, size)
@@ -407,7 +446,7 @@ byte *cmd_put_range_op(gx_device_clist_writer * cldev, int band_min,
 #define set_cmd_put_range_op(dp, cldev, op, bmin, bmax, csize)\
   ( (dp = cmd_put_range_op(cldev, bmin, bmax, csize)) == 0 ?\
       (cldev)->error_code :\
-    (*dp = cmd_count_op(op, csize), 0) )
+    (*dp = cmd_count_op(op, csize, (cldev)->memory), 0) )
 #define set_cmd_put_all_op(dp, cldev, op, csize)\
   set_cmd_put_range_op(dp, cldev, op, 0, (cldev)->nbands - 1, csize)
 
@@ -461,10 +500,13 @@ typedef struct {
     byte set_op;
     byte delta_op;
     bool tile_color;
+    bool devn;
 } clist_select_color_t;
+
 extern const clist_select_color_t
       clist_select_color0, clist_select_color1, clist_select_tile_color0,
-      clist_select_tile_color1;
+      clist_select_tile_color1, clist_select_devn_color0, 
+      clist_select_devn_color1;
 
 /* See comments in gxclutil.c */
 int cmd_put_color(gx_device_clist_writer * cldev, gx_clist_state * pcls,
@@ -480,14 +522,14 @@ extern const gx_color_index cmd_delta_offsets[];	/* In gxclutil.c */
 
 /* Put out a command to set the tile colors. */
 int cmd_set_tile_colors(gx_device_clist_writer *cldev, gx_clist_state * pcls,
-			gx_color_index color0, gx_color_index color1);
+                        gx_color_index color0, gx_color_index color1);
 
 /* Put out a command to set the tile phase. */
 int
 cmd_set_tile_phase_generic(gx_device_clist_writer * cldev, gx_clist_state * pcls,
-		   int px, int py, bool all_bands);
+                   int px, int py, bool all_bands);
 int cmd_set_tile_phase(gx_device_clist_writer *cldev, gx_clist_state * pcls,
-		       int px, int py);
+                       int px, int py);
 
 /* Enable or disable the logical operation. */
 int cmd_put_enable_lop(gx_device_clist_writer *, gx_clist_state *, int);
@@ -514,16 +556,16 @@ int cmd_put_enable_clip(gx_device_clist_writer *, gx_clist_state *, int);
 
 /* Write a command to set the logical operation. */
 int cmd_set_lop(gx_device_clist_writer *, gx_clist_state *,
-		gs_logical_operation_t);
+                gs_logical_operation_t);
 
 /* Disable (if default) or enable the logical operation, setting it if */
 /* needed. */
 int cmd_update_lop(gx_device_clist_writer *, gx_clist_state *,
-		   gs_logical_operation_t);
+                   gs_logical_operation_t);
 
 /*
  * For dividing up an operation into bands, use the control pattern :
- * 
+ *
  *   cmd_rects_enum_t re;
  *   RECT_ENUM_INIT(re, ry, rheight);
  *   do {
@@ -551,7 +593,7 @@ int cmd_update_lop(gx_device_clist_writer *, gx_clist_state *,
  * and then restart emitting the entire band.
  * Note that re.y must not change when restarting the band.
  *
- * The band processing code may wrap a writing operation with a pattern like this : 
+ * The band processing code may wrap a writing operation with a pattern like this :
  *
  * 	do {
  *	    code = operation(...);
@@ -560,7 +602,7 @@ int cmd_update_lop(gx_device_clist_writer *, gx_clist_state *,
  *	    goto error_in_rect;
  *
  *
- * This will 
+ * This will
  * perform local first-stage VMerror recovery, by waiting for some memory to
  * become free and then retrying the failed operation starting at the
  * TRY_RECT. If local recovery is unsuccessful, the local recovery code
@@ -572,7 +614,7 @@ int cmd_update_lop(gx_device_clist_writer *, gx_clist_state *,
  * VMerror recovery.  In such cases, the recursive call must not attempt
  * second-stage VMerror recovery, since the caller would have no way of
  * knowing that the writer state had been reset.  Such recursive calls
- * should be wrapped in 
+ * should be wrapped in
  *
  *  ++cdev->driver_call_nesting;  { ... } --cdev->driver_call_nesting;
  *
@@ -589,30 +631,29 @@ int cmd_update_lop(gx_device_clist_writer *, gx_clist_state *,
  */
 
 typedef struct cmd_rects_enum_s {
-	int y;
-	int height;
-	int yend;
-	int band_height;
-	int band_code;
-	int band;
-	gx_clist_state *pcls;
-	int band_end;
-	int nbands;
+        int y;
+        int height;
+        int yend;
+        int band_height;
+        int band_code;
+        int band;
+        gx_clist_state *pcls;
+        int band_end;
+        int nbands;
 } cmd_rects_enum_t;
 
 #define RECT_ENUM_INIT(re, yvar, heightvar)\
-	re.y = yvar;\
-	re.height = heightvar;\
-	re.yend = re.y + re.height;\
-	re.band_height = cdev->page_band_height;\
-	re.nbands = (re.yend - re.y + re.band_height - 1) / re.band_height;
+        re.y = yvar;\
+        re.height = heightvar;\
+        re.yend = re.y + re.height;\
+        re.band_height = cdev->page_band_height;\
+        re.nbands = (re.yend - re.y + re.band_height - 1) / re.band_height;
 
 #define RECT_STEP_INIT(re)\
-	    re.band = re.y / re.band_height;\
-	    re.pcls = cdev->states + re.band;\
-	    re.band_end = (re.band + 1) * re.band_height;\
-	    re.height = min(re.band_end, re.yend) - re.y;
-
+            re.band = re.y / re.band_height;\
+            re.pcls = cdev->states + re.band;\
+            re.band_end = (re.band + 1) * re.band_height;\
+            re.height = min(re.band_end, re.yend) - re.y;
 
 #define RECT_RECOVER(codevar) (codevar < 0 && (codevar = clist_VMerror_recover(cdev, codevar)) >= 0)
 #define SET_BAND_CODE(codevar) (re.band_code = codevar)
@@ -620,13 +661,15 @@ typedef struct cmd_rects_enum_s {
 /* Read a transformation matrix. */
 const byte *cmd_read_matrix(gs_matrix * pmat, const byte * cbp);
 
-
 /* ------ Exported by gxclrect.c ------ */
 
 /* Put out a fill or tile rectangle command. */
 int cmd_write_rect_cmd(gx_device_clist_writer * cldev, gx_clist_state * pcls,
-		       int op, int x, int y, int width, int height);
-
+                       int op, int x, int y, int width, int height);
+/* Put out a fill with a devn color */
+int cmd_write_rect_hl_cmd(gx_device_clist_writer * cldev, 
+                             gx_clist_state * pcls, int op, int x, int y, 
+                             int width, int height, bool extended_command);
 /* Put out a fill or tile rectangle command for fillpage. */
 int cmd_write_page_rect_cmd(gx_device_clist_writer * cldev, int op);
 
@@ -655,9 +698,9 @@ int cmd_write_page_rect_cmd(gx_device_clist_writer * cldev, int op);
 #define decompress_spread 0x200
 
 int cmd_put_bits(gx_device_clist_writer * cldev, gx_clist_state * pcls,
-		 const byte * data, uint width_bits, uint height,
-		 uint raster, int op_size, int compression_mask,
-		 byte ** pdp, uint * psize);
+                 const byte * data, uint width_bits, uint height,
+                 uint raster, int op_size, int compression_mask,
+                 byte ** pdp, uint * psize);
 
 /*
  * Put out commands for a color map (transfer function, black generation, or
@@ -687,14 +730,14 @@ int cmd_put_color_map(gx_device_clist_writer * cldev,
  * procedure primarily for readability.)
  */
 int clist_change_tile(gx_device_clist_writer * cldev, gx_clist_state * pcls,
-		      const gx_strip_bitmap * tiles, int depth);
+                      const gx_strip_bitmap * tiles, int depth);
 
 /*
  * Change "tile" for clist_copy_*.  Only uses tiles->{data, id, raster,
  * rep_width, rep_height}.  tiles->[rep_]shift must be zero.
  */
 int clist_change_bits(gx_device_clist_writer * cldev, gx_clist_state * pcls,
-		      const gx_strip_bitmap * tiles, int depth);
+                      const gx_strip_bitmap * tiles, int depth);
 
 /* ------ Exported by gxclimag.c ------ */
 
@@ -702,13 +745,13 @@ int clist_change_bits(gx_device_clist_writer * cldev, gx_clist_state * pcls,
  * Write out any necessary color mapping data.
  */
 int cmd_put_color_mapping(gx_device_clist_writer * cldev,
-				  const gs_imager_state * pis);
+                                  const gs_imager_state * pis);
 /*
  * Add commands to represent a full (device) halftone.
  * (This routine should probably be in some other module.)
  */
 int cmd_put_halftone(gx_device_clist_writer * cldev,
-		     const gx_device_halftone * pdht);
+                     const gx_device_halftone * pdht);
 
 /* ------ Exported by gxclrast.c for gxclread.c ------ */
 
@@ -718,21 +761,22 @@ int cmd_put_halftone(gx_device_clist_writer * cldev,
  */
 typedef enum {
     playback_action_render,
+    playback_action_render_no_pdf14,
     playback_action_setup
 } clist_playback_action;
 
 /* Play back and rasterize one band. */
 int clist_playback_band(clist_playback_action action,
-			gx_device_clist_reader *cdev,
-			stream *s, gx_device *target,
-			int x0, int y0, gs_memory_t *mem);
+                        gx_device_clist_reader *cdev,
+                        stream *s, gx_device *target,
+                        int x0, int y0, gs_memory_t *mem);
 
 /* Playback the band file, taking the indicated action w/ its contents. */
-int clist_playback_file_bands(clist_playback_action action, 
-			  gx_device_clist_reader *crdev,
-			  gx_band_page_info_t *page_info, gx_device *target,
-			  int band_first, int band_last, int x0, int y0);
-#ifdef DEBUG 
+int clist_playback_file_bands(clist_playback_action action,
+                          gx_device_clist_reader *crdev,
+                          gx_band_page_info_t *page_info, gx_device *target,
+                          int band_first, int band_last, int x0, int y0);
+#ifdef DEBUG
 int64_t clist_file_offset(const stream_state *st, uint buffer_offset);
 int top_up_offset_map(stream_state * st, const byte *buf, const byte *ptr, const byte *end);
 #endif
@@ -741,5 +785,32 @@ int clist_writer_push_no_cropping(gx_device_clist_writer *cdev);
 int clist_writer_push_cropping(gx_device_clist_writer *cdev, int ry, int rheight);
 int clist_writer_pop_cropping(gx_device_clist_writer *cdev);
 int clist_writer_check_empty_cropping_stack(gx_device_clist_writer *cdev);
+int clist_read_icctable(gx_device_clist_reader *crdev);
+int clist_read_color_usage_array(gx_device_clist_reader *crdev);
+
+/* Special write out for the serialized icc profile table */
+
+int cmd_write_icctable(gx_device_clist_writer * cldev, unsigned char *pbuf, int data_size);
+
+/* Enumeration of psuedo band offsets for extra c-list data.
+   This includes the ICC profile table and and color_usage and
+   may later include compressed image data */
+
+typedef enum {
+
+    COLOR_USAGE_OFFSET = 1,
+    ICC_TABLE_OFFSET = 2
+
+} psuedoband_offset;
+
+/* Enumeration of compositor actions for band cropping. */
+
+typedef enum {
+    ALLBANDS = 0,
+    PUSHCROP,
+    POPCROP,
+    CURRBANDS,
+    SAMEAS_PUSHCROP_BUTNOPUSH
+} cl_crop_action;
 
 #endif /* gxcldev_INCLUDED */

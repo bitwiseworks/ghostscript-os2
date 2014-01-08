@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gstype1.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Client interface to Adobe Type 1 font routines */
 
 #ifndef gstype1_INCLUDED
@@ -34,9 +36,9 @@ typedef struct gs_font_type1_s gs_font_type1;
 struct gs_type1_data_s;
 #endif
 int gs_type1_interp_init(gs_type1_state * pcis, gs_imager_state * pis,
-			 gx_path * ppath, const gs_log2_scale_point * pscale,
-			 const gs_log2_scale_point * psubpixels, bool no_grid_fitting, 
-			 int paint_type, gs_font_type1 * pfont);
+                         gx_path * ppath, const gs_log2_scale_point * pscale,
+                         const gs_log2_scale_point * psubpixels, bool no_grid_fitting,
+                         int paint_type, gs_font_type1 * pfont);
 void gs_type1_set_callback_data(gs_type1_state *pcis, void *callback_data);
 void gs_type1_set_lsb(gs_type1_state * pcis, const gs_point * psbpt);
 void gs_type1_set_width(gs_type1_state * pcis, const gs_point * pwpt);
@@ -44,8 +46,8 @@ void gs_type1_set_width(gs_type1_state * pcis, const gs_point * pwpt);
 /* Backward compatibility */
 #define gs_type1_init(pcis, penum, psbpt, charpath_flag, paint_type, pfont)\
   (gs_type1_interp_init(pcis, (gs_imager_state *)((penum)->pgs),\
-			(penum)->pgs->path, &(penum)->log2_current_scale,\
-			charpath_flag, paint_type, pfont) |\
+                        (penum)->pgs->path, &(penum)->log2_current_scale,\
+                        charpath_flag, paint_type, pfont) |\
    ((psbpt) == 0 ? 0 : (gs_type1_set_lsb(pcis, psbpt), 0)))
 /*
  * Continue interpreting a (Type 1) CharString.  If str != 0, it is taken as
@@ -140,9 +142,9 @@ typedef enum {
     /* Commands not recognized in Type 1 charstrings. */
 
 #define case_c1_undefs\
-	case 16: case 18: case 19:\
-	case 20: case 23: case 24:\
-	case 25: case 26: case 27: case 28: case 29
+        case 16: case 18: case 19:\
+        case 20: case 23: case 24:\
+        case 25: case 26: case 27: case 28: case 29
 
     /* Commands only recognized in Type 2 charstrings. */
 
@@ -161,7 +163,7 @@ typedef enum {
     /* Commands not recognized in Type 2 charstrings. */
 
 #define case_c2_undefs\
-	case 9: case 13
+        case 9: case 13
 
 } char_command;
 

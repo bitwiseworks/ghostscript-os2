@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxbcache.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Bitmap cache structures */
 
 #ifndef gxbcache_INCLUDED
@@ -39,12 +41,12 @@ typedef struct gx_cached_bits_head_s {
 #define cb_head_is_free(cbh) ((cbh)->depth == 0)
 #define cb_head_set_free(cbh) ((cbh)->depth = 0)
 #define gx_cached_bits_common\
-	gx_cached_bits_head head;	/* must be first */\
-		/* The rest of the entry is an abbreviation of */\
-		/* gx_strip_bitmap, sans data. */\
-	ushort width, height, shift;\
-	ushort raster;\
-	gx_bitmap_id id
+        gx_cached_bits_head head;	/* must be first */\
+                /* The rest of the entry is an abbreviation of */\
+                /* gx_strip_bitmap, sans data. */\
+        ushort width, height, shift;\
+        ushort raster;\
+        gx_bitmap_id id
 /* Define aliases for head members. */
 #define cb_depth head.depth
 /* Define aliases for common members formerly in the head. */
@@ -78,11 +80,11 @@ struct gx_bits_cache_chunk_s {
 /* ---------------- Bitmap cache ---------------- */
 
 #define gx_bits_cache_common\
-	gx_bits_cache_chunk *chunks;	/* current chunk in circular list */\
-	uint cnext;			/* rover for allocating entries */\
-					/* in current chunk */\
-	uint bsize;			/* total # of bytes for all entries */\
-	uint csize		/* # of entries */
+        gx_bits_cache_chunk *chunks;	/* current chunk in circular list */\
+        uint cnext;			/* rover for allocating entries */\
+                                        /* in current chunk */\
+        uint bsize;			/* total # of bytes for all entries */\
+        uint csize		/* # of entries */
 typedef struct gx_bits_cache_s {
     gx_bits_cache_common;
 } gx_bits_cache;
@@ -109,11 +111,11 @@ int gx_bits_cache_alloc(gx_bits_cache *, ulong, gx_cached_bits_head **);
 
 /* Shorten an entry by a given amount. */
 void gx_bits_cache_shorten(gx_bits_cache *, gx_cached_bits_head *,
-			   uint, gx_bits_cache_chunk *);
+                           uint, gx_bits_cache_chunk *);
 
 /* Free an entry.  The caller is responsible for removing the entry */
 /* from any other structures (like a hash table). */
 void gx_bits_cache_free(gx_bits_cache *, gx_cached_bits_head *,
-			gx_bits_cache_chunk *);
+                        gx_bits_cache_chunk *);
 
 #endif /* gxbcache_INCLUDED */

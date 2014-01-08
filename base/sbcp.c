@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: sbcp.c 8250 2007-09-25 13:31:24Z giles $ */
+
 /* BCP and TBCP filters */
 #include "stdio_.h"
 #include "strimpl.h"
@@ -35,7 +37,7 @@
 /* Process a buffer */
 static int
 s_xBCPE_process(stream_state * st, stream_cursor_read * pr,
-		stream_cursor_write * pw, bool last, const byte * escaped)
+                stream_cursor_write * pw, bool last, const byte * escaped)
 {
     const byte *p = pr->ptr;
     const byte *rlimit = pr->limit;
@@ -45,19 +47,19 @@ s_xBCPE_process(stream_state * st, stream_cursor_read * pr,
     const byte *end = p + min(rcount, wcount);
 
     while (p < end) {
-	byte ch = *++p;
+        byte ch = *++p;
 
-	if (ch <= 31 && escaped[ch]) {
-	    if (p == rlimit) {
-		p--;
-		break;
-	    }
-	    *++q = CtrlA;
-	    ch ^= 0x40;
-	    if (--wcount < rcount)
-		end--;
-	}
-	*++q = ch;
+        if (ch <= 31 && escaped[ch]) {
+            if (p == rlimit) {
+                p--;
+                break;
+            }
+            *++q = CtrlA;
+            ch ^= 0x40;
+            if (--wcount < rcount)
+                end--;
+        }
+        *++q = ch;
     }
     pr->ptr = p;
     pw->ptr = q;
@@ -67,24 +69,24 @@ s_xBCPE_process(stream_state * st, stream_cursor_read * pr,
 /* Actual process procedures */
 static int
 s_BCPE_process(stream_state * st, stream_cursor_read * pr,
-	       stream_cursor_write * pw, bool last)
+               stream_cursor_write * pw, bool last)
 {
     static const byte escaped[32] =
     {
-	0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0
+        0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0
     };
 
     return s_xBCPE_process(st, pr, pw, last, escaped);
 }
 static int
 s_TBCPE_process(stream_state * st, stream_cursor_read * pr,
-		stream_cursor_write * pw, bool last)
+                stream_cursor_write * pw, bool last)
 {
     static const byte escaped[32] =
     {
-	0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0
+        0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0
     };
 
     return s_xBCPE_process(st, pr, pw, last, escaped);
@@ -116,7 +118,7 @@ s_BCPD_init(stream_state * st)
 /* Process a buffer */
 static int
 s_xBCPD_process(stream_state * st, stream_cursor_read * pr,
-		stream_cursor_write * pw, bool last, bool tagged)
+                stream_cursor_write * pw, bool last, bool tagged)
 {
     stream_BCPD_state *const ss = (stream_BCPD_state *) st;
     const byte *p = pr->ptr;
@@ -128,93 +130,93 @@ s_xBCPD_process(stream_state * st, stream_cursor_read * pr,
     bool escaped = ss->escaped;
 
     for (;;) {
-	byte ch;
+        byte ch;
 
-	if (copy_count) {
-	    if (q == wlimit) {
-		status = (p < rlimit ? 1 : 0);
-		break;
-	    }
-	    *++q = *++(ss->copy_ptr);
-	    copy_count--;
-	    continue;
-	}
-	if (p == rlimit) {
-	    status = 0;
-	    break;
-	}
-	ch = *++p;
-	if (ch <= 31)
-	    switch (ch) {
-		case CtrlA:
-		    if (escaped) {
-			status = ERRC;
-			goto out;
-		    }
-		    escaped = true;
-		    continue;
-		case CtrlC:
-		    status = (*ss->signal_interrupt) (st);
-		    if (status < 0)
-			goto out;
-		    continue;
-		case CtrlD:
-		    if (escaped) {
-			status = ERRC;
-			goto out;
-		    }
-		    status = EOFC;
-		    goto out;
-		case CtrlE:
-		    continue;
-		case CtrlQ:
-		    continue;
-		case CtrlS:
-		    continue;
-		case CtrlT:
-		    status = (*ss->request_status) (st);
-		    if (status < 0)
-			goto out;
-		    continue;
-		case CtrlBksl:
-		    continue;
-	    }
-	if (q == wlimit) {
-	    p--;
-	    status = 1;
-	    break;
-	}
-	if (escaped) {
-	    escaped = false;
-	    switch (ch) {
-		case '[':
-		    if (!tagged) {
-			status = ERRC;
-			goto out;
-		    }
-		    /* falls through */
-		case 'A':
-		case 'C':
-		case 'D':
-		case 'E':
-		case 'Q':
-		case 'S':
-		case 'T':
-		case '\\':
-		    ch ^= 0x40;
-		    break;
-		case 'M':
-		    if (!tagged) {
-			status = ERRC;
-			goto out;
-		    }
-		    continue;
-		default:
-		    status = ERRC;
-		    goto out;
-	    }
-	}
-	*++q = ch;
+        if (copy_count) {
+            if (q == wlimit) {
+                status = (p < rlimit ? 1 : 0);
+                break;
+            }
+            *++q = *++(ss->copy_ptr);
+            copy_count--;
+            continue;
+        }
+        if (p == rlimit) {
+            status = 0;
+            break;
+        }
+        ch = *++p;
+        if (ch <= 31)
+            switch (ch) {
+                case CtrlA:
+                    if (escaped) {
+                        status = ERRC;
+                        goto out;
+                    }
+                    escaped = true;
+                    continue;
+                case CtrlC:
+                    status = (*ss->signal_interrupt) (st);
+                    if (status < 0)
+                        goto out;
+                    continue;
+                case CtrlD:
+                    if (escaped) {
+                        status = ERRC;
+                        goto out;
+                    }
+                    status = EOFC;
+                    goto out;
+                case CtrlE:
+                    continue;
+                case CtrlQ:
+                    continue;
+                case CtrlS:
+                    continue;
+                case CtrlT:
+                    status = (*ss->request_status) (st);
+                    if (status < 0)
+                        goto out;
+                    continue;
+                case CtrlBksl:
+                    continue;
+            }
+        if (q == wlimit) {
+            p--;
+            status = 1;
+            break;
+        }
+        if (escaped) {
+            escaped = false;
+            switch (ch) {
+                case '[':
+                    if (!tagged) {
+                        status = ERRC;
+                        goto out;
+                    }
+                    /* falls through */
+                case 'A':
+                case 'C':
+                case 'D':
+                case 'E':
+                case 'Q':
+                case 'S':
+                case 'T':
+                case '\\':
+                    ch ^= 0x40;
+                    break;
+                case 'M':
+                    if (!tagged) {
+                        status = ERRC;
+                        goto out;
+                    }
+                    continue;
+                default:
+                    status = ERRC;
+                    goto out;
+            }
+        }
+        *++q = ch;
     }
   out:ss->copy_count = copy_count;
     ss->escaped = escaped;
@@ -226,13 +228,13 @@ s_xBCPD_process(stream_state * st, stream_cursor_read * pr,
 /* Actual process procedures */
 static int
 s_BCPD_process(stream_state * st, stream_cursor_read * pr,
-	       stream_cursor_write * pw, bool last)
+               stream_cursor_write * pw, bool last)
 {
     return s_xBCPD_process(st, pr, pw, last, false);
 }
 static int
 s_TBCPD_process(stream_state * st, stream_cursor_read * pr,
-		stream_cursor_write * pw, bool last)
+                stream_cursor_write * pw, bool last)
 {
     return s_xBCPD_process(st, pr, pw, last, true);
 }

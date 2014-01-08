@@ -49,10 +49,10 @@ static gx_device_procs mag16_procs =
     pc_4bit_map_rgb_color, pc_4bit_map_color_rgb);
 gx_device_printer far_data gs_mag16_device =
   prn_device(mag16_procs, "mag16",
-	(int)WIDTH_10THS, (int)HEIGHT_10THS,
-	DPI, DPI,
-	0,0,0,0,			/* margins */
-	4, mag_4bit_print_page);
+        (int)WIDTH_10THS, (int)HEIGHT_10THS,
+        DPI, DPI,
+        0,0,0,0,			/* margins */
+        4, mag_4bit_print_page);
 
 /* 8-bit planar color. */
 
@@ -61,10 +61,10 @@ static gx_device_procs mag256_procs =
     pc_8bit_map_rgb_color, pc_8bit_map_color_rgb);
 gx_device_printer far_data gs_mag256_device =
   prn_device(mag256_procs, "mag256",
-	(int)WIDTH_10THS, (int)HEIGHT_10THS,
-	DPI, DPI,
-	0,0,0,0,			/* margins */
-	8, mag_8bit_print_page);
+        (int)WIDTH_10THS, (int)HEIGHT_10THS,
+        DPI, DPI,
+        0,0,0,0,			/* margins */
+        8, mag_8bit_print_page);
 
 /* ------ Private definitions ------ */
 
@@ -121,12 +121,12 @@ mag_print_page(gx_device_printer *pdev, int depth, FILE *file)
     long pixel_bytes;
     int y;
 
-    row_buffer = (byte *)gs_malloc(gs_lib_ctx_get_non_gc_memory_t(), raster,17,"mag_row");
-    flag = (byte *)gs_malloc(gs_lib_ctx_get_non_gc_memory_t(), flag_size,2,"mag_flag");
+    row_buffer = (byte *)gs_malloc(pdev->memory->non_gc_memory, raster,17,"mag_row");
+    flag = (byte *)gs_malloc(pdev->memory->non_gc_memory, flag_size,2,"mag_flag");
     flag_prev = flag + flag_size;
-    flag_a = (byte *)gs_malloc(gs_lib_ctx_get_non_gc_memory_t(), flag_a_bytes,1,"mag_flag_a");
-    flag_b = (byte *)gs_malloc(gs_lib_ctx_get_non_gc_memory_t(), flag_b_size,1,"mag_flag_b");
-    pixel = (byte *)gs_malloc(gs_lib_ctx_get_non_gc_memory_t(), width,1,"mag_pixel");
+    flag_a = (byte *)gs_malloc(pdev->memory->non_gc_memory, flag_a_bytes,1,"mag_flag_a");
+    flag_b = (byte *)gs_malloc(pdev->memory->non_gc_memory, flag_b_size,1,"mag_flag_b");
+    pixel = (byte *)gs_malloc(pdev->memory->non_gc_memory, width,1,"mag_pixel");
     if (row_buffer == 0 || flag == 0 ||
         flag_a == 0 || flag_b == 0 || pixel == 0) {
       code = -1;
@@ -137,8 +137,8 @@ mag_print_page(gx_device_printer *pdev, int depth, FILE *file)
 
     if (user == 0) user = "Unknown";
     strcpy(check,magic);
-    sprintf(check+strlen(check),"%-18s",user);
-    sprintf(check+31," Ghostscript with %s driver\x1a", pdev->dname);
+    gs_sprintf(check+strlen(check),"%-18s",user);
+    gs_sprintf(check+31," Ghostscript with %s driver\x1a", pdev->dname);
 
     /* check sizes of flag and pixel data. */
     pixel_bytes = 0;
@@ -197,7 +197,7 @@ mag_print_page(gx_device_printer *pdev, int depth, FILE *file)
         f2 = f0; f0 = f1; f1 = f2;
       }
       if (next_bit) fputc(flag_a[0],file);
-      
+
       /* flag B */
       memset(f0,0,flag_size);
       for (y=0;y<height;y++) {
@@ -216,15 +216,15 @@ mag_print_page(gx_device_printer *pdev, int depth, FILE *file)
    }
 
 mag_done:
-    if (row_buffer) gs_free(gs_lib_ctx_get_non_gc_memory_t(), (char *)row_buffer, raster, 17, "mag_row");
-    if (flag) gs_free(gs_lib_ctx_get_non_gc_memory_t(), (char *)flag,flag_size,2,"mag_flag");
-    if (flag_a) gs_free(gs_lib_ctx_get_non_gc_memory_t(), (char *)flag_a,flag_a_bytes,1,"mag_flag_a");
-    if (flag_b) gs_free(gs_lib_ctx_get_non_gc_memory_t(), (char *)flag_b,flag_b_size,1,"mag_flag_b");
-    if (pixel) gs_free(gs_lib_ctx_get_non_gc_memory_t(), (char *)pixel,width,1,"mag_pixel");
+    if (row_buffer) gs_free(pdev->memory->non_gc_memory, (char *)row_buffer, raster, 17, "mag_row");
+    if (flag) gs_free(pdev->memory->non_gc_memory, (char *)flag,flag_size,2,"mag_flag");
+    if (flag_a) gs_free(pdev->memory->non_gc_memory, (char *)flag_a,flag_a_bytes,1,"mag_flag_a");
+    if (flag_b) gs_free(pdev->memory->non_gc_memory, (char *)flag_b,flag_b_size,1,"mag_flag_b");
+    if (pixel) gs_free(pdev->memory->non_gc_memory, (char *)pixel,width,1,"mag_pixel");
 
     fflush(file);
 
-	return code;
+        return code;
 }
 
 /* make flag and pixel data */
@@ -252,9 +252,9 @@ mag_make_flag(gx_device_printer *pdev,int line_no, int depth,
   }
 
 #define check_pixel(a,b) \
-	(x >= (a) && line_no >= (b) && \
+        (x >= (a) && line_no >= (b) && \
      *(row[0]+x)   == *(row[b] + (x - (a))) && \
-	 *(row[0]+x+1) == *(row[b] + (x+1 - (a))))
+         *(row[0]+x+1) == *(row[b] + (x+1 - (a))))
 #define set_flag(v) \
     ((x & 2) ? (flag[x>>2] |= (v)) : (flag[x>>2] = (v)<<4))
 
@@ -293,7 +293,7 @@ mag_comp_flag(gx_device_printer *pdev, int size,byte *f0,byte *f1,
 {
   byte mask = 0x80>>next_bit;
   byte *pflag_b = flag_b;
-  
+
   for ( ;size>0 ; size--) {
     byte b = *f0 ^ *f1;
     if (mask == 0x80) {
@@ -322,7 +322,7 @@ mag_write_palette(gx_device_printer *pdev,int depth)
   uint i;
   gx_color_value rgb[3];
   int max_index = 1 << depth;
-  
+
   for ( i = 0; i < max_index; i++ ) {
     byte grb[3];
     (pdev->orig_procs.map_color_rgb)((gx_device *)pdev, (gx_color_index)i, rgb);

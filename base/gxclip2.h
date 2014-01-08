@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxclip2.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Tiled mask clipping device and interface */
 
 #ifndef gxclip2_INCLUDED
@@ -36,9 +38,13 @@ typedef gx_device_mask_clip gx_device_tile_clip;
  * We supply an explicit phase.
  */
 int tile_clip_initialize(gx_device_tile_clip * cdev,
-			 const gx_strip_bitmap * tiles,
-			 gx_device * tdev, int px, int py,
-			 gs_memory_t *mem);
+                         const gx_strip_bitmap * tiles,
+                         gx_device * tdev, int px, int py);
+
+/*
+ * Free the tile clipping device.
+ */
+void tile_clip_free(gx_device_tile_clip *cdev);
 
 /*
  * Set the phase of the tile -- used in the tiling loop when

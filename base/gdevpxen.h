@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gdevpxen.h 9735 2009-05-10 20:56:12Z henrys $ */
+
 /* Enumerated attribute value definitions for PCL XL */
 
 #ifndef gdevpxen_INCLUDED
@@ -65,6 +67,7 @@ typedef enum {
     eGray,
     eRGB,
     eSRGB = 6,		/* 2.0, Note: HP's value is 6 not the expected 3 */
+    eGraySub = 7,	/* 3.0+ */
     pxeColorSpace_next
 } pxeColorSpace_t;
 
@@ -190,39 +193,78 @@ typedef enum {
     eJIS16K,                     /* 2.1 */
     eJISExec,                    /* 2.1 */
     eDefaultPaperSize = 96,     /* 2.1 */
+    eB6JIS = 201,               /* non-standard, Ricoh printers */
+    eC6Envelope = 202,          /* non-standard, Ricoh printers */
+    e8Kai  = 203,               /* non-standard, Ricoh printers */
+    e16Kai = 204,               /* non-standard, Ricoh printers */
+    e12x18 = 205,               /* non-standard, Ricoh printers */
+    e13x19_2 = 212,             /* non-standard, Ricoh printers */
+    e13x19 = 213,               /* non-standard, Ricoh printers */
+    e12_6x19_2 = 214,           /* non-standard, Ricoh printers */
+    e12_6x18_5 = 215,           /* non-standard, Ricoh printers */
+    e13x18  = 216,              /* non-standard, Ricoh printers */
+    eSRA3 = 217,                /* non-standard, Ricoh printers */
+    eSRA4 = 218,                /* non-standard, Ricoh printers */
+    e226x310 = 219,             /* non-standard, Ricoh printers */
+    e310x432 = 220,             /* non-standard, Ricoh printers */
+    eEngQuatro = 221,           /* non-standard, Ricoh printers */
+    e11x14 = 222,               /* non-standard, Ricoh printers */
+    e11x15 = 223,               /* non-standard, Ricoh printers */
+    e10x14 = 224,               /* non-standard, Ricoh printers */
     pxeMediaSize_next
 } pxeMediaSize_t;
 
 /*
- * Apply a macro (or procedure) to all known paper sizes.
- * The arguments are:
- *      media size code, resolution for width/height, width, height.
+ * Apply a macro (or procedure) to all known paper sizes.  The
+ * arguments are: media size code, pjl paper name, resolution for
+ * width/height, width, and height.  Name aliases are used for example
+ * "jis b4" is the same as "jisb4".
  */
 
 #define px_enumerate_media(m)\
-  m(eDefaultPaperSize, -1, -1, -1)\
-  m(eLetterPaper, 300, 2550, 3300)\
-  m(eLegalPaper, 300, 2550, 4200)\
-  m(eA4Paper, 300, 2480, 3507)\
-  m(eExecPaper, 300, 2175, 3150)\
-  m(eLedgerPaper, 300, 3300, 5100)\
-  m(eA3Paper, 300, 3507, 4960)\
-  m(eCOM10Envelope, 300, 1237, 2850)\
-  m(eMonarchEnvelope, 300, 1162, 2250)\
-  m(eC5Envelope, 300, 1913, 2704)\
-  m(eDLEnvelope, 300, 1299, 2598)\
-  m(eJB4Paper, 300, 3035, 4299)\
-  m(eJB5Paper, 300, 2150, 3035)\
-  m(eB5Envelope, 300, 2078, 2952)\
-  m(eB5Paper, 300, 2150, 3035)\
-  m(eJPostcard, 300, 1181, 1748)\
-  m(eJDoublePostcard, 300, 2362, 1748)\
-  m(eA5Paper,300,1748, 2480)\
-  m(eA6Paper,300, 1240, 1748)\
-  m(eJB6Paper,300, 1512, 2150)\
-  m(eJIS8K, 300, 3154, 4606)\
-  m(eJIS16K, 300, 2303, 3154)\
-  m(eJISExec, 300, 2551, 3898)
+  m(eDefaultPaperSize, "defaultpaper",  -1,   -1,   -1) \
+  m(eLetterPaper,      "letter",       300, 2550, 3300) \
+  m(eLegalPaper,       "legal",        300, 2550, 4200) \
+  m(eA4Paper,          "a4",           300, 2480, 3507) \
+  m(eExecPaper,        "executive",    300, 2175, 3150) \
+  m(eLedgerPaper,      "ledger",       300, 3300, 5100) \
+  m(eA3Paper,          "a3",           300, 3507, 4960) \
+  m(eCOM10Envelope,    "com10",        300, 1237, 2850) \
+  m(eMonarchEnvelope,  "monarch",      300, 1162, 2250) \
+  m(eC5Envelope,       "c5",           300, 1913, 2704) \
+  m(eDLEnvelope,       "dl",           300, 1299, 2598) \
+  m(eJB4Paper,         "jisb4",        300, 3035, 4299) \
+  m(eJB4Paper,         "jis b4",       300, 3035, 4299) \
+  m(eJB5Paper,         "jisb5",        300, 2150, 3035) \
+  m(eJB5Paper,         "jis b5",       300, 2150, 3035) \
+  m(eB5Envelope,       "b5",           300, 2078, 2952) \
+  m(eB5Paper,          "b5paper",      300, 2150, 3035) \
+  m(eJPostcard,        "jpost",        300, 1181, 1748) \
+  m(eJDoublePostcard,  "jpostd",       300, 2362, 1748) \
+  m(eA5Paper,          "a5",           300, 1748, 2480) \
+  m(eA6Paper,          "a6",           300, 1240, 1748) \
+  m(eJB6Paper,         "jisb6",        300, 1512, 2150) \
+  m(eJIS8K,            "jis8K",        300, 3154, 4606) \
+  m(eJIS16K,           "jis16K",       300, 2303, 3154) \
+  m(eJISExec,          "jisexec",      300, 2551, 3898) \
+  m(eB6JIS,            "B6 (JIS)",     300, 1512, 2150) \
+  m(eC6Envelope,       "C6",           300, 1345, 1912) \
+  m(e8Kai,             "8Kai",         300, 3154, 4608) \
+  m(e16Kai,            "16Kai",        300, 2304, 3154) \
+  m(e12x18,            "12x18",        300, 3600, 5400) \
+  m(e13x19_2,          "13x19.2",      300, 3900, 5758) \
+  m(e13x19,            "13x19",        300, 3900, 5700) \
+  m(e12_6x19_2,        "12.6x19.2",    300, 3779, 5758) \
+  m(e12_6x18_5,        "12.6x18.5",    300, 3779, 5550) \
+  m(e13x18,            "13x18",        300, 3900, 5400) \
+  m(eSRA3,             "SRA3",         300, 3779, 5316) \
+  m(eSRA4,             "SRA4",         300, 2658, 3779) \
+  m(e226x310,          "226x310",      300, 2670, 3662) \
+  m(e310x432,          "310x432",      300, 3662, 5104) \
+  m(eEngQuatro,        "EngQuatro",    300, 2400, 3000) \
+  m(e11x14,            "11x14",        300, 3300, 4200) \
+  m(e11x15,            "11x15",        300, 3300, 4500) \
+  m(e10x14,            "10x14",        300, 3000, 4200)
 
 typedef enum {
     eDefaultSource = 0,
@@ -316,5 +358,5 @@ typedef enum {
     eCIELabmatch2,
     pxeColorTreatment_next
 } pxeColorTreatment;
-    
+
 #endif /* gdevpxen_INCLUDED */

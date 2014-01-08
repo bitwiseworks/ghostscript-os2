@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxcindex.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Define the device color index type and macros */
 
 #ifndef gxcindex_INCLUDED
@@ -106,30 +108,44 @@ typedef gx_color_index_data gx_color_index;
  * l_dbit.  Other code in the loop may use these variables.
  */
 #define DECLARE_LINE_ACCUM(line, bpp, xo)\
-	sample_store_declare_setup(l_dptr, l_dbit, l_dbyte, line, 0, bpp)
+        sample_store_declare_setup(l_dptr, l_dbit, l_dbyte, line, 0, bpp)
 #define LINE_ACCUM(color, bpp)\
-	sample_store_next_any(color, l_dptr, l_dbit, bpp, l_dbyte)
+        sample_store_next_any(color, l_dptr, l_dbit, bpp, l_dbyte)
 #define LINE_ACCUM_SKIP(bpp)\
-	sample_store_skip_next(l_dptr, l_dbit, bpp, l_dbyte)
+        sample_store_skip_next(l_dptr, l_dbit, bpp, l_dbyte)
 #define LINE_ACCUM_STORE(bpp)\
-	sample_store_flush(l_dptr, l_dbit, bpp, l_dbyte)
+        sample_store_flush(l_dptr, l_dbit, bpp, l_dbyte)
 /*
  * Declare additional macros for accumulating a scan line with copying
  * to a device.  Note that DECLARE_LINE_ACCUM_COPY also declares l_xprev.
  * LINE_ACCUM_COPY is called after the accumulation loop.
  */
 #define DECLARE_LINE_ACCUM_COPY(line, bpp, xo)\
-	DECLARE_LINE_ACCUM(line, bpp, xo);\
-	int l_xprev = (xo)
+        DECLARE_LINE_ACCUM(line, bpp, xo);\
+        int l_xprev = (xo)
 #define LINE_ACCUM_COPY(dev, line, bpp, xo, xe, raster, y)\
-	if ( (xe) > l_xprev ) {\
-	    int code;\
-	    LINE_ACCUM_STORE(bpp);\
-	    code = (*dev_proc(dev, copy_color))\
-	      (dev, line, l_xprev - (xo), raster,\
-	       gx_no_bitmap_id, l_xprev, y, (xe) - l_xprev, 1);\
-	    if ( code < 0 )\
-	      return code;\
-	}
+        if ( (xe) > l_xprev ) {\
+            int code;\
+            LINE_ACCUM_STORE(bpp);\
+            code = (*dev_proc(dev, copy_color))\
+              (dev, line, l_xprev - (xo), raster,\
+               gx_no_bitmap_id, l_xprev, y, (xe) - l_xprev, 1);\
+            if ( code < 0 )\
+              return code;\
+        }
+/* The same thing, but transposed */
+#define LINE_ACCUM_COPY_TRANS(dev, line, bpp, xo, xe, raster, y)\
+        if ( (xe) > l_xprev ) {\
+            int code;\
+            LINE_ACCUM_STORE(bpp);\
+            code = gx_copy_color_unaligned(dev, line, l_xprev - (xo), raster,\
+               gx_no_bitmap_id, y, l_xprev, 1, (xe) - l_xprev);\
+            if ( code < 0 )\
+              return code;\
+        }
+#define LINE_ACCUM_FLUSH_AND_RESTART(dev, line, bpp, xo, xe, raster, y)\
+        { LINE_ACCUM_COPY(dev, line, bpp, xo, xe, raster, y);\
+          sample_store_reset(l_dptr, l_dbit, l_dbyte, line, 0, bpp);\
+          l_xprev = xe+1; }
 
 #endif /* gxcindex_INCLUDED */

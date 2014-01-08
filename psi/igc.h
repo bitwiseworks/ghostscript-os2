@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: igc.h 9043 2008-08-28 22:48:19Z giles $ */
+
 /* Internal interfaces in Ghostscript GC */
 
 #ifndef igc_INCLUDED
@@ -64,6 +66,7 @@ struct gc_state_s {
     /* pointers from untraced spaces */
     gs_memory_t *heap;	/* for extending mark stack */
     name_table *ntable;		/* (implicitly referenced by names) */
+    gs_memory_t *cur_mem;
 #ifdef DEBUG
     chunk_t *container;
 #endif
@@ -78,17 +81,17 @@ ptr_proc_mark(ptr_ref_mark);
 void ialloc_validate_memory(const gs_ref_memory_t *, gc_state_t *);
 void ialloc_validate_chunk(const chunk_t *, gc_state_t *);
 void ialloc_validate_object(const obj_header_t *, const chunk_t *,
-			    gc_state_t *);
+                            gc_state_t *);
 
 /* Exported by igc.c for ilocate.c */
 const gs_memory_t * gcst_get_memory_ptr(gc_state_t *gcst);
 
 /* Macro for returning a relocated pointer */
 const void *print_reloc_proc(const void *obj, const char *cname,
-			     const void *robj);
+                             const void *robj);
 #ifdef DEBUG
 #  define print_reloc(obj, cname, nobj)\
-	(gs_debug_c('9') ? print_reloc_proc(obj, cname, nobj) : nobj)
+        (gs_debug_c('9') ? print_reloc_proc(obj, cname, nobj) : nobj)
 #else
 #  define print_reloc(obj, cname, nobj) (nobj)
 #endif

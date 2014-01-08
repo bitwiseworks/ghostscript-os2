@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: sjpx_luratech.h 8816 2008-07-03 18:25:52Z giles $ */
+
 /* Definitions for JPXDecode filter (JPEG 2000) */
 /* we link to the Luratech CSDK for the actual decoding */
 
@@ -39,14 +41,17 @@ typedef enum {
 typedef struct stream_jpxd_state_s
 {
     stream_state_common;	/* a define from scommon.h */
-    const gs_memory_t *jpx_memory;
     JP2_Decomp_Handle handle;	/* library decoder handle */
     unsigned char *inbuf;	/* input data buffer */
     unsigned long inbuf_size;
     unsigned long inbuf_fill;
     gs_jpx_cs colorspace;	/* requested output colorspace */
+    bool alpha; /* return opacity channel */
+    bool image_is_indexed;      /* image is indexed, needs decoding */
+                                /*  if colorspace != gs_jpx_cs_indexed */
     int ncomp;			/* number of image components */
     int bpc;			/* sample bits per component */
+    int *clut;			/* channel indices */
     unsigned long width, height;
     unsigned long stride;
     unsigned char *image;	/* decoded image buffer */
@@ -72,9 +77,9 @@ typedef struct stream_jpxe_state_s {
 
     /* the following members can be optionally set by the caller: */
     unsigned int quality;       /* compressed image quality target; 1-100
-					leave unset for the default */
+                                        leave unset for the default */
     int lossless;		/* set to 1 to specify lossless image
-					compression; overrides quality */
+                                        compression; overrides quality */
 
     /* the remainder are handled internally: */
     unsigned int components;	/* number of image channels */

@@ -1,20 +1,22 @@
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
+   All Rights Reserved.
+
+   This software is provided AS-IS with no warranty, either express or
+   implied.
+
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
+*/
+
 /*
     jbig2dec
-
-    Copyright (C) 2001 Artifex Software, Inc.
-
-    This software is provided AS-IS with no warranty,
-    either express or implied.
-
-    This software is distributed under license and may not
-    be copied, modified or distributed except as expressly
-    authorized under the terms of the license contained in
-    the file LICENSE in this distribution.
-
-    For further licensing information refer to http://artifex.com/ or
-    contact Artifex Software, Inc., 7 Mt. Lassen Drive - Suite A-134,
-    San Rafael, CA  94903, U.S.A., +1(415)492-9861.
 */
+
 
 /* Annex A.3 */
 
@@ -46,9 +48,24 @@ jbig2_arith_iaid_ctx_new(Jbig2Ctx *ctx, int SBSYMCODELEN)
   Jbig2ArithIaidCtx *result = jbig2_new(ctx, Jbig2ArithIaidCtx, 1);
   int ctx_size = 1 << SBSYMCODELEN;
 
+  if (result == NULL)
+  {
+      jbig2_error(ctx, JBIG2_SEVERITY_FATAL, -1,
+          "failed to allocate storage in jbig2_arith_iaid_ctx_new");
+      return result;
+  }
+
   result->SBSYMCODELEN = SBSYMCODELEN;
-  result->IAIDx = jbig2_alloc(ctx->allocator, ctx_size);
-  memset(result->IAIDx, 0, ctx_size);
+  result->IAIDx = jbig2_new(ctx, Jbig2ArithCx, ctx_size);
+  if (result->IAIDx != NULL)
+  {
+      memset(result->IAIDx, 0, ctx_size);
+  }
+  else
+  {
+      jbig2_error(ctx, JBIG2_SEVERITY_FATAL, -1,
+          "failed to allocate symbol ID storage in jbig2_arith_iaid_ctx_new");
+  }
 
   return result;
 }
@@ -69,6 +86,8 @@ jbig2_arith_iaid_decode(Jbig2ArithIaidCtx *ctx, Jbig2ArithState *as,
   for (i = 0; i < SBSYMCODELEN; i++)
     {
       D = jbig2_arith_decode(as, &IAIDx[PREV]);
+      if (D < 0)
+	return -1;
 #ifdef VERBOSE
       fprintf(stderr, "IAID%x: D = %d\n", PREV, D);
 #endif
@@ -86,6 +105,9 @@ jbig2_arith_iaid_decode(Jbig2ArithIaidCtx *ctx, Jbig2ArithState *as,
 void
 jbig2_arith_iaid_ctx_free(Jbig2Ctx *ctx, Jbig2ArithIaidCtx *iax)
 {
-  jbig2_free(ctx->allocator, iax->IAIDx);
-  jbig2_free(ctx->allocator, iax);
+    if (iax != NULL)
+    {
+        jbig2_free(ctx->allocator, iax->IAIDx);
+        jbig2_free(ctx->allocator, iax);
+    }
 }

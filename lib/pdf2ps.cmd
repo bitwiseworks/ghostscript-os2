@@ -1,4 +1,3 @@
-/* $Id: pdf2ps.cmd 6300 2005-12-28 19:56:24Z giles $ */
 /*
  * This file is maintained by a user: if you have any questions about it,
  * please contact Mark Hale (mark.hale@physics.org).
@@ -14,7 +13,7 @@ outext='.ps'
 
 if params='' then call usage
 
-options='-dNOPAUSE -dBATCH -dSAFER -sDEVICE=pswrite'
+options='-dNOPAUSE -dBATCH -P- -dSAFER -sDEVICE=ps2write'
 
 /* extract options from command line */
 i=1

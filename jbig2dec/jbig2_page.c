@@ -1,17 +1,22 @@
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
+   All Rights Reserved.
+
+   This software is provided AS-IS with no warranty, either express or
+   implied.
+
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
+*/
+
 /*
     jbig2dec
-
-    Copyright (C) 2001-2005 Artifex Software, Inc.
-
-    This software is distributed under license and may not
-    be copied, modified or distributed except as expressly
-    authorized under the terms of the license contained in
-    the file LICENSE in this distribution.
-
-    For further licensing information refer to http://artifex.com/ or
-    contact Artifex Software, Inc., 7 Mt. Lassen Drive - Suite A-134,
-    San Rafael, CA  94903, U.S.A., +1(415)492-9861.
 */
+
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -82,8 +87,8 @@ jbig2_page_info (Jbig2Ctx *ctx, Jbig2Segment *segment, const uint8_t *segment_da
             index++;
             if (index >= ctx->max_page_index) {
                 /* grow the list */
-		ctx->pages = jbig2_realloc(ctx->allocator, ctx->pages,
-			(ctx->max_page_index <<= 2) * sizeof(Jbig2Page));
+		ctx->pages = jbig2_renew(ctx, ctx->pages, Jbig2Page,
+                    (ctx->max_page_index <<= 2));
                 for (j=index; j < ctx->max_page_index; j++) {
                     ctx->pages[j].state = JBIG2_PAGE_FREE;
                     ctx->pages[j].number = 0;
@@ -105,11 +110,11 @@ jbig2_page_info (Jbig2Ctx *ctx, Jbig2Segment *segment, const uint8_t *segment_da
     }
 
     /* 7.4.8.x */
-    page->width = jbig2_get_int32(segment_data);
-    page->height = jbig2_get_int32(segment_data + 4);
+    page->width = jbig2_get_uint32(segment_data);
+    page->height = jbig2_get_uint32(segment_data + 4);
 
-    page->x_resolution = jbig2_get_int32(segment_data + 8);
-    page->y_resolution = jbig2_get_int32(segment_data + 12);
+    page->x_resolution = jbig2_get_uint32(segment_data + 8);
+    page->y_resolution = jbig2_get_uint32(segment_data + 12);
     page->flags = segment_data[16];
 
     /* 7.4.8.6 */
@@ -195,11 +200,11 @@ jbig2_end_of_stripe(Jbig2Ctx *ctx, Jbig2Segment *segment, const uint8_t *segment
 int
 jbig2_complete_page (Jbig2Ctx *ctx)
 {
+    int code = 0;
 
     /* check for unfinished segments */
     if (ctx->segment_index != ctx->n_segments) {
       Jbig2Segment *segment = ctx->segments[ctx->segment_index];
-      int code = 0;
       /* Some versions of Xerox Workcentre generate PDF files
          with the segment data length field of the last segment
          set to -1. Try to cope with this here. */
@@ -213,9 +218,14 @@ jbig2_complete_page (Jbig2Ctx *ctx)
         ctx->segment_index++;
       }
     }
-    ctx->pages[ctx->current_page].state = JBIG2_PAGE_COMPLETE;
 
-    return 0;
+    /* ensure image exists before marking page as complete */
+    if (ctx->pages[ctx->current_page].image != NULL)
+    {
+        ctx->pages[ctx->current_page].state = JBIG2_PAGE_COMPLETE;
+    }
+
+    return code;
 }
 
 /**
@@ -254,6 +264,14 @@ int
 jbig2_page_add_result(Jbig2Ctx *ctx, Jbig2Page *page, Jbig2Image *image,
 		      int x, int y, Jbig2ComposeOp op)
 {
+    /* ensure image exists first */
+    if (page->image == NULL)
+    {
+        jbig2_error(ctx, JBIG2_SEVERITY_WARNING, -1,
+            "page info possibly missing, no image defined");
+        return 0;
+    }
+
     /* grow the page to accomodate a new stripe if necessary */
     if (page->striped) {
 	int new_height = y + image->height + page->end_row;
@@ -267,7 +285,7 @@ jbig2_page_add_result(Jbig2Ctx *ctx, Jbig2Page *page, Jbig2Image *image,
     }
 
     jbig2_image_compose(ctx, page->image, image,
-                        x, y + page->end_row, JBIG2_COMPOSE_OR);
+                        x, y + page->end_row, op);
 
     return 0;
 }
@@ -291,10 +309,19 @@ Jbig2Image *jbig2_page_out(Jbig2Ctx *ctx)
     /* search for a completed page */
     for (index=0; index < ctx->max_page_index; index++) {
         if (ctx->pages[index].state == JBIG2_PAGE_COMPLETE) {
+            Jbig2Image *img = ctx->pages[index].image;
+            uint32_t page_number = ctx->pages[index].number;
             ctx->pages[index].state = JBIG2_PAGE_RETURNED;
-            jbig2_error(ctx, JBIG2_SEVERITY_DEBUG, -1,
-                "page %d returned to the client", ctx->pages[index].number);
-            return jbig2_image_clone(ctx, ctx->pages[index].image);
+            if (img != NULL) {
+                jbig2_error(ctx, JBIG2_SEVERITY_DEBUG, -1,
+                            "page %d returned to the client", page_number);
+                return jbig2_image_clone(ctx, img);
+            } else {
+                jbig2_error(ctx, JBIG2_SEVERITY_WARNING, -1,
+                            "page %d returned with no associated image",
+                            page_number);
+                ; /* continue */
+            }
         }
     }
 

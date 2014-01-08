@@ -20,7 +20,7 @@
  *   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111
  *   U.S.A.
  */
- 
+
 /* Copyright (C) 1989, 2000 Aladdin Enterprises.  All rights reserved.
 
    This program may also be distributed as part of AFPL Ghostscript, under the
@@ -136,13 +136,13 @@ bjc_put_print_method_short(FILE *file, char color)
 }
 void
 bjc_put_print_method(FILE *file, char color, char media, char quality,
-		     char density)
+                     char density)
 {
     bjc_put_command(file, 'c', 2 + (density != 0));
     fputc(color, file);
     fputc(media | quality, file);
-    if (density) 
-	fputc(density, file);
+    if (density)
+        fputc(density, file);
 }
 
 /* Set raster resolution (ESC ( d <count> <y_res> [<x_res>]) */
@@ -150,10 +150,10 @@ void
 bjc_put_raster_resolution(FILE *file, int x_resolution, int y_resolution)
 {
     if (x_resolution == y_resolution) {
-	bjc_put_command(file, 'd', 2);
+        bjc_put_command(file, 'd', 2);
     } else {
-	bjc_put_command(file, 'd', 4);
-	bjc_put_hi_lo(file, y_resolution);
+        bjc_put_command(file, 'd', 4);
+        bjc_put_hi_lo(file, y_resolution);
     }
     bjc_put_hi_lo(file, x_resolution);
 }
@@ -190,7 +190,7 @@ bjc_put_media_supply(FILE *file, char supply, char type)
 /* Identify ink cartridge (ESC ( m <count> <type>) */ /*
 void
 bjc_put_identify_cartridge(FILE *file,
-			   bjc_identify_cartridge_command_t command)
+                           bjc_identify_cartridge_command_t command)
 {
     bjc_put_command(s, 'm', 1);
     spputc(s, command);
@@ -199,7 +199,7 @@ bjc_put_identify_cartridge(FILE *file,
 /* CMYK raster image (ESC ( A <count> <color>) */
 void
 bjc_put_cmyk_image(FILE *file, char component,
-		   const char *data, int count)
+                   const char *data, int count)
 {
     bjc_put_command(file, 'A', count + 1);
     fputc(component, file);
@@ -272,7 +272,6 @@ bjc_put_indexed_image(FILE *file, int dot_rows, int dot_cols, int layers)
     fputc(layers, file);
 }
 
-
 /* ------------------------------------------------------------------ */
 
 /* Invert a raster line ( we need it for Black -> K ) */
@@ -281,10 +280,10 @@ bjc_invert_bytes(byte *row, uint raster, bool inverse, byte lastmask)
 {   bool ret=false;
 
     for(; raster > 1; row++, raster--) {
-	if(!(inverse)) *row = ~(*row);
-	if(*row) ret = true;
+        if(!(inverse)) *row = ~(*row);
+        if(*row) ret = true;
     }
-	if(!(inverse)) *row ^= 0xff;
+        if(!(inverse)) *row ^= 0xff;
                        *row &= lastmask;
     return ret;
 }
@@ -302,11 +301,11 @@ bjc_invert_cmyk_bytes(byte *rowC, byte *rowM, byte *rowY, byte *rowK,
     skip->skipK=false;
 
     for(; raster > 1; rowC++, rowM++, rowY++, rowK++, raster--) {
-	if(inverse) {
-	              tmpC = ~(*rowC|*rowK);
-	              tmpM = ~(*rowM|*rowK);
-		      tmpY = ~(*rowY|*rowK);
-		     *rowK = ~(*rowC|*rowM|*rowY|*rowK);
+        if(inverse) {
+                      tmpC = ~(*rowC|*rowK);
+                      tmpM = ~(*rowM|*rowK);
+                      tmpY = ~(*rowY|*rowK);
+                     *rowK = ~(*rowC|*rowM|*rowY|*rowK);
                      *rowC = tmpC;
                      *rowM = tmpM;
                      *rowY = tmpY;
@@ -315,7 +314,7 @@ bjc_invert_cmyk_bytes(byte *rowC, byte *rowM, byte *rowY, byte *rowK,
         if(*rowM) skip->skipM=true;
         if(*rowY) skip->skipY=true;
         if(*rowK) skip->skipK=true;
-	if(*rowC|*rowM|*rowY|*rowK) ret = true;
+        if(*rowC|*rowM|*rowY|*rowK) ret = true;
     }
     return ret;
 }
@@ -332,7 +331,7 @@ bjc_compress(const byte *row, uint raster, byte *compressed)
   const byte *end_row = row;
   register const byte *exam = row;
   register byte *cptr = compressed; /* output pointer into compressed bytes */
-  
+
   end_row += raster;
 
   while ( exam < end_row ) {
@@ -347,26 +346,23 @@ bjc_compress(const byte *row, uint raster, byte *compressed)
     while ( exam < end_row ) {
       test2 = *++exam;
       if ( test == test2 )
-	  break;
+          break;
       test = test2;
     }
-    
 
     /* Find out how long the run is */
     end_dis = exam - 1;
     if ( exam == end_row ) { /* no run */
       next = --end_row;
-    } else { 
+    } else {
 
       next = exam + 1;
       while ( next < end_row && *next == test ) next++;
     }
-    
 
     /* Now [compr..end_dis) should be encoded as dissimilar, */
     /* and [end_dis..next) should be encoded as similar. */
     /* Note that either of these ranges may be empty. */
-    
 
     for ( ; ; ) {	/* Encode up to 128 dissimilar bytes */
       uint count = end_dis - compr; /* uint for faster switch */
@@ -377,32 +373,31 @@ bjc_compress(const byte *row, uint raster, byte *compressed)
       case 3: cptr[3] = compr[2];
       case 2: cptr[2] = compr[1];
       case 1: cptr[1] = compr[0];
-	*cptr = count - 1;
-	cptr += count + 1;
+        *cptr = count - 1;
+        cptr += count + 1;
       case 0: /* all done */
-	break;
+        break;
       default:
-	if ( count > 128 ) count = 128;
-	*cptr++ = count - 1;
-	memcpy(cptr, compr, count);
-	cptr += count, compr += count;
-	continue;
+        if ( count > 128 ) count = 128;
+        *cptr++ = count - 1;
+        memcpy(cptr, compr, count);
+        cptr += count, compr += count;
+        continue;
       }
       break;
     }
-    
 
     {	/* Encode up to 128 similar bytes. */
       /* Note that count may be <0 at end of row. */
       int count = next - end_dis;
       if (next < end_row || test != 0)
-	while ( count > 0 ) { 
+        while ( count > 0 ) {
 
-	  int this = (count > 128 ? 128 : count);
-	  *cptr++ = 257 - this;
-	  *cptr++ = (byte)test;
-	  count -= this;
-	}
+          int this = (count > 128 ? 128 : count);
+          *cptr++ = 257 - this;
+          *cptr++ = (byte)test;
+          count -= this;
+        }
       exam = next;
     }
   }
@@ -417,33 +412,30 @@ void bjc_rgb_to_cmy(byte r, byte g, byte b,
 }
 
 void bjc_rgb_to_gray(byte r, byte g, byte b,
-		     int *k)
+                     int *k)
 {
     *k = ( (int)r * 77 + (int)g * 151 + (int)b * 28) >> 8;
 }
 
-int bjc_gamma_tableC[256];
-int bjc_gamma_tableM[256];
-int bjc_gamma_tableY[256];
 #define bjc_gamma_tableK bjc_gamma_tableC
 
-void bjc_build_gamma_table(float gamma, char color)
+void bjc_build_gamma_table(gx_device_bjc_printer *dev, float gamma, char color)
 { int i;
   int *table;
 
     switch(color) {
     case CMYK_C:
-	table = bjc_gamma_tableC;
-	break;
+        table = dev->bjc_gamma_tableC;
+        break;
     case CMYK_M:
-	table = bjc_gamma_tableM;
-	break;
+        table = dev->bjc_gamma_tableM;
+        break;
     case CMYK_Y:
-	table = bjc_gamma_tableY;
-	break;
+        table = dev->bjc_gamma_tableY;
+        break;
     case CMYK_K:
     default:
-        table = bjc_gamma_tableK;
+        table = dev->bjc_gamma_tableK;
         break;
     }
 
@@ -463,28 +455,22 @@ int bjc_rand_seed[55] = {
 255, 11268, 16121, 11645, 1855, 5982, 9983, 1052, 5255, 15264, 6123, 3577,
 9712, 14629, 4593, 15670
 };
-int bjc_j=0, bjc_k=31;
-
-int bjc_treshold[1024];
-
-uint bjc_rand(void)
+uint bjc_rand(gx_device_bjc_printer *dev)
 {
-    uint ret = (bjc_rand_seed[bjc_j++] += bjc_rand_seed[bjc_k++]);
-    if(bjc_j==55) bjc_j = 0;
-    if(bjc_k==55) bjc_k = 0;
+    uint ret = (bjc_rand_seed[dev->bjc_j++] += bjc_rand_seed[dev->bjc_k++]);
+    if(dev->bjc_j==55) dev->bjc_j = 0;
+    if(dev->bjc_k==55) dev->bjc_k = 0;
     return ret & 0x03ff;
 }                                             /* random numbers 0-1023 */
 
-
-void bjc_init_tresh(int rnd)
+void bjc_init_tresh(gx_device_bjc_printer *dev, int rnd)
 {
     int i=(int)(time(NULL) & 0x0ff);
     float delta=40.64*rnd;
-    for(;i>0;i--) bjc_rand();
-    for(i=-512; i<512; i++) bjc_treshold[i+512] =
+    for(;i>0;i--) bjc_rand(dev);
+    for(i=-512; i<512; i++) dev->bjc_treshold[i+512] =
                                 (int)(delta * i / 1024.0 + 2040);
 }                      /* init treshold array ~rnd% around halfway (127*16) */
-
 
 /* Declarations for Floyd-Steinberg dithering.
  *
@@ -507,64 +493,51 @@ void bjc_init_tresh(int rnd)
  * Each entry is three values long, one value for each color component.
  */
 
-bool FloydSteinbergDirectionForward = true;
-
-int *FloydSteinbergErrorsC;
-int *FloydSteinbergErrorsM;
-int *FloydSteinbergErrorsY;
-int *FloydSteinbergErrorsK;
-int *FloydSteinbergErrorsG;
-
-int FloydSteinbergC;
-int FloydSteinbergM;
-int FloydSteinbergY;
-int FloydSteinbergK;
-int FloydSteinbergG;
-
 int
 FloydSteinbergInitG(gx_device_printer * pdev)
-{  int i;
-#define ppdev ((gx_device_bjc_printer *) pdev)
+{
+    int i;
+    gx_device_bjc_printer *dev = (gx_device_bjc_printer *)pdev;
 
-FloydSteinbergErrorsG = (int *) gs_alloc_bytes(pdev->memory,
+    dev->FloydSteinbergErrorsG = (int *) gs_alloc_bytes(pdev->memory,
                                               sizeof(int)*(pdev->width+3),
                                               "bjc error buffer");
-if (FloydSteinbergErrorsG == 0)		/* can't allocate error buffer */
-	return -1;
-FloydSteinbergDirectionForward=true;
+    if (dev->FloydSteinbergErrorsG == 0) /* can't allocate error buffer */
+        return -1;
+    dev->FloydSteinbergDirectionForward=true;
 
-for (i=0; i < pdev->width+3; i++) FloydSteinbergErrorsG[i] = 0;
+    for (i=0; i < pdev->width+3; i++) dev->FloydSteinbergErrorsG[i] = 0;
                                                               /* clear */
-bjc_rgb_to_gray(ppdev->paperColor.red,
-		ppdev->paperColor.green,
-		ppdev->paperColor.blue,
-                &FloydSteinbergG);
-FloydSteinbergG = (255 - FloydSteinbergG) << 4;  /* Maybe */
-bjc_init_tresh(ppdev->rnd);
-return 0;
-#undef ppdev
+    bjc_rgb_to_gray(dev->paperColor.red,
+                    dev->paperColor.green,
+                    dev->paperColor.blue,
+                    &dev->FloydSteinbergG);
+    dev->FloydSteinbergG = (255 - dev->FloydSteinbergG) << 4;  /* Maybe */
+    bjc_init_tresh(dev, dev->rnd);
+    return 0;
 }
 
 void
-FloydSteinbergDitheringG(byte *row, byte *dithered, uint width,
-			uint raster, bool limit_extr)
-{ 
+FloydSteinbergDitheringG(gx_device_bjc_printer *dev,
+                         byte *row, byte *dithered, uint width,
+                         uint raster, bool limit_extr)
+{
     byte byteG=0, bitmask = 0x80; /* first bit */
     int i;
     int error = 0, delta;
     int err_corr;
     int *err_vect;
 
-    if (FloydSteinbergDirectionForward) {
+    if (dev->FloydSteinbergDirectionForward) {
         /* First  point */
-        err_vect = FloydSteinbergErrorsG + 1;
+        err_vect = dev->FloydSteinbergErrorsG + 1;
 
-	for( i=width; i>0; i--, row++, err_vect++) { /* i, sample, error */
-	    err_corr = bjc_gamma_tableK[255-(*row)] + FloydSteinbergG;
+        for( i=width; i>0; i--, row++, err_vect++) { /* i, sample, error */
+            err_corr = dev->bjc_gamma_tableK[255-(*row)] + dev->FloydSteinbergG;
             if(err_corr > 4080 && limit_extr) err_corr = 4080;
-	    error += err_corr + *(err_vect+1);     /* the error in 1/16 */
+            error += err_corr + *(err_vect+1);     /* the error in 1/16 */
 
-            if(error > bjc_treshold[bjc_rand()])  {
+            if(error > dev->bjc_treshold[bjc_rand(dev)])  {
                 error -=  4080;
                 byteG |=  bitmask;
             }
@@ -588,22 +561,22 @@ FloydSteinbergDitheringG(byte *row, byte *dithered, uint width,
                 *dithered = byteG;
             }
             else bitmask >>= 1;
-	}
-        FloydSteinbergDirectionForward=false;
+        }
+        dev->FloydSteinbergDirectionForward=false;
     }
     else {
         row += width - 1;                   /* point to the end of the row */
         dithered += raster - 1;
         bitmask = 1 << ((raster << 3 ) - width) ;
-        err_vect = FloydSteinbergErrorsG + width + 1;
+        err_vect = dev->FloydSteinbergErrorsG + width + 1;
 
-	for( i=width; i>0; i--, row--, err_vect--) {
-	    err_corr = bjc_gamma_tableK[255-(*row)] + FloydSteinbergG;
+        for( i=width; i>0; i--, row--, err_vect--) {
+            err_corr = dev->bjc_gamma_tableK[255-(*row)] + dev->FloydSteinbergG;
             if(err_corr > 4080 && limit_extr) err_corr = 4080;
 
             error += err_corr + *(err_vect - 1);
 
-            if(error > bjc_treshold[bjc_rand()])  {
+            if(error > dev->bjc_treshold[bjc_rand(dev)])  {
                 error -=  4080;
                 byteG |=  bitmask;
             }
@@ -626,67 +599,69 @@ FloydSteinbergDitheringG(byte *row, byte *dithered, uint width,
                 *dithered = byteG;
             }
             else bitmask <<= 1;
-	}
-        FloydSteinbergDirectionForward=true;
+        }
+        dev->FloydSteinbergDirectionForward=true;
     }
 }
 
 void FloydSteinbergCloseG(gx_device_printer *pdev)
 {
-    gs_free_object(pdev->memory, FloydSteinbergErrorsG, "bjc error buffer");
+    gx_device_bjc_printer *dev = (gx_device_bjc_printer *)pdev;
+    gs_free_object(pdev->memory, dev->FloydSteinbergErrorsG, "bjc error buffer");
 }
 
 int
 FloydSteinbergInitC(gx_device_printer * pdev)
-{ int i;
-#define ppdev ((gx_device_bjc_printer *) pdev)
+{
+    int i;
+    gx_device_bjc_printer *dev = (gx_device_bjc_printer *)pdev;
 
-FloydSteinbergErrorsC = (int *) gs_alloc_bytes(pdev->memory,
+    dev-> FloydSteinbergErrorsC = (int *) gs_alloc_bytes(pdev->memory,
                                             3*sizeof(int)*(pdev->width+3),
                                               "bjc CMY error buffer");
-if (FloydSteinbergErrorsC == 0 )      	/* can't allocate error buffer */
-	return -1;
+    if (dev->FloydSteinbergErrorsC == 0 ) /* can't allocate error buffer */
+        return -1;
 
-for (i=0; i < 3 * (pdev->width+3); i++) FloydSteinbergErrorsC[i] = 0;
+    for (i=0; i < 3 * (pdev->width+3); i++) dev->FloydSteinbergErrorsC[i] = 0;
 
-FloydSteinbergDirectionForward=true;
-bjc_rgb_to_cmy(ppdev->paperColor.red,
-	       ppdev->paperColor.green,
-	       ppdev->paperColor.blue,
-	       &FloydSteinbergC,
-	       &FloydSteinbergM,
-               &FloydSteinbergY);
+    dev->FloydSteinbergDirectionForward=true;
+    bjc_rgb_to_cmy(dev->paperColor.red,
+                   dev->paperColor.green,
+                   dev->paperColor.blue,
+                   &dev->FloydSteinbergC,
+                   &dev->FloydSteinbergM,
+                   &dev->FloydSteinbergY);
 
-FloydSteinbergC <<= 4;
-FloydSteinbergM <<= 4;
-FloydSteinbergY <<= 4;
-bjc_init_tresh(ppdev->rnd);
-return 0;
-#undef ppdev
+    dev->FloydSteinbergC <<= 4;
+    dev->FloydSteinbergM <<= 4;
+    dev->FloydSteinbergY <<= 4;
+    bjc_init_tresh(dev, dev->rnd);
+    return 0;
 }
 
 void
-FloydSteinbergDitheringC(byte *row, byte *dithered, uint width,
-			uint raster, bool limit_extr, bool composeK)
+FloydSteinbergDitheringC(gx_device_bjc_printer *dev,
+                         byte *row, byte *dithered, uint width,
+                         uint raster, bool limit_extr, bool composeK)
 {   byte byteC=0, byteM=0, byteY=0, byteK=0, bitmask = 0x80; /* first bit */
     int i;
     int errorC = 0, errorM = 0, errorY = 0, delta;
     int err_corrC, err_corrM, err_corrY;
     int *err_vect;
 
-    if (FloydSteinbergDirectionForward) {
-        err_vect = FloydSteinbergErrorsC + 3;         /* errCMY */
-	/* First  point */
+    if (dev->FloydSteinbergDirectionForward) {
+        err_vect = dev->FloydSteinbergErrorsC + 3;         /* errCMY */
+        /* First  point */
 
         for( i=width; i>0; i--, row+=4, err_vect+=3) { /*separate components */
 
-/*                                          C     +       K           */
-            err_corrC = bjc_gamma_tableC[ (*row)    + (*(row+3))]
-                          + FloydSteinbergC;
-            err_corrM = bjc_gamma_tableM[(*(row+1)) + (*(row+3))]
-                          + FloydSteinbergM;
-            err_corrY = bjc_gamma_tableY[(*(row+2)) + (*(row+3))]
-                          + FloydSteinbergY;
+/*                                               C     +       K           */
+            err_corrC = dev->bjc_gamma_tableC[ (*row)    + (*(row+3))]
+                          + dev->FloydSteinbergC;
+            err_corrM = dev->bjc_gamma_tableM[(*(row+1)) + (*(row+3))]
+                          + dev->FloydSteinbergM;
+            err_corrY = dev->bjc_gamma_tableY[(*(row+2)) + (*(row+3))]
+                          + dev->FloydSteinbergY;
 
             if(err_corrC > 4080 && limit_extr) err_corrC = 4080;
             if(err_corrM > 4080 && limit_extr) err_corrM = 4080;
@@ -696,17 +671,17 @@ FloydSteinbergDitheringC(byte *row, byte *dithered, uint width,
             errorM += err_corrM + (*(err_vect + 4));       /* |  ^  !   */
             errorY += err_corrY + (*(err_vect + 5));
 
-            if(errorC > bjc_treshold[bjc_rand()])  {
+            if(errorC > dev->bjc_treshold[bjc_rand(dev)])  {
                 errorC -=  4080;
                 byteC |=  bitmask;
             }
 
-            if(errorM > bjc_treshold[bjc_rand()])  {
+            if(errorM > dev->bjc_treshold[bjc_rand(dev)])  {
                 errorM -=  4080;
                 byteM |=  bitmask;
             }
 
-            if(errorY > bjc_treshold[bjc_rand()])  {
+            if(errorY > dev->bjc_treshold[bjc_rand(dev)])  {
                 errorY -=  4080;
                 byteY |=  bitmask;
             }
@@ -767,22 +742,22 @@ FloydSteinbergDitheringC(byte *row, byte *dithered, uint width,
             }
             else bitmask >>= 1;
         }
-        FloydSteinbergDirectionForward=false;
+        dev->FloydSteinbergDirectionForward=false;
     }
     else {
-	row += (width << 2) - 4;   /* point to the end of the row */
+        row += (width << 2) - 4;   /* point to the end of the row */
         dithered += raster - 1;
-        err_vect = FloydSteinbergErrorsC + 3 * width + 3;       /* errCMY */
+        err_vect = dev->FloydSteinbergErrorsC + 3 * width + 3;       /* errCMY */
         bitmask = 1 << ((raster << 3 ) - width) ;
 
-	for( i=width; i>0; i--, row-=4, err_vect-=3) {
+        for( i=width; i>0; i--, row-=4, err_vect-=3) {
 
-            err_corrC = bjc_gamma_tableC[  (*row)   + (*(row+3))]
-                          + FloydSteinbergC;
-            err_corrM = bjc_gamma_tableM[(*(row+1)) + (*(row+3))]
-                          + FloydSteinbergM;
-            err_corrY = bjc_gamma_tableY[(*(row+2)) + (*(row+3))]
-                          + FloydSteinbergY;
+            err_corrC = dev->bjc_gamma_tableC[  (*row)   + (*(row+3))]
+                          + dev->FloydSteinbergC;
+            err_corrM = dev->bjc_gamma_tableM[(*(row+1)) + (*(row+3))]
+                          + dev->FloydSteinbergM;
+            err_corrY = dev->bjc_gamma_tableY[(*(row+2)) + (*(row+3))]
+                          + dev->FloydSteinbergY;
 
             if(err_corrC > 4080 && limit_extr) err_corrC = 4080;
             if(err_corrM > 4080 && limit_extr) err_corrM = 4080;
@@ -792,17 +767,17 @@ FloydSteinbergDitheringC(byte *row, byte *dithered, uint width,
             errorM += err_corrM + (*(err_vect - 2));       /* !  ^  |   */
             errorY += err_corrY + (*(err_vect - 1));
 
-            if(errorC > bjc_treshold[bjc_rand()])  {
+            if(errorC > dev->bjc_treshold[bjc_rand(dev)])  {
                 errorC -=  4080;
                 byteC |=  bitmask;
             }
 
-            if(errorM > bjc_treshold[bjc_rand()])  {
+            if(errorM > dev->bjc_treshold[bjc_rand(dev)])  {
                 errorM -=  4080;
                 byteM |=  bitmask;
             }
 
-            if(errorY > bjc_treshold[bjc_rand()])  {
+            if(errorY > dev->bjc_treshold[bjc_rand(dev)])  {
                 errorY -=  4080;
                 byteY |=  bitmask;
             }
@@ -861,14 +836,15 @@ FloydSteinbergDitheringC(byte *row, byte *dithered, uint width,
                 *(dithered+2*raster) = byteY;
                 *(dithered+3*raster) = byteK;
             }
-	    else bitmask <<= 1;
+            else bitmask <<= 1;
         }
-        FloydSteinbergDirectionForward=true;
+        dev->FloydSteinbergDirectionForward=true;
     }
 }
 
 void FloydSteinbergCloseC(gx_device_printer *pdev)
 {
-    gs_free_object(pdev->memory, FloydSteinbergErrorsC,
-                                           "bjc CMY error buffer");
+    gx_device_bjc_printer *dev = (gx_device_bjc_printer *)pdev;
+    gs_free_object(pdev->memory, dev->FloydSteinbergErrorsC,
+                   "bjc CMY error buffer");
 }

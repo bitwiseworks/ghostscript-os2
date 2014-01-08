@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: stdio_.h 10568 2009-12-29 22:18:01Z alexcher $ */
+
 /* Generic substitute for stdio.h */
 
 #ifndef stdio__INCLUDED
@@ -73,6 +75,19 @@ int unlink(const char *);
 #  endif
 /* Microsoft Visual C++ 2005  doesn't properly define snprintf  */
 int snprintf(char *buffer, size_t count, const char *format , ...);
+#endif
+
+/* for our non-localizing (v)s(n)printf() functions */
+/* only *really* required for floating point conversions */
+#include "gssprintf.h"
+
+#ifndef sprintf
+#define sprintf DO_NOT_USE_SPRINTF
+#endif
+
+
+#ifndef fopen
+#define fopen DO_NOT_USE_FOPEN
 #endif
 
 #endif /* stdio__INCLUDED */

@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxdht.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Definition of device halftones */
 
 #ifndef gxdht_INCLUDED
@@ -120,16 +122,6 @@ typedef ht_mask_t ht_sample_t;
 /* The following awkward expression avoids integer overflow. */
 #define max_ht_sample (ht_sample_t)(((1 << (ht_mask_bits - 2)) - 1) * 2 + 1)
 
-#ifndef wts_screen_t_DEFINED
-#  define wts_screen_t_DEFINED
-typedef struct wts_screen_s wts_screen_t;
-#endif
-
-#ifndef gs_wts_screen_enum_t_DEFINED
-#  define gs_wts_screen_enum_t_DEFINED
-typedef struct gs_wts_screen_enum_s gs_wts_screen_enum_t;
-#endif
-
 /*
  * Define the internal representation of a halftone order.
  * Note that it may include a cached transfer function.
@@ -184,19 +176,19 @@ typedef struct gx_ht_order_procs_s {
     /* Return the (x,y) coordinate of an element of bit_data. */
 
     int (*bit_index)(const gx_ht_order *order, uint index,
-		     gs_int_point *ppt);
+                     gs_int_point *ppt);
 
     /* Update a halftone cache tile to match this order. */
 
     int (*render)(gx_ht_tile *tile, int new_bit_level,
-		  const gx_ht_order *order);
+                  const gx_ht_order *order);
 
     /* Draw a halftone shade into a 1 bit deep buffer. */
     /* Note: this is a tentative design for a new method. I may not
        keep it. */
     int (*draw)(gx_ht_order *order, frac shade,
-		byte *data, int data_raster,
-		int x, int y, int w, int h);
+                byte *data, int data_raster,
+                int x, int y, int w, int h);
 
 } gx_ht_order_procs_t;
 /*
@@ -213,8 +205,6 @@ typedef struct gx_ht_order_screen_params_s {
 } gx_ht_order_screen_params_t;
 struct gx_ht_order_s {
     gx_ht_cell_params_t params;	/* parameters defining the cells */
-    gs_wts_screen_enum_t *wse;
-    wts_screen_t *wts;            /* if non-NULL, then rest of the structure is irrelevant */
     ushort width;
     ushort height;
     ushort raster;
@@ -231,6 +221,8 @@ struct gx_ht_order_s {
     gx_ht_cache *cache;		/* cache to use */
     gx_transfer_map *transfer;	/* TransferFunction or 0 */
     gx_ht_order_screen_params_t screen_params;
+    byte *threshold;
+    bool threshold_inverts;
 };
 
 #define ht_order_is_complete(porder)\

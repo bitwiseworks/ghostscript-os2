@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: idict.h 9043 2008-08-28 22:48:19Z giles $ */
+
 /* Interfaces for Ghostscript dictionary package */
 
 #ifndef idict_INCLUDED
@@ -114,13 +116,13 @@ int dict_find_string(const ref * pdref, const char *kstr, ref ** ppvalue);
  * THIS ERROR CHECK IS NOT IMPLEMENTED YET.
  */
 int dict_put(ref * pdref, const ref * key, const ref * pvalue,
-	     dict_stack_t *pds);
+             dict_stack_t *pds);
 
 /*
  * Enter a key-value pair where the key is a (constant) C string.
  */
 int dict_put_string(ref * pdref, const char *kstr, const ref * pvalue,
-		    dict_stack_t *pds);
+                    dict_stack_t *pds);
 
 /*
  * Remove a key-value pair from a dictionary.
@@ -152,7 +154,7 @@ uint dict_max_index(const ref * pdref);
  * aren't already present in the destination.
  */
 int dict_copy_entries(const ref * dfrom, ref * dto, bool new_only,
-		      dict_stack_t *pds);
+                      dict_stack_t *pds);
 
 #define dict_copy(dfrom, dto, pds) dict_copy_entries(dfrom, dto, false, pds)
 #define dict_copy_new(dfrom, dto, pds) dict_copy_entries(dfrom, dto, true, pds)
@@ -253,13 +255,13 @@ uint dict_round_size_large(uint rsize);
 #  ifdef DEBUG
 #    define dict_hash_mod(h, s)\
        (gs_debug_c('.') ? dict_hash_mod_small(h, s) :\
-	dict_hash_mod_large(h, s))
+        dict_hash_mod_large(h, s))
 #    define dict_hash_mod_inline(h, s)\
        (gs_debug_c('.') ? dict_hash_mod_inline_small(h, s) :\
-	dict_hash_mod_inline_large(h, s))
+        dict_hash_mod_inline_large(h, s))
 #    define dict_round_size(s)\
        (gs_debug_c('.') ? dict_round_size_small(s) :\
-	dict_round_size_large(s))
+        dict_round_size_large(s))
 #  else
 #    define dict_hash_mod(h, s) dict_hash_mod_large(h, s)
 #    define dict_hash_mod_inline(h, s) dict_hash_mod_inline_large(h, s)

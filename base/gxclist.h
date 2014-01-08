@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxclist.h 9666 2009-04-20 19:16:24Z mvrhel $ */
+
 /* Command list definitions for Ghostscript. */
 /* Requires gxdevice.h and gxdevmem.h */
 
@@ -25,6 +27,7 @@
 #include "gxdevbuf.h"
 #include "gxistate.h"
 #include "gxrplane.h"
+#include "gscms.h"
 
 /*
  * A command list is essentially a compressed list of driver calls.
@@ -64,13 +67,15 @@ typedef struct gs_pattern1_instance_s gs_pattern1_instance_t;
 /* ---------------- Public structures ---------------- */
 
 /*
- * Define a saved page object.  This consists of a snapshot of the device
- * structure, information about the page per se, and the num_copies
- * parameter of output_page.
+ * Define a saved page object. This consists of information about the
+ * page's clist and parameters and the num_copies parameter of
+ * output_page. The current device's name, and color_info is saved to
+ * allow gdev_prn_render_pages to make sure that the target device is
+ * compatible.
  */
 typedef struct gx_saved_page_s {
-    gx_device device;
-    char dname[8 + 1];		/* device name for checking */
+    char dname[32];		/* device name for checking */
+    gx_device_color_info color_info;
     gx_band_page_info_t info;
     int num_copies;
 } gx_saved_page;
@@ -82,7 +87,7 @@ typedef struct gx_placed_page_s {
     gx_saved_page *page;
     gs_int_point offset;
 } gx_placed_page;
-  
+
 /*
  * Define a procedure to cause some bandlist memory to be freed up,
  * probably by rendering current bandlist contents.
@@ -122,6 +127,7 @@ typedef struct {
     ushort rep_shift;
     ushort index;		/* index in table (hash table when writing) */
     ushort num_bands;		/* # of 1-bits in the band mask */
+    byte num_planes;
     /* byte band_mask[]; */
 #define ts_mask(pts) (byte *)((pts) + 1)
     /* byte bits[]; */
@@ -158,31 +164,38 @@ extern const gs_imager_state clist_imager_state_initial;
 typedef struct gx_clist_state_s gx_clist_state;
 
 #define gx_device_clist_common_members\
-	gx_device_forward_common;	/* (see gxdevice.h) */\
-		/* Following must be set before writing or reading. */\
-		/* See gx_device_clist_writer, below, for more that must be init'd */\
-	/* gx_device *target; */	/* device for which commands */\
-					/* are being buffered */\
-	gx_device_buf_procs_t buf_procs;\
-	gs_memory_t *bandlist_memory;	/* allocator for in-memory bandlist files */\
-	byte *data;			/* buffer area */\
-	uint data_size;			/* size of buffer */\
-	gx_band_params_t band_params;	/* band buffering parameters */\
-	bool do_not_open_or_close_bandfiles;	/* if true, do not open/close bandfiles */\
-	bool page_uses_transparency;	/* if true then page uses PDF 1.4 transparency */\
-		/* Following are used for both writing and reading. */\
-	gx_bits_cache_chunk chunk;	/* the only chunk of bits */\
-	gx_bits_cache bits;\
-	uint tile_hash_mask;		/* size of tile hash table -1 */\
-	uint tile_band_mask_size;	/* size of band mask preceding */\
-					/* each tile in the cache */\
-	tile_hash *tile_table;		/* table for tile cache: */\
-					/* see tile_hash above */\
-					/* (a hash table when writing) */\
-	int ymin, ymax;			/* current band, <0 when writing */\
-		/* Following are set when writing, read when reading. */\
-	gx_band_page_info_t page_info;	/* page information */\
-	int nbands			/* # of bands */
+        gx_device_forward_common;	/* (see gxdevice.h) */\
+                /* Following must be set before writing or reading. */\
+                /* See gx_device_clist_writer, below, for more that must be init'd */\
+        /* gx_device *target; */	/* device for which commands */\
+                                        /* are being buffered */\
+        gx_device_buf_procs_t buf_procs;\
+        gs_memory_t *bandlist_memory;	/* allocator for in-memory bandlist files */\
+        byte *data;			/* buffer area */\
+        uint data_size;			/* size of buffer */\
+        gx_band_params_t band_params;	/* band buffering parameters */\
+        bool do_not_open_or_close_bandfiles;	/* if true, do not open/close bandfiles */\
+        bool page_uses_transparency;	/* if true then page uses PDF 1.4 transparency */\
+        int is_planar;                  /* if non zero then we have a planar device
+                                         * with is_planar bits per component. */\
+                /* Following are used for both writing and reading. */\
+        gx_bits_cache_chunk chunk;	/* the only chunk of bits */\
+        gx_bits_cache bits;\
+        uint tile_hash_mask;		/* size of tile hash table -1 */\
+        uint tile_band_mask_size;	/* size of band mask preceding */\
+                                        /* each tile in the cache */\
+        tile_hash *tile_table;		/* table for tile cache: */\
+                                        /* see tile_hash above */\
+                                        /* (a hash table when writing) */\
+        int ymin, ymax;			/* current band, <0 when writing */\
+                /* Following are set when writing, read when reading. */\
+        gx_band_page_info_t page_info;	/* page information */\
+        int nbands;			/* # of bands */\
+        int64_t trans_dev_icc_hash;     /* A special hash code for des color */\
+        clist_icctable_t *icc_table;    /* Table that keeps track of ICC profiles.\
+                                           It relates the hashcode to the cfile\
+                                           file location. */\
+        gsicc_link_cache_t *icc_cache_cl  /* Link cache */
 
 /*
  * Chech whether a clist is used for storing a pattern command stream.
@@ -190,21 +203,74 @@ typedef struct gx_clist_state_s gx_clist_state;
  */
 #define IS_CLIST_FOR_PATTERN(cdev) (cdev->procs.open_device == pattern_clist_open_device)
 
+/* Define a structure to hold where the ICC profiles are stored in the clist
+   Profiles are added into psuedo bands of the clist, these are bands that exist beyond
+   the edge of the normal band list.  A profile will occupy its own band.  The structure
+   here is a table that relates the hash code of the ICC profile to the pseudoband.
+   This table will be added at the end of the clist writing process.  */
+
+/* Used when writing out the table at the end of the clist writing.
+   Table is written to maxband + 1 */
+
+typedef struct clist_icc_serial_entry_s clist_icc_serial_entry_t;
+
+struct clist_icc_serial_entry_s {
+
+    int64_t hashcode;              /* A hash code for the icc profile */
+    int64_t file_position;        /* File position in cfile of the profile with header */
+    int size;
+
+};
+
+typedef struct clist_icctable_entry_s clist_icctable_entry_t;
+
+struct clist_icctable_entry_s {
+
+    clist_icc_serial_entry_t serial_data;
+    clist_icctable_entry_t *next;  /* The next entry in the table */
+    cmm_profile_t *icc_profile;    /* The profile.  In non-gc memory. This is
+                                      written out at the end of the writer phase */
+    bool render_is_valid;          /* Since the profile is written out at the
+                                      end and is shared, we can't guarantee that
+                                      this entry will stay the same through
+                                      the profile's life.  Hence we store it here
+                                      and set it just when we do the writing */
+};
+
+#define private_st_clist_icctable_entry()\
+  gs_private_st_ptrs1(st_clist_icctable_entry,\
+                clist_icctable_entry_t, "clist_icctable_entry",\
+                clist_icctable_entry_enum_ptrs, clist_icctable_entry_reloc_ptrs, next)
+
+typedef struct clist_icctable_s clist_icctable_t;
+
+struct clist_icctable_s {
+    int tablesize;
+    gs_memory_t *memory;
+    clist_icctable_entry_t *head;
+    clist_icctable_entry_t *final;
+};
+
+#define private_st_clist_icctable()\
+  gs_private_st_ptrs2(st_clist_icctable,\
+                clist_icctable_t, "clist_icctable",\
+                clist_icctable_enum_ptrs, clist_icctable_reloc_ptrs, head, final)
+
 typedef struct gx_device_clist_common_s {
     gx_device_clist_common_members;
 } gx_device_clist_common;
 
-#define clist_band_height(cldev) ((cldev)->page_info.band_height)
-#define clist_cfname(cldev) ((cldev)->page_info.cfname)
-#define clist_cfile(cldev) ((cldev)->page_info.cfile)
-#define clist_bfname(cldev) ((cldev)->page_info.bfname)
-#define clist_bfile(cldev) ((cldev)->page_info.bfile)
+#define clist_band_height(cldev) ((cldev)->page_band_height)
+#define clist_cfname(cldev) ((cldev)->page_cfname)
+#define clist_cfile(cldev) ((cldev)->page_cfile)
+#define clist_bfname(cldev) ((cldev)->page_bfname)
+#define clist_bfile(cldev) ((cldev)->page_bfile)
 
 /* Define the length of the longest dash pattern we are willing to store. */
 /* (Strokes with longer patterns are converted to fills.) */
 #define cmd_max_dash 11
 
-/* Define a clist cropping buffer, 
+/* Define a clist cropping buffer,
    which represents a cropping stack element while clist writing. */
 typedef struct clist_writer_cropping_buffer_s clist_writer_cropping_buffer_t;
 
@@ -216,16 +282,24 @@ struct clist_writer_cropping_buffer_s {
 
 #define private_st_clist_writer_cropping_buffer()\
   gs_private_st_ptrs1(st_clist_writer_cropping_buffer,\
-		clist_writer_cropping_buffer_t, "clist_writer_transparency_buffer",\
-		clist_writer_cropping_buffer_enum_ptrs, clist_writer_cropping_buffer_reloc_ptrs, next)
-
+                clist_writer_cropping_buffer_t, "clist_writer_transparency_buffer",\
+                clist_writer_cropping_buffer_enum_ptrs, clist_writer_cropping_buffer_reloc_ptrs, next)
 
 /* Define the state of a band list when writing. */
+typedef struct clist_icc_color_s {
+    int64_t icc_hash;           /* hash code for icc profile */
+    byte icc_num_components;   /* needed to avoid having to read icc data early */
+    bool is_lab;               /* also needed early */
+    gsicc_colorbuffer_t data_cs;
+} clist_icc_color_t;
+
 typedef struct clist_color_space_s {
     byte byte1;			/* see cmd_opv_set_color_space in gxclpath.h */
     gs_id id;			/* space->id for comparisons */
+    clist_icc_color_t icc_info; /* Data needed to enable delayed icc reading */
     const gs_color_space *space;
 } clist_color_space_t;
+
 struct gx_device_clist_writer_s {
     gx_device_clist_common_members;	/* (must be first) */
     int error_code;		/* error returned by cmd_put_op */
@@ -241,7 +315,7 @@ struct gx_device_clist_writer_s {
     gx_strip_bitmap tile_params;	/* current tile parameters */
     int tile_depth;		/* current tile depth */
     int tile_known_min, tile_known_max;  /* range of bands that knows the */
-				/* current tile parameters */
+                                /* current tile parameters */
     /*
      * NOTE: we must not set the line_params.dash.pattern member of the
      * imager state to point to the dash_pattern member of the writer
@@ -249,25 +323,31 @@ struct gx_device_clist_writer_s {
      * garbage collector.
      */
     gs_imager_state imager_state;	/* current values of imager params */
+    bool pdf14_needed;		/* if true then not page level opaque mode */
+                                /* above set when not at page level with no SMask or when */
+                                /* the page level BM, shape or opacity alpha needs tranaparency */
+    int pdf14_trans_group_level;/* 0 when at page level group -- push increments, pop decrements */
+    int pdf14_smask_level;	/* 0 when at SMask None -- push increments, pop decrements */
+
     float dash_pattern[cmd_max_dash];	/* current dash pattern */
     const gx_clip_path *clip_path;	/* current clip path, */
-				/* only non-transient for images */
+                                /* only non-transient for images */
     gs_id clip_path_id;		/* id of current clip path */
     clist_color_space_t color_space;	/* current color space, */
-				/* only used for non-mask images */
+                                /* only used for non-mask images */
     gs_id transfer_ids[4];	/* ids of transfer maps */
     gs_id black_generation_id;	/* id of black generation map */
     gs_id undercolor_removal_id;	/* id of u.c.r. map */
     gs_id device_halftone_id;	/* id of device halftone */
     gs_id image_enum_id;	/* non-0 if we are inside an image */
-				/* that we are passing through */
+                                /* that we are passing through */
     int error_is_retryable;		/* Extra status used to distinguish hard VMerrors */
-			       /* from warnings upgraded to VMerrors. */
-			       /* T if err ret'd by cmd_put_op et al can be retried */
+                               /* from warnings upgraded to VMerrors. */
+                               /* T if err ret'd by cmd_put_op et al can be retried */
     int permanent_error;		/* if < 0, error only cleared by clist_reset() */
     int driver_call_nesting;	/* nesting level of non-retryable driver calls */
     int ignore_lo_mem_warnings;	/* ignore warnings from clist file/mem */
-	    /* Following must be set before writing */
+            /* Following must be set before writing */
     proc_free_up_bandlist_memory((*free_up_bandlist_memory)); /* if nz, proc to free some bandlist memory */
     int disable_mask;		/* mask of routines to disable clist_disable_xxx */
     gs_pattern1_instance_t *pinst; /* Used when it is a pattern clist. */
@@ -281,15 +361,15 @@ struct gx_device_clist_writer_s {
     uint mask_id;
     uint temp_mask_id; /* Mask id of a mask of an image with SMask. */
     bool is_fillpage;
-    gx_device_color_info clist_color_info; /* color information to be used during clist writing.  
-                                           It may be different than the target device if we 
-                                           are in a transparency group.  Since the fill rect 
-                                           commands use the forward procs and we have no 
+    gx_device_color_info clist_color_info; /* color information to be used during clist writing.
+                                           It may be different than the target device if we
+                                           are in a transparency group.  Since the fill rect
+                                           commands use the forward procs and we have no
                                            access to the graphic state information in those
                                            routines, this is the logical place to put this
                                            information */
-
 };
+
 #ifndef gx_device_clist_writer_DEFINED
 #define gx_device_clist_writer_DEFINED
 typedef struct gx_device_clist_writer_s gx_device_clist_writer;
@@ -314,16 +394,18 @@ typedef struct clist_render_thread_control_s clist_render_thread_control_t;
 typedef struct gx_device_clist_reader_s {
     gx_device_clist_common_members;	/* (must be first) */
     gx_render_plane_t yplane;		/* current plane, index = -1 */
-					/* means all planes */
+                                        /* means all planes */
     const gx_placed_page *pages;
+    gx_color_usage_t *color_usage_array; /* per band color_usage */
     int num_pages;
-    gx_band_complexity_t *band_complexity_array;  /* num_bands elements */
     void *offset_map; /* Just against collecting the map as garbage. */
     int num_render_threads;		/* number of threads being used */
     clist_render_thread_control_t *render_threads;	/* array of threads */
     byte *main_thread_data;		/* saved data pointer of main thread */
     int curr_render_thread;		/* index into array */
     int thread_lookahead_direction;	/* +1 or -1 */
+    int next_band;			/* may be < 0 or >= num bands when no more remain to render */
+
 } gx_device_clist_reader;
 
 union gx_device_clist_s {
@@ -350,17 +432,17 @@ extern_st(st_device_clist);
 /* setup before opening clist device */
 #define clist_init_params(xclist, xdata, xdata_size, xtarget, xbuf_procs, xband_params, xexternal, xmemory, xfree_bandlist, xdisable, pageusestransparency)\
     BEGIN\
-	(xclist)->common.data = (xdata);\
-	(xclist)->common.data_size = (xdata_size);\
-	(xclist)->common.target = (xtarget);\
-	(xclist)->common.buf_procs = (xbuf_procs);\
-	(xclist)->common.band_params = (xband_params);\
-	(xclist)->common.do_not_open_or_close_bandfiles = (xexternal);\
-	(xclist)->common.bandlist_memory = (xmemory);\
-	(xclist)->writer.free_up_bandlist_memory = (xfree_bandlist);\
-	(xclist)->writer.disable_mask = (xdisable);\
-	(xclist)->writer.page_uses_transparency = (pageusestransparency);\
-	(xclist)->writer.pinst = NULL;\
+        (xclist)->common.data = (xdata);\
+        (xclist)->common.data_size = (xdata_size);\
+        (xclist)->common.target = (xtarget);\
+        (xclist)->common.buf_procs = (xbuf_procs);\
+        (xclist)->common.band_params = (xband_params);\
+        (xclist)->common.do_not_open_or_close_bandfiles = (xexternal);\
+        (xclist)->common.bandlist_memory = (xmemory);\
+        (xclist)->writer.free_up_bandlist_memory = (xfree_bandlist);\
+        (xclist)->writer.disable_mask = (xdisable);\
+        (xclist)->writer.page_uses_transparency = (pageusestransparency);\
+        (xclist)->writer.pinst = NULL;\
     END
 
 /* Determine whether this clist device is able to recover VMerrors */
@@ -384,14 +466,6 @@ int clist_close_output_file(gx_device *dev);
  */
 int clist_close_page_info(gx_band_page_info_t *ppi);
 
-/*
- * Compute the colors-used information in the page_info structure from the
- * information in the individual writer bands.  This is only useful at the
- * end of a page.  gdev_prn_colors_used calls this procedure if it hasn't
- * been called since the page was started.  clist_end_page also calls it.
- */
-void clist_compute_colors_used(gx_device_clist_writer *cldev);
-
 /* Define the abstract type for a printer device. */
 #ifndef gx_device_printer_DEFINED
 #  define gx_device_printer_DEFINED
@@ -404,7 +478,7 @@ int clist_setup_params(gx_device *dev);
 /*
  * Render a rectangle to a client-supplied image.  This implements
  * gdev_prn_render_rectangle for devices that are using banding.
- * 
+ *
  * Note that clist_render_rectangle only guarantees to render *at least* the
  * requested rectangle to bdev, offset by (-prect->p.x, -prect->p.y):
  * anything it does to avoid rendering regions outside the rectangle is
@@ -413,50 +487,70 @@ int clist_setup_params(gx_device *dev);
  * must set up a clipping device.
  */
 int clist_render_rectangle(gx_device_clist *cdev,
-			   const gs_int_rect *prect, gx_device *bdev,
-			   const gx_render_plane_t *render_plane,
-			   bool clear);
+                           const gs_int_rect *prect, gx_device *bdev,
+                           const gx_render_plane_t *render_plane,
+                           bool clear);
 
-/* A null pointer is used to denote not banding.  
- * Since false == NULL the old usage of for_banding = false works even if it's hackish.
- *
- * returns the complexity for a band given the y offset from top of page.
- */
-gx_band_complexity_t *
-clist_get_band_complexity(gx_device *dev, int y);
-
-/* Free any band_complexity_array memory used by the clist reader device */
-void gx_clist_reader_free_band_complexity_array(gx_device_clist *cldev);
-
-/* deep copy constructor if from != NULL
- * default constructor if from == NULL
- */
-void 
-clist_copy_band_complexity(gx_band_complexity_t *this, const gx_band_complexity_t *from);
+/* Optimization of PDF 1.4 transparency requires a trans_bbox for each band */
+/* This function updates the clist writer states with the bbox provided. */
+void clist_update_trans_bbox(gx_device_clist_writer *dev, gs_int_rect *bbox);
 
 /* Retrieve total size for cfile and bfile. */
 int clist_data_size(const gx_device_clist *cdev, int select);
 /* Get command list data. */
-int clist_get_data(const gx_device_clist *cdev, int select, int offset, byte *buf, int length);
+int clist_get_data(const gx_device_clist *cdev, int select, int64_t offset, byte *buf, int length);
 /* Put command list data. */
-int clist_put_data(const gx_device_clist *cdev, int select, int offset, const byte *buf, int length);
+int clist_put_data(const gx_device_clist *cdev, int select, int64_t offset, const byte *buf, int length);
+
+/* Write out the array of color usage entries (one per band) */
+int clist_write_color_usage_array(gx_device_clist_writer *cldev);
+
+/* get the color_usage summary over a Y range from the clist writer states */
+/* Not expected to be used */
+int clist_writer_color_usage(gx_device_clist_writer *cldev, int y, int height,
+                     gx_color_usage_t *color_usage, int *range_start);
+
+/* ICC table prototypes */
+
+/* Write out the table of profile entries */
+int clist_icc_writetable(gx_device_clist_writer *cldev);
+
+/* Write out the profile to the clist */
+int64_t clist_icc_addprofile(gx_device_clist_writer *cdev, cmm_profile_t *iccprofile, int *iccsize);
+
+/* Seach the table to see if we already have a profile in the cfile */
+bool clist_icc_searchtable(gx_device_clist_writer *cdev, int64_t hashcode);
+
+/* Add another entry into the icc profile table */
+int clist_icc_addentry(gx_device_clist_writer *cdev, int64_t hashcode,
+                       cmm_profile_t *icc_profile);
+
+/* Free the table and its entries */
+int clist_icc_freetable(clist_icctable_t *icc_table, gs_memory_t *memory);
+
+/* Generic read function used with ICC and could be used with others.
+   A different of this and clist_get_data is that here we reset the
+   cfile position when we are done and this only reads from the cfile
+   not the bfile or cfile */
+
+int clist_read_chunk(gx_device_clist_reader *crdev, int64_t position, int size, unsigned char *buf);
 
 /* Exports from gxclread used by the multi-threading logic */
 
 /* Initialize for reading. */
 int clist_render_init(gx_device_clist *dev);
 
-int 
+int
 clist_close_writer_and_init_reader(gx_device_clist *cldev);
 
 void
 clist_select_render_plane(gx_device *dev, int y, int height,
-			  gx_render_plane_t *render_plane, int index);
+                          gx_render_plane_t *render_plane, int index);
 
 int clist_rasterize_lines(gx_device *dev, int y, int lineCount,
-				  gx_device *bdev,
-				  const gx_render_plane_t *render_plane,
-				  int *pmy);
+                                  gx_device *bdev,
+                                  const gx_render_plane_t *render_plane,
+                                  int *pmy);
 
 /* Enable multi threaded rendering. Returns > 0 if supported, < 0 if single threaded */
 int
@@ -466,7 +560,7 @@ clist_enable_multi_thread_render(gx_device *dev);
 void
 clist_teardown_render_threads(gx_device *dev);
 
-#ifdef DEBUG 
+#ifdef DEBUG
 #define clist_debug_rect clist_debug_rect_imp
 void clist_debug_rect_imp(int x, int y, int width, int height);
 #define clist_debug_image_rect clist_debug_image_rect_imp
@@ -492,40 +586,40 @@ void clist_debug_set_ctm_imp(const gs_matrix *m);
  */
 #define crop_fill_y(cdev, ry, rheight)\
     BEGIN\
-	if (ry < cdev->cropping_min) {\
-	    rheight = ry + rheight - cdev->cropping_min;\
-	    ry = cdev->cropping_min;\
-	}\
-	if (ry + rheight > cdev->cropping_max)\
-	    rheight = cdev->cropping_max - ry;\
+        if (ry < cdev->cropping_min) {\
+            rheight = ry + rheight - cdev->cropping_min;\
+            ry = cdev->cropping_min;\
+        }\
+        if (ry + rheight > cdev->cropping_max)\
+            rheight = cdev->cropping_max - ry;\
     END
 
 #define crop_fill(dev, x, y, w, h)\
     BEGIN\
-	if ( x < 0 )\
-	    w += x, x = 0;\
-	fit_fill_w(dev, x, w);\
-	crop_fill_y(dev, y, h);\
+        if ( x < 0 )\
+            w += x, x = 0;\
+        fit_fill_w(dev, x, w);\
+        crop_fill_y(dev, y, h);\
     END
 
 #define crop_copy_y(cdev, data, data_x, raster, id, ry, rheight)\
     BEGIN\
-	if (ry < cdev->cropping_min) {\
-	    rheight = ry + rheight - cdev->cropping_min;\
-	    data += (cdev->cropping_min - ry) * raster;\
-	    id = gx_no_bitmap_id;\
-	    ry = cdev->cropping_min;\
-	}\
-	if (ry + rheight > cdev->cropping_max)\
-	    rheight = cdev->cropping_max - ry;\
+        if (ry < cdev->cropping_min) {\
+            rheight = ry + rheight - cdev->cropping_min;\
+            data += (cdev->cropping_min - ry) * raster;\
+            id = gx_no_bitmap_id;\
+            ry = cdev->cropping_min;\
+        }\
+        if (ry + rheight > cdev->cropping_max)\
+            rheight = cdev->cropping_max - ry;\
     END
 
 #define crop_copy(dev, data, data_x, raster, id, x, y, w, h)\
     BEGIN\
-	if ( x < 0 )\
-	    w += x, data_x -= x, x = 0;\
-	fit_fill_w(dev, x, w);\
-	crop_copy_y(dev, data, data_x, raster, id, y, h);\
+        if ( x < 0 )\
+            w += x, data_x -= x, x = 0;\
+        fit_fill_w(dev, x, w);\
+        crop_copy_y(dev, data, data_x, raster, id, y, h);\
     END
 
 #endif /* gxclist_INCLUDED */

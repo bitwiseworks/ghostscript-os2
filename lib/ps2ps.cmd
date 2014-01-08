@@ -1,4 +1,3 @@
-/* $Id: ps2ps.cmd 6300 2005-12-28 19:56:24Z giles $ */
 /*
  * This file is maintained by a user: if you have any questions about it,
  * please contact Mark Hale (mark.hale@physics.org).
@@ -12,7 +11,7 @@ gs='@gsos2'
 
 if params='' then call usage
 
-options='-dNOPAUSE -dBATCH'
+options='-P- -dSAFER -dNOPAUSE -dBATCH'
 
 /* extract options from command line */
 i=1
@@ -28,7 +27,7 @@ if infile='' then call usage
 outfile=word(params,i+1)
 if outfile='' then call usage
 
-gs '-q -sDEVICE=pswrite -sOutputFile='outfile options infile
+gs '-q -sDEVICE=ps2write -sOutputFile='outfile options infile
 exit
 
 usage:

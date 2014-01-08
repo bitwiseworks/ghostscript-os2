@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gximask.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Functions for masked fill optimization. */
 
 #ifndef gximask_INCLUDED
@@ -33,8 +35,8 @@ typedef struct gx_device_color_s gx_device_color;
 typedef struct gx_clip_path_s gx_clip_path;
 #endif
 
-int gx_image_fill_masked_start(gx_device *dev, const gx_device_color *pdevc, const gx_clip_path *pcpath, 
-			   gs_memory_t *mem, gx_device **cdev);
+int gx_image_fill_masked_start(gx_device *dev, const gx_device_color *pdevc, const gx_clip_path *pcpath,
+                           gs_memory_t *mem, gx_device **cdev);
 
 int gx_image_fill_masked_end(gx_device *dev, gx_device *tdev, const gx_device_color *pdevc);
 
@@ -43,6 +45,5 @@ int gx_image_fill_masked(gx_device *dev,
     int x, int y, int width, int height,
     const gx_device_color *pdcolor, int depth,
     gs_logical_operation_t lop, const gx_clip_path *pcpath);
-
 
 #endif /* gximask_INCLUDED */

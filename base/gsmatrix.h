@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsmatrix.h 8536 2008-02-20 21:02:48Z leonardo $ */
+
 /* Definition of matrices and client interface to matrix routines */
 
 #ifndef gsmatrix_INCLUDED
@@ -20,6 +22,9 @@
 /* See p. 65 of the PostScript manual for the semantics of */
 /* transformation matrices. */
 
+/* if you make any additions/changes to the gs_matrix_s structure or the
+   _matrix_body macro you need to make the appropriate additions/changes 
+   to the gs_matrix_compare() function in gsmatrix.c */
 /* Structure for a transformation matrix. */
 #define _matrix_body\
   float xx, xy, yx, yy, tx, ty
@@ -67,6 +72,9 @@ int gs_matrix_multiply(const gs_matrix *, const gs_matrix *, gs_matrix *),
     gs_matrix_translate(const gs_matrix *, floatp, floatp, gs_matrix *),
     gs_matrix_scale(const gs_matrix *, floatp, floatp, gs_matrix *),
     gs_matrix_rotate(const gs_matrix *, floatp, gs_matrix *);
+
+/* Matrix comparison */
+int gs_matrix_compare(const gs_matrix *, const gs_matrix *);
 
 /* Coordinate transformation */
 int gs_point_transform(floatp, floatp, const gs_matrix *, gs_point *),

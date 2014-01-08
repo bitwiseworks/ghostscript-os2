@@ -1,21 +1,20 @@
 @echo off 
-@rem $Id: ps2ps.bat 6417 2005-12-29 01:11:43Z alexcher $
 @rem "Distill" PostScript.
 
 if %1/==/ goto usage
 if %2/==/ goto usage
-call gssetgs.bat
-echo -dNOPAUSE -dSAFER -dBATCH >_.at
+call "%~dp0gssetgs.bat"
+echo -dNOPAUSE -P- -dSAFER -dBATCH >"%TEMP%\_.at"
 :cp
 if %3/==/ goto doit
-echo %1 >>_.at
+echo %1 >>"%TEMP%\_.at"
 shift
 goto cp
 
 :doit
 rem Watcom C deletes = signs, so use # instead.
-%GSC% -q -sDEVICE#pswrite -sOutputFile#%2 @_.at %1
-if exist _.at erase _.at
+%GSC% -q -sDEVICE#ps2write -sOutputFile#%2 @"%TEMP%\_.at" %1
+if exist "%TEMP%\_.at" erase "%TEMP%\_.at"
 goto end
 
 :usage

@@ -1,7 +1,6 @@
 #!/bin/sh
 # Run this to set up the build system: configure, makefiles, etc.
 
-# $Id: autogen.sh 9048 2008-08-29 18:46:21Z giles $
 
 package="ghostscript"
 
@@ -20,17 +19,6 @@ cd "$srcdir"
 
 echo "Generating configuration files for $package, please wait...."
 
-echo "  creating links to configuration sources"
-rm -f configure.ac Makefile.in
-ln -s base/configure.ac .
-ln -s base/Makefile.in .
-
-#echo "  aclocal $ACLOCAL_FLAGS"
-#aclocal $ACLOCAL_FLAGS || exit 1
-#echo "  autoheader"
-#autoheader || exit 1
-#echo "  automake --add-missing $AUTOMAKE_FLAGS"
-#automake --add-missing $AUTOMAKE_FLAGS || exit 1
 echo "  running autoconf"
 autoconf || exit 1
 

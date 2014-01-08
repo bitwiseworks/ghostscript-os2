@@ -1,19 +1,18 @@
-%    Copyright (C) 1997, 1998, 1999, 2000 Aladdin Enterprises.  All rights reserved.
-% 
+% Copyright (C) 2001-2012 Artifex Software, Inc.
+% All Rights Reserved.
+%
 % This software is provided AS-IS with no warranty, either express or
 % implied.
-% 
+%
 % This software is distributed under license and may not be copied,
 % modified or distributed except as expressly authorized under the terms
 % of the license contained in the file LICENSE in this distribution.
-% 
-% For more information about licensing, please refer to
-% http://www.ghostscript.com/licensing/. For information on
-% commercial licensing, go to http://www.artifex.com/licensing/ or
-% contact Artifex Software, Inc., 101 Lucas Valley Road #110,
-% San Rafael, CA  94903, U.S.A., +1(415)492-9861.
+%
+% Refer to licensing information at http://www.artifex.com or contact
+% Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+% CA  94903, U.S.A., +1(415)492-9861, for further information.
+%
 
-% $Id: gs_cff.ps 9351 2009-01-13 22:17:21Z alexcher $
 % Loader for CFF (compressed) fonts, including OpenType CFFs.
 % The following are not implemented yet:
 %	Deleted entries in the Name Index
@@ -38,13 +37,13 @@
 /.loadnonottofontfile /.loadfontfile load def
 /.loadfontfile {
   dup 4 string .peekstring pop (OTTO) eq {
-		% If this is a font at all, it's an OpenType CFF font set.
+                % If this is a font at all, it's an OpenType CFF font set.
     .init_otto_font_file
-	% Use a random FontSet resource name.  ****** WRONG ******
+        % Use a random FontSet resource name.  ****** WRONG ******
     realtime rand xor =string cvs exch //false //false
     ReadData pop
   } {
-		% Not a TrueType font.
+                % Not a TrueType font.
     .loadnonottofontfile
   } ifelse
 } bind def
@@ -53,18 +52,18 @@
 /.init_otto_font_file {
   /FontSetInit /ProcSet findresource begin
   2 dict begin
-  /f exch def /cff null def
+  /f exch def /cff //null def
   card32 pop card16 6 { next pop } repeat dup {
-		% Stack: numtables tablesleft
+                % Stack: numtables tablesleft
     dup 0 eq {
       pop pop /.loadottofontfile cvx /invalidfont signalerror
     } if
     f 4 string readstring pop (CFF ) eq { sub exit } if
     f 12 string readstring pop pop 1 sub	% skip to next table
   } loop
-		% Stack: tablesread
+                % Stack: tablesread
   card32 pop card32 card32
-		% Stack: tablesread start length
+                % Stack: tablesread start length
   exch 3 -1 roll 1 add 16 mul 12 add sub
   f exch subfilefilter flushfile	% skip to start
   f exch subfilefilter end
@@ -75,8 +74,8 @@
 % ---------------- Standard strings (actually names) ---------------- %
 
 /StandardStrings mark
-	% The initial StandardStrings that that denote characters are
-	% defined as a pseudo-Encoding.
+        % The initial StandardStrings that that denote characters are
+        % defined as a pseudo-Encoding.
 % 0
   /CFFStandardStrings .findencoding aload pop
 % 379
@@ -189,7 +188,7 @@ mark
     0
     CFFDEBUG { (  Out of range access, assuming 0) = } if
     /pdfformaterror where {
-      pop 
+      pop
       (   **** Warning: Out of range access to a CFF table, assuming 0.\n)
       pdfformaterror
     } if
@@ -211,7 +210,7 @@ mark
     pop ()
   } {
     string f exch readstring pop dup length advance
-    CFFDEBUG { (  ) print dup == } if
+    CFFDEBUG { (  ) print dup //== exec } if
   } ifelse
 } bind def
 /card8		% - card8 <card8>
@@ -243,7 +242,7 @@ def
   mark card16
   dup 0 ne {
     1 exch next
-    dup 0 eq { 
+    dup 0 eq {
       pop       % skip incorrect index, bug 689854
     } {
       offsetproc dup exec pop exch {
@@ -263,26 +262,26 @@ def
     dup 28 lt { exit } if
     dup 32 lt {
       28 sub {
-	{ card16 32768 xor 32768 sub }
-	{ 4 offset dup 16#7fffffff gt { -1 32 bitshift add } if }
-	{ tokenreal }
-	{ 31 exit }
+        { card16 32768 xor 32768 sub }
+        { 4 offset dup 16#7fffffff gt { -1 32 bitshift add } if }
+        { tokenreal }
+        { 31 exit }
       } exch get exec
     } {
       dup 247 lt {
-	139 sub
+        139 sub
       } {
-	247 sub {
-	  { next 108 add }
-	  { next 364 add }
-	  { next 620 add }
-	  { next 876 add }
-	  { next 108 add neg }
-	  { next 364 add neg }
-	  { next 620 add neg }
-	  { next 876 add neg }
-	  % 255 is deliberately omitted and will cause a rangecheck
-	} exch get exec
+        247 sub {
+          { next 108 add }
+          { next 364 add }
+          { next 620 add }
+          { next 876 add }
+          { next 108 add neg }
+          { next 364 add neg }
+          { next 620 add neg }
+          { next 876 add neg }
+          % 255 is deliberately omitted and will cause a rangecheck
+        } exch get exec
       } ifelse
     } ifelse
   } loop
@@ -302,8 +301,8 @@ def
 /tokenreal {	% - tokenreal <float>
   0 {
     next exch 1 index -4 bitshift tokenrealarray exch get exec tokenput
-		% We must leave the byte on the stack temporarily so that
-		% the exit will see a consistent stack state.
+                % We must leave the byte on the stack temporarily so that
+                % the exit will see a consistent stack state.
     1 index 15 and tokenrealarray exch get exec tokenput exch pop
   } loop
   tokenbuf 0 3 -1 roll getinterval cvr exch pop
@@ -322,7 +321,7 @@ def
   idstring dup type /nametype ne { cvn } if
 } bind def
 /subfilefilter {	% <file> <length> subfilefilter <filter>
-	% SubFileDecode interprets a length of 0 as infinite.
+        % SubFileDecode interprets a length of 0 as infinite.
   dup 0 le { pop pop () 0 } if () /SubFileDecode filter
 } bind def
 
@@ -397,7 +396,7 @@ def
   }
   17 { { readCharStrings } offput }
   18 { exch /readPrivate cvx 2 packedarray offput }
-	% CIDFont operators
+        % CIDFont operators
   62 {		% ROS, must be first in a CIDFont
     currentdict /FontType undef
     currentdict /Encoding undef
@@ -419,8 +418,8 @@ def
   67 { /UIDBase pxdef }
   68 { { readFDArray } offput }
   69 { { readFDSelect } offput }
-	% This operator only appears in a FDArray element.
-	% We don't really need it, so ignore an error.
+        % This operator only appears in a FDArray element.
+        % We don't really need it, so ignore an error.
   70 { { idstring } .internalstopped { pop pop } { /FontName pxdef } ifelse }
 .dicttomark readonly def
 
@@ -430,13 +429,13 @@ def
 % queued read should be read.
 
 /charstringcount {	% <font> charstringcount <count> true
-			% <font> charstringcount <length> false
+                        % <font> charstringcount <length> false
   /CharStringArray .knownget {
-    length true
+    length //true
   } {
-	% Hack: look for the next queued read.
+        % Hack: look for the next queued read.
     16#7fffffff offsets { pop .min } forall
-    pos sub false
+    pos sub //false
   } ifelse
 } bind def
 
@@ -478,7 +477,7 @@ def
 } bind
 { 1 next {
     next next 1 add {
-			% Stack: gid code
+                        % Stack: gid code
       Encoding 1 index 3 index put
       exch 1 add exch 1 add
     } repeat pop
@@ -493,7 +492,7 @@ def
   /Encoding [ 256 { /.notdef } repeat ] def
   next encodingformats 1 index 127 and get exec
   128 ge {
-			% Read supplementary encodings.
+                        % Read supplementary encodings.
     next {
       Encoding next sid idname put
     } repeat
@@ -504,7 +503,7 @@ def
 
 /readFDArray {		% <font> readFDArray -
   /FDarray Index exch pop exch
-  2 dict begin /f null def begin
+  2 dict begin /f //null def begin
   [ exch {
     dup length subfilefilter /f exch store
     10 dict begin
@@ -525,7 +524,7 @@ dup							% Format 2
 % The following procedure does not use excessive op-stack space.
 { pop 65535 array card16 card16 exch			% Format 3
   { % Stack: array previndex
-    card8 card16 
+    card8 card16
     exch 1 index 4 -1 roll
     exch 1 exch 1 sub
     { 3 index exch 2 index put } for pop
@@ -538,7 +537,6 @@ dup							% Format 2
 /readFDSelect {		% <font> readFDSelect -
   begin fdselectformats next get currentdict exch exec /FDSelect exch def end
 } bind def
-
 
 % ------ Private dictionary ------ %
 
@@ -569,7 +567,7 @@ dup							% Format 2
   19 { PrivateStart add { readSubrs } offput }
   20 { /defaultWidthX pxdef }
   21 { /nominalWidthX pxdef }
-	% Multiple Master fonts only
+        % Multiple Master fonts only
   59 { /NDV pxdef }
   60 { /CDV pxdef }
   61 { /lenBuildCharArray pxdef }
@@ -577,7 +575,7 @@ dup							% Format 2
 
 /readPrivate {		% <font> <size> readPrivate -
   2 dict begin
-  f 3 1 roll exch       % f <size> <font> 
+  f 3 1 roll exch       % f <size> <font>
   StringCache queued_offset known {
     /PrivateStart queued_offset def
   } {
@@ -593,7 +591,7 @@ dup							% Format 2
   } ifelse
   dup /FontType .knownget not { 2 } if exch
   /Private get begin
-		% Default lenIV to -1 even for Type 1 CharStrings.
+                % Default lenIV to -1 even for Type 1 CharStrings.
   2 ne { /lenIV -1 def } if
   //privatedictops Dict end
   exch /f exch store advance
@@ -608,16 +606,16 @@ dup							% Format 2
 
 % Clean up after finishing a font.
 /cleanupFont {		% (currentdict) cleanupFont -
-		% Remove unwanted entries.
+                % Remove unwanted entries.
   currentdict /charset undef
   currentdict /CharStringArray undef
 } bind def
 
 % Update the Encoding and CharStrings for a real font.
 /finishFont {		% (currentdict) finishFont -
-		% Construct the real Encoding.
-		% The value of Encoding is either a number, for predefined
-		% encodings, or an array of mixed GIDs and names.
+                % Construct the real Encoding.
+                % The value of Encoding is either a number, for predefined
+                % encodings, or an array of mixed GIDs and names.
   /Encoding mark Encoding
   CFFDEBUG { (Encoding: ) print dup === flush } if
   dup type /integertype eq {
@@ -627,14 +625,14 @@ dup							% Format 2
       dup type /integertype eq { charset exch get idname } if
     } forall
   } ifelse .packtomark def
-		% Construct the CharStrings.
-		% Note that they may only correspond to an initial
-		% subset of the charset.
+                % Construct the CharStrings.
+                % Note that they may only correspond to an initial
+                % subset of the charset.
   /CharStrings charset length CharStringArray length .min dict def
   CFFDEBUG {
     charset length =only ( charset ) print
     CharStringArray length =only ( CharStringArray) =
-    charset == flush
+    charset //== exec flush
   } if
   0 1 CharStrings maxlength 1 sub {
     dup CharStringArray exch get
@@ -646,18 +644,18 @@ dup							% Format 2
 % Replace CharStrings with GlyphDirectory for a CIDFont;
 % Move GlobalSubrs to descendent fonts.
 /finishCIDFont {	% (currentdict) finishCIDFont -
-		% Construct the GlyphDirectory, similar to CharStrings.
+                % Construct the GlyphDirectory, similar to CharStrings.
   /FDBytes FDArray length 1 gt { 1 } { 0 } ifelse def
   /GlyphDirectory charset length CharStringArray length .min dict def
   CFFDEBUG {
     charset length =only ( charset ) print
     CharStringArray length =only ( CharStringArray) =
-    charset == flush
+    charset //== exec flush
   } if
   0 1 GlyphDirectory maxlength 1 sub {
     dup CharStringArray exch get
-		% If there is more than one FDArray entry, add the font
-		% index to the beginning of each charstring.
+                % If there is more than one FDArray entry, add the font
+                % index to the beginning of each charstring.
     FDBytes 1 eq {
       FDSelect 2 index get
       1 string dup 0 4 -1 roll put exch concatstrings
@@ -673,7 +671,7 @@ dup							% Format 2
     Private /GlobalSubrs undef
   } if
 
-		% Clean up.
+                % Clean up.
   currentdict /FDSelect undef
   cleanupFont
 } bind def
@@ -723,7 +721,7 @@ dup							% Format 2
   currentfile exch subfilefilter //false //false ReadData pop
 } bind def
 /ReadData {           % <resname> <file> <forceresname> <forcecid> ReadData <fontset>
-	% Initialize.
+        % Initialize.
 
   30 dict begin
   /forcecidfont exch def
@@ -734,7 +732,8 @@ dup							% Format 2
   /DEBUG CFFDEBUG def	% bring the binding closer
   /StringCache 1 dict def % Private DICT may be reused.
 
-	% Read the header.
+systemdict /OLDCFF known {
+        % Read the header.
 
   /f cff def
   /vmajor next def
@@ -746,46 +745,47 @@ dup							% Format 2
     f exch () /SubFileDecode filter flushfile
   } if
 
-	% Read the Indexes.
+        % Read the Indexes.
 
   /names Index def
   /topdicts Index def
   /strings Index def
   /gsubrs Index def
 
-	% Read the top Dicts.
+        % Read the top Dicts.
 
   /offsets 50 dict def
   /queued [] def
-  /opdict null def		% reserve a slot
+  /opdict //null def		% reserve a slot
+
   /fonts [ topdicts {
     0 () /SubFileDecode filter /f exch def
     40 dict begin
-		% Preload defaults that differ from PostScript defaults,
-		% or that are required.
+                % Preload defaults that differ from PostScript defaults,
+                % or that are required.
       /FontType 2 def
       /PaintType 0 def
       /FontMatrix [0.001 0 0 0.001 0 0] def
       /charset StandardCharsets 0 get def
       /Encoding 0 def
       /FontInfo 10 dict
-	dup /UnderlinePosition -100 put
-	dup /UnderlineThickness 50 put
+        dup /UnderlinePosition -100 put
+        dup /UnderlineThickness 50 put
       def
       /Private 20 dict
-	gsubrs length 0 ne { dup /GlobalSubrs gsubrs put } if
+        gsubrs length 0 ne { dup /GlobalSubrs gsubrs put } if
       def
       //topdictops Dict
     currentdict end
   } forall ] def
 
-	% Read other tables with queued offsets.
+        % Read other tables with queued offsets.
         % We process these in order so we can advance if needed.
-	% The CFF file may not be positionable.
+        % The CFF file may not be positionable.
   {		% outer loop since offsets may be updated when processing
-    CFFDEBUG { (offsets: ) print [ offsets { pop } forall ] == } if
+    CFFDEBUG { (offsets: ) print [ offsets { pop } forall ] //== exec } if
     [ offsets { pop } forall ] { lt } .sort	% process in order of appearance
-    { 
+    {
       CFFDEBUG { (queued offset: ) print dup =print flush (, current pos=) print pos = } if
       /queued_offset 1 index def
       StringCache 1 index .knownget {
@@ -795,18 +795,18 @@ dup							% Format 2
         dup pos ne { dup pos sub nextstring pop } if	% negative advance will cause error
       } ifelse
       offsets exch 2 copy get 3 1 roll undef
-      CFFDEBUG { (exec queued: ) print dup == } if
+      CFFDEBUG { (exec queued: ) print dup //== exec } if
       exec
     } forall
     offsets length 0 eq { exit } if
   } loop
 
-	% Process out-of-order tables.
+        % Process out-of-order tables.
 
   CFFDEBUG { queued length =only ( queued) = flush } if
   queued { exec } forall
 
-	% Update Encoding and CharStrings.
+        % Update Encoding and CharStrings.
 
   fonts {
     begin
@@ -817,25 +817,45 @@ dup							% Format 2
     } ifelse
     end
   } forall
-
-	% Wrap up.
+        % Wrap up.
 
   resname mark 0 1 fonts length 1 sub {
     CFFDEBUG { dup =only ( ) print flush } if
     dup names exch get
     forceresname { pop resname } if
-    CFFDEBUG { dup == flush } if
+    CFFDEBUG { dup //== exec flush } if
     exch fonts exch get
     dup /CIDFontType known {
-		% This is a CIDFont.
+                % This is a CIDFont.
       dup /CIDFontName 3 index put
       1 index exch /CIDFont defineresource
     } {
-		% This is a font.
+                % This is a font.
       dup /FontName 3 index put
       1 index exch definefont
     } ifelse
   } for .dicttomark
+
+} {
+  forcecidfont
+  [ { cff 1024 string readstring not { exit } if } loop ]
+  .parsecff /fonts exch def
+
+  resname
+  mark fonts {
+    forceresname { exch pop resname exch } if
+    dup /CIDFontType known { % This is a CIDFont.
+      dup /CIDFontName 3 index put
+      1 index exch /CIDFont defineresource
+    } {      	             % This is a font.
+      dup /FontName 3 index put
+      dup /FontType 2 put
+      1 index exch
+      definefont
+    } ifelse
+  } forall .dicttomark
+} ifelse
+
   end		% temporary dict
   end		% FontSetInit ProcSet
   /FontSet defineresource

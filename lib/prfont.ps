@@ -1,6 +1,20 @@
 %!
 %%Creator: Eric Gisin <egisin@waterloo.csnet>
 %%Title: Print font catalog
+% Copyright (C) 2001-2012 Artifex Software, Inc.
+% All Rights Reserved.
+%
+% This software is provided AS-IS with no warranty, either express or
+% implied.
+%
+% This software is distributed under license and may not be copied,
+% modified or distributed except as expressly authorized under the terms
+% of the license contained in the file LICENSE in this distribution.
+%
+% Refer to licensing information at http://www.artifex.com or contact
+% Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+% CA  94903, U.S.A., +1(415)492-9861, for further information.
+%
 % Copyright (c) 1986 Eric Gisin
 % Copyright (C) 1992 Aladdin Enterprises, Menlo Park, CA
 %   Modified to print all 256 encoded characters.
@@ -22,7 +36,6 @@
 % Copyright transferred 2000/09/15 to Artifex Software, Inc.  Send any questions to
 %   bug-gs@ghostscript.com.
 
-% $Id: prfont.ps 8022 2007-06-05 22:23:38Z giles $
 
 % Example usages at bottom of file
 
@@ -37,8 +50,8 @@
 
 % Sort an array.  Code used by permission of the author, Aladdin Enterprises.
 /sort {			% <array> <lt-proc> sort <array>
-	% Heapsort (algorithm 5.2.3H, Knuth vol. 2, p. 146),
-	% modified for 0-origin indexing. */
+        % Heapsort (algorithm 5.2.3H, Knuth vol. 2, p. 146),
+        % modified for 0-origin indexing. */
   10 dict begin
   /LT exch def
   /recs exch def
@@ -47,23 +60,23 @@
     /l N 2 idiv def
     /r N 1 sub def {
       l 0 gt {
-	/l l 1 sub def
-	/R recs l get def
+        /l l 1 sub def
+        /R recs l get def
       } {
-	/R recs r get def
-	recs r recs 0 get put
-	/r r 1 sub def
-	r 0 eq { recs 0 R put exit } if
+        /R recs r get def
+        recs r recs 0 get put
+        /r r 1 sub def
+        r 0 eq { recs 0 R put exit } if
       } ifelse
       /j l def {
-	/i j def
-	/j j dup add 1 add def
-	j r lt {
-	  recs j get recs j 1 add get LT { /j j 1 add def } if
-	} if
-	j r gt { recs i R put exit } if
-	R recs j get LT not { recs i R put exit } if
-	recs i recs j get put
+        /i j def
+        /j j dup add 1 add def
+        j r lt {
+          recs j get recs j 1 add get LT { /j j 1 add def } if
+        } if
+        j r gt { recs i R put exit } if
+        R recs j get LT not { recs i R put exit } if
+        recs i recs j get put
       } loop
     } loop
   } if recs end
@@ -151,18 +164,18 @@
   /Unencoded exch def
   /Count Unencoded length def
 
-		% Print the unencoded characters in blocks of 128.
+                % Print the unencoded characters in blocks of 128.
 
   0 128 Unencoded length 1 sub
    { /BlockStart 1 index def
-     dup 128 add Unencoded length .min 1 index sub
+     dup 128 add Unencoded length min 1 index sub
      Unencoded 3 1 roll getinterval TempEncoding copy
      /BlockEncoding exch def
      /BlockCount BlockEncoding length def
      save
      F /Encoding known {
        F length dict F
-	{ 1 index /FID eq { pop pop } { 2 index 3 1 roll put } ifelse }
+        { 1 index /FID eq { pop pop } { 2 index 3 1 roll put } ifelse }
        forall dup /Encoding TempEncoding put
        /* exch definefont
        /F exch def
@@ -176,7 +189,7 @@
      36 2.4 Inch moveto
     0 32 BlockCount 1 sub {
       0 -0.4 Inch rmoveto gsave
-      dup 31 add BlockCount 1 sub .min
+      dup 31 add BlockCount 1 sub min
       exch BlockStart add exch BlockStart add DoLine
       grestore
     } for
@@ -192,7 +205,7 @@
   /DoCode {DoChar} def
   /DoLine {DoCharLine} def
 
-	% Display the first 128 encoded characters.
+        % Display the first 128 encoded characters.
 
   DoTitle (, characters 0-127) show
   0 127 DoBlock
@@ -203,7 +216,7 @@
   36 0.8 Inch moveto  96 127 DoLine
   showpage
 
-	% Display the second 128 encoded characters.
+        % Display the second 128 encoded characters.
 
   DoTitle (, characters 128-255) show
   128 255 DoBlock
@@ -216,15 +229,15 @@
 
   F /CharStrings known
    {
-		% Find and display the unencoded characters.
+                % Find and display the unencoded characters.
 
-	/Encoded F /Encoding get length dict def
-	F /Encoding get { true Encoded 3 1 roll put } forall
-	[ F /CharStrings get
-	 { pop dup Encoded exch known { pop } if }
-	forall ] {
-	  exch Namestring1 cvs exch Namestring2 cvs lt
-	} sort DoUnencoded
+        /Encoded F /Encoding get length dict def
+        F /Encoding get { true Encoded 3 1 roll put } forall
+        [ F /CharStrings get
+         { pop dup Encoded exch known { pop } if }
+        forall ] {
+          exch Namestring1 cvs exch Namestring2 cvs lt
+        } sort DoUnencoded
 
    }
   if

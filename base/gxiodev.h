@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxiodev.h 9718 2009-05-02 00:03:15Z ray $ */
+
 /* Structure and default implementation of IODvices */
 /* Requires gsmemory.h */
 
@@ -81,12 +83,12 @@ struct gx_io_device_procs_s {
 
 #define iodev_proc_open_device(proc)\
   int proc(gx_io_device *iodev, const char *access, stream **ps,\
-	   gs_memory_t *mem)
+           gs_memory_t *mem)
     iodev_proc_open_device((*open_device));
 
 #define iodev_proc_open_file(proc)\
   int proc(gx_io_device *iodev, const char *fname, uint namelen,\
-	   const char *access, stream **ps, gs_memory_t *mem)
+           const char *access, stream **ps, gs_memory_t *mem)
     iodev_proc_open_file((*open_file));
 
     /* fopen was changed in release 2.9.6, */
@@ -94,8 +96,8 @@ struct gx_io_device_procs_s {
 
 #define iodev_proc_fopen(proc)\
   int proc(gx_io_device *iodev, const char *fname, const char *access,\
-	   FILE **pfile, char *rfname, uint rnamelen)
-    iodev_proc_fopen((*fopen));
+           FILE **pfile, char *rfname, uint rnamelen)
+    iodev_proc_fopen((*gp_fopen));
 
 #define iodev_proc_fclose(proc)\
   int proc(gx_io_device *iodev, FILE *file)
@@ -115,7 +117,7 @@ struct gx_io_device_procs_s {
 
 #define iodev_proc_enumerate_files(proc)\
   file_enum *proc(gx_io_device *iodev, const char *pat, uint patlen,\
-		  gs_memory_t *mem)
+                  gs_memory_t *mem)
     iodev_proc_enumerate_files((*enumerate_files));
 
 #define iodev_proc_enumerate_next(proc)\
@@ -156,16 +158,16 @@ iodev_proc_get_params(iodev_no_get_params);
 iodev_proc_put_params(iodev_no_put_params);
 /* The %os% implemention of fopen and fclose. */
 /* These are exported for pipes and for %null. */
-iodev_proc_fopen(iodev_os_fopen);
+iodev_proc_fopen(iodev_os_gp_fopen);
 iodev_proc_fclose(iodev_os_fclose);
 
 /* Get the N'th IODevice. */
-gx_io_device *gs_getiodevice(int);
+gx_io_device *gs_getiodevice(const gs_memory_t *,int);
 
-#define iodev_default (gs_getiodevice(0))
+#define iodev_default(mem) (gs_getiodevice(mem,0))
 
 /* Look up an IODevice name. */
-gx_io_device *gs_findiodevice(const byte *, uint);
+gx_io_device *gs_findiodevice(const gs_memory_t *,const byte *, uint);
 
 /* Get and put IODevice parameters. */
 int gs_getdevparams(gx_io_device *, gs_param_list *);

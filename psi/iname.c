@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: iname.c 9179 2008-10-21 16:26:09Z leonardo $ */
+
 /* Name lookup for Ghostscript interpreter */
 #include "memory_.h"
 #include "string_.h"
@@ -37,18 +39,20 @@ static const byte nt_1char_names[NT_1CHAR_SIZE] = {
     NT_1CHAR_NAMES_DATA
 };
 
+static void gs_names_finalize(const gs_memory_t *, void *);
+
 /* Structure descriptors */
 gs_private_st_simple(st_name_sub_table, name_sub_table, "name_sub_table");
 gs_private_st_composite(st_name_string_sub_table, name_string_sub_table_t,
-			"name_string_sub_table_t",
-			name_string_sub_enum_ptrs, name_string_sub_reloc_ptrs);
-gs_private_st_composite(st_name_table, name_table, "name_table",
-			name_table_enum_ptrs, name_table_reloc_ptrs);
+                        "name_string_sub_table_t",
+                        name_string_sub_enum_ptrs, name_string_sub_reloc_ptrs);
+gs_private_st_composite_final(st_name_table, name_table, "name_table",
+                        name_table_enum_ptrs, name_table_reloc_ptrs,gs_names_finalize);
 
 /* Forward references */
 static int name_alloc_sub(name_table *);
-static void name_free_sub(name_table *, uint);
-static void name_scan_sub(name_table *, uint, bool);
+static void name_free_sub(name_table *, uint, bool);
+static void name_scan_sub(name_table *, uint, bool, bool);
 
 /* Debugging printout */
 #ifdef DEBUG
@@ -59,12 +63,12 @@ name_print(const char *msg, const name_table *nt, uint nidx, const int *pflag)
     const name *pname = names_index_ptr_inline(nt, nidx);
     const byte *str = pnstr->string_bytes;
 
-    dlprintf1("[n]%s", msg);
+    dmlprintf1(nt->memory, "[n]%s", msg);
     if (pflag)
-	dprintf1("(%d)", *pflag);
-    dprintf2(" (0x%lx#%u)", (ulong)pname, nidx);
-    debug_print_string(str, pnstr->string_size);
-    dprintf2("(0x%lx,%u)\n", (ulong)str, pnstr->string_size);
+        dmprintf1(nt->memory, "(%d)", *pflag);
+    dmprintf2(nt->memory, " (0x%lx#%u)", (ulong)pname, nidx);
+    debug_print_string(nt->memory, str, pnstr->string_size);
+    dmprintf2(nt->memory, "(0x%lx,%u)\n", (ulong)str, pnstr->string_size);
 }
 #  define if_debug_name(msg, nt, nidx, pflag)\
      if ( gs_debug_c('n') ) name_print(msg, nt, nidx, pflag)
@@ -81,50 +85,57 @@ names_init(ulong count, gs_ref_memory_t *imem)
     int i;
 
     if (count == 0)
-	count = max_name_count + 1L;
+        count = max_name_count + 1L;
     else if (count - 1 > max_name_count)
-	return 0;
+        return 0;
     nt = gs_alloc_struct(mem, name_table, &st_name_table, "name_init(nt)");
     if (nt == 0)
-	return 0;
+        return 0;
     memset(nt, 0, sizeof(name_table));
     nt->max_sub_count =
-	((count - 1) | nt_sub_index_mask) >> nt_log2_sub_size;
+        ((count - 1) | nt_sub_index_mask) >> nt_log2_sub_size;
     nt->name_string_attrs = imemory_space(imem) | a_readonly;
     nt->memory = mem;
     /* Initialize the one-character names. */
     /* Start by creating the necessary sub-tables. */
     for (i = 0; i < NT_1CHAR_FIRST + NT_1CHAR_SIZE; i += nt_sub_size) {
-	int code = name_alloc_sub(nt);
+        int code = name_alloc_sub(nt);
 
-	if (code < 0) {
-	    while (nt->sub_next > 0)
-		name_free_sub(nt, --(nt->sub_next));
-	    gs_free_object(mem, nt, "name_init(nt)");
-	    return 0;
-	}
+        if (code < 0) {
+            while (nt->sub_next > 0)
+                name_free_sub(nt, --(nt->sub_next), false);
+            gs_free_object(mem, nt, "name_init(nt)");
+            return 0;
+        }
     }
     for (i = -1; i < NT_1CHAR_SIZE; i++) {
-	uint ncnt = NT_1CHAR_FIRST + i;
-	uint nidx = name_count_to_index(ncnt);
-	name *pname = names_index_ptr_inline(nt, nidx);
-	name_string_t *pnstr = names_index_string_inline(nt, nidx);
+        uint ncnt = NT_1CHAR_FIRST + i;
+        uint nidx = name_count_to_index(ncnt);
+        name *pname = names_index_ptr_inline(nt, nidx);
+        name_string_t *pnstr = names_index_string_inline(nt, nidx);
 
-	if (i < 0)
-	    pnstr->string_bytes = nt_1char_names,
-		pnstr->string_size = 0;
-	else
-	    pnstr->string_bytes = nt_1char_names + i,
-		pnstr->string_size = 1;
-	pnstr->foreign_string = 1;
-	pnstr->mark = 1;
-	pname->pvalue = pv_no_defn;
+        if (i < 0)
+            pnstr->string_bytes = nt_1char_names,
+                pnstr->string_size = 0;
+        else
+            pnstr->string_bytes = nt_1char_names + i,
+                pnstr->string_size = 1;
+        pnstr->foreign_string = 1;
+        pnstr->mark = 1;
+        pname->pvalue = pv_no_defn;
     }
     nt->perm_count = NT_1CHAR_FIRST + NT_1CHAR_SIZE;
     /* Reconstruct the free list. */
     nt->free = 0;
     names_trace_finish(nt, NULL);
     return nt;
+}
+
+static void
+gs_names_finalize(const gs_memory_t *cmem, void *vptr)
+{
+    (void)vptr; /* unused */
+    cmem->gs_lib_ctx->gs_name_table = NULL;
 }
 
 /* Get the allocator for the name table. */
@@ -150,63 +161,63 @@ names_ref(name_table *nt, const byte *ptr, uint size, ref *pref, int enterflag)
     /* Make a special check for 1-character names. */
     switch (size) {
     case 0:
-	nidx = name_count_to_index(1);
-	pname = names_index_ptr_inline(nt, nidx);
-	goto mkn;
+        nidx = name_count_to_index(1);
+        pname = names_index_ptr_inline(nt, nidx);
+        goto mkn;
     case 1:
-	if (*ptr < NT_1CHAR_SIZE) {
-	    uint hash = *ptr + NT_1CHAR_FIRST;
+        if (*ptr < NT_1CHAR_SIZE) {
+            uint hash = *ptr + NT_1CHAR_FIRST;
 
-	    nidx = name_count_to_index(hash);
-	    pname = names_index_ptr_inline(nt, nidx);
-	    goto mkn;
-	}
-	/* falls through */
+            nidx = name_count_to_index(hash);
+            pname = names_index_ptr_inline(nt, nidx);
+            goto mkn;
+        }
+        /* falls through */
     default: {
-	uint hash;
+        uint hash;
 
-	NAME_HASH(hash, hash_permutation, ptr, size);
-	phash = nt->hash + (hash & (NT_HASH_SIZE - 1));
+        NAME_HASH(hash, hash_permutation, ptr, size);
+        phash = nt->hash + (hash & (NT_HASH_SIZE - 1));
     }
     }
 
     for (nidx = *phash; nidx != 0;
-	 nidx = name_next_index(nidx, pnstr)
-	) {
-	pnstr = names_index_string_inline(nt, nidx);
-	if (pnstr->string_size == size &&
-	    !memcmp_inline(ptr, pnstr->string_bytes, size)
-	    ) {
-	    pname = name_index_ptr_inline(nt, nidx);
-	    goto mkn;
-	}
+         nidx = name_next_index(nidx, pnstr)
+        ) {
+        pnstr = names_index_string_inline(nt, nidx);
+        if (pnstr->string_size == size &&
+            !memcmp_inline(ptr, pnstr->string_bytes, size)
+            ) {
+            pname = name_index_ptr_inline(nt, nidx);
+            goto mkn;
+        }
     }
     /* Name was not in the table.  Make a new entry. */
     if (enterflag < 0)
-	return_error(e_undefined);
+        return_error(e_undefined);
     if (size > max_name_string)
-	return_error(e_limitcheck);
+        return_error(e_limitcheck);
     nidx = nt->free;
     if (nidx == 0) {
-	int code = name_alloc_sub(nt);
+        int code = name_alloc_sub(nt);
 
-	if (code < 0)
-	    return code;
-	nidx = nt->free;
+        if (code < 0)
+            return code;
+        nidx = nt->free;
     }
     pnstr = names_index_string_inline(nt, nidx);
     if (enterflag == 1) {
-	byte *cptr = (byte *)gs_alloc_string(nt->memory, size,
-					     "names_ref(string)");
+        byte *cptr = (byte *)gs_alloc_string(nt->memory, size,
+                                             "names_ref(string)");
 
-	if (cptr == 0)
-	    return_error(e_VMerror);
-	memcpy(cptr, ptr, size);
-	pnstr->string_bytes = cptr;
-	pnstr->foreign_string = 0;
+        if (cptr == 0)
+            return_error(e_VMerror);
+        memcpy(cptr, ptr, size);
+        pnstr->string_bytes = cptr;
+        pnstr->foreign_string = 0;
     } else {
-	pnstr->string_bytes = ptr;
-	pnstr->foreign_string = (enterflag == 0 ? 1 : 0);
+        pnstr->string_bytes = ptr;
+        pnstr->foreign_string = (enterflag == 0 ? 1 : 0);
     }
     pnstr->string_size = size;
     pname = name_index_ptr_inline(nt, nidx);
@@ -223,15 +234,15 @@ names_ref(name_table *nt, const byte *ptr, uint size, ref *pref, int enterflag)
 /* Get the string for a name. */
 void
 names_string_ref(const name_table * nt, const ref * pnref /* t_name */ ,
-		 ref * psref /* result, t_string */ )
+                 ref * psref /* result, t_string */ )
 {
     const name_string_t *pnstr = names_string_inline(nt, pnref);
 
     make_const_string(psref,
-		      (pnstr->foreign_string ? avm_foreign | a_readonly :
-		       nt->name_string_attrs),
-		      pnstr->string_size,
-		      (const byte *)pnstr->string_bytes);
+                      (pnstr->foreign_string ? avm_foreign | a_readonly :
+                       nt->name_string_attrs),
+                      pnstr->string_size,
+                      (const byte *)pnstr->string_bytes);
 }
 
 /* Convert a t_string object to a name. */
@@ -243,9 +254,9 @@ names_from_string(name_table * nt, const ref * psref, ref * pnref)
     int code = names_ref(nt, psref->value.bytes, r_size(psref), pnref, 1);
 
     if (code < 0)
-	return code;
+        return code;
     if (exec)
-	r_set_attrs(pnref, a_executable);
+        r_set_attrs(pnref, a_executable);
     return code;
 }
 
@@ -288,20 +299,20 @@ name_index_t
 names_next_valid_index(name_table * nt, name_index_t nidx)
 {
     const name_string_sub_table_t *ssub =
-	nt->sub[nidx >> nt_log2_sub_size].strings;
+        nt->sub[nidx >> nt_log2_sub_size].strings;
     const name_string_t *pnstr;
 
     do {
-	++nidx;
-	if ((nidx & nt_sub_index_mask) == 0)
-	    for (;; nidx += nt_sub_size) {
-		if ((nidx >> nt_log2_sub_size) >= nt->sub_count)
-		    return 0;
-		ssub = nt->sub[nidx >> nt_log2_sub_size].strings;
-		if (ssub != 0)
-		    break;
-	    }
-	pnstr = &ssub->strings[nidx & nt_sub_index_mask];
+        ++nidx;
+        if ((nidx & nt_sub_index_mask) == 0)
+            for (;; nidx += nt_sub_size) {
+                if ((nidx >> nt_log2_sub_size) >= nt->sub_count)
+                    return 0;
+                ssub = nt->sub[nidx >> nt_log2_sub_size].strings;
+                if (ssub != 0)
+                    break;
+            }
+        pnstr = &ssub->strings[nidx & nt_sub_index_mask];
     }
     while (pnstr->string_bytes == 0);
     return nidx;
@@ -317,15 +328,15 @@ names_unmark_all(name_table * nt)
     name_string_sub_table_t *ssub;
 
     for (si = 0; si < nt->sub_count; ++si)
-	if ((ssub = nt->sub[si].strings) != 0) {
-	    uint i;
+        if ((ssub = nt->sub[si].strings) != 0) {
+            uint i;
 
-	    /* We can make the test much more efficient if we want.... */
-	    for (i = 0; i < nt_sub_size; ++i)
-		if (name_index_to_count((si << nt_log2_sub_size) + i) >=
-		    nt->perm_count)
-		    ssub->strings[i].mark = 0;
-	}
+            /* We can make the test much more efficient if we want.... */
+            for (i = 0; i < nt_sub_size; ++i)
+                if (name_index_to_count((si << nt_log2_sub_size) + i) >=
+                    nt->perm_count)
+                    ssub->strings[i].mark = 0;
+        }
 }
 
 /* Mark a name.  Return true if new mark.  We export this so we can mark */
@@ -336,7 +347,7 @@ names_mark_index(name_table * nt, name_index_t nidx)
     name_string_t *pnstr = names_index_string_inline(nt, nidx);
 
     if (pnstr->mark)
-	return false;
+        return false;
     pnstr->mark = 1;
     return true;
 }
@@ -375,55 +386,43 @@ names_trace_finish(name_table * nt, gc_state_t * gcst)
     int i;
 
     for (i = 0; i < NT_HASH_SIZE; phash++, i++) {
-	name_index_t prev = 0;
-	/*
-	 * The following initialization is only to pacify compilers:
-	 * pnprev is only referenced if prev has been set in the loop,
-	 * in which case pnprev is also set.
-	 */
-	name_string_t *pnprev = 0;
-	name_index_t nidx = *phash;
+        name_index_t prev = 0;
+        /*
+         * The following initialization is only to pacify compilers:
+         * pnprev is only referenced if prev has been set in the loop,
+         * in which case pnprev is also set.
+         */
+        name_string_t *pnprev = 0;
+        name_index_t nidx = *phash;
 
-	while (nidx != 0) {
-	    name_string_t *pnstr = names_index_string_inline(nt, nidx);
-	    name_index_t next = name_next_index(nidx, pnstr);
+        while (nidx != 0) {
+            name_string_t *pnstr = names_index_string_inline(nt, nidx);
+            name_index_t next = name_next_index(nidx, pnstr);
 
-	    if (pnstr->mark) {
-		prev = nidx;
-		pnprev = pnstr;
-	    } else {
-		if_debug_name("GC remove name", nt, nidx, NULL);
-		/* Zero out the string data for the GC. */
-		pnstr->string_bytes = 0;
-		pnstr->string_size = 0;
-		if (prev == 0)
-		    *phash = next;
-		else
-		    set_name_next_index(prev, pnprev, next);
-	    }
-	    nidx = next;
-	}
+            if (pnstr->mark) {
+                prev = nidx;
+                pnprev = pnstr;
+            } else {
+                if_debug_name("GC remove name", nt, nidx, NULL);
+                /* Zero out the string data for the GC. */
+                pnstr->string_bytes = 0;
+                pnstr->string_size = 0;
+                if (prev == 0)
+                    *phash = next;
+                else
+                    set_name_next_index(prev, pnprev, next);
+            }
+            nidx = next;
+        }
     }
     /* Reconstruct the free list. */
     nt->free = 0;
     for (i = nt->sub_count; --i >= 0;) {
-	name_sub_table *sub = nt->sub[i].names;
-	name_string_sub_table_t *ssub = nt->sub[i].strings;
+        name_sub_table *sub = nt->sub[i].names;
 
-	if (sub != 0) {
-	    int save_count = nt->sub_count;
-
-	    name_scan_sub(nt, i, true);
-	    if (save_count != nt->sub_count) {
-		/* name_scan_sub has released the i-th entry. */
-		continue;
-	    }
-	    if (nt->sub[i].names == 0 && gcst != 0) {
-		/* Mark the just-freed sub-table as unmarked. */
-		o_set_unmarked((obj_header_t *)sub - 1);
-		o_set_unmarked((obj_header_t *)ssub - 1);
-	    }
-	}
+        if (sub != 0) {
+            name_scan_sub(nt, i, true, true && (gcst != 0));
+        }
     }
     nt->sub_next = 0;
 }
@@ -444,24 +443,24 @@ names_restore(name_table * nt, alloc_save_t * save)
     uint si;
 
     for (si = 0; si < nt->sub_count; ++si)
-	if (nt->sub[si].strings != 0) {
-	    uint i;
+        if (nt->sub[si].strings != 0) {
+            uint i;
 
-	    for (i = 0; i < nt_sub_size; ++i) {
-		name_string_t *pnstr =
-		    names_index_string_inline(nt, (si << nt_log2_sub_size) + i);
+            for (i = 0; i < nt_sub_size; ++i) {
+                name_string_t *pnstr =
+                    names_index_string_inline(nt, (si << nt_log2_sub_size) + i);
 
-		if (pnstr->string_bytes == 0)
-		    pnstr->mark = 0;
-		else if (pnstr->foreign_string) {
-		    /* Avoid storing into a read-only name string. */
-		    if (!pnstr->mark)
-			pnstr->mark = 1;
-		} else
-		    pnstr->mark =
-			!alloc_is_since_save(pnstr->string_bytes, save);
-	    }
-	}
+                if (pnstr->string_bytes == 0)
+                    pnstr->mark = 0;
+                else if (pnstr->foreign_string) {
+                    /* Avoid storing into a read-only name string. */
+                    if (!pnstr->mark)
+                        pnstr->mark = 1;
+                } else
+                    pnstr->mark =
+                        !alloc_is_since_save(pnstr->string_bytes, save);
+            }
+        }
     names_trace_finish(nt, NULL);
 }
 
@@ -477,23 +476,23 @@ name_alloc_sub(name_table * nt)
     name_string_sub_table_t *ssub;
 
     for (;; ++sub_index) {
-	if (sub_index > nt->max_sub_count)
-	    return_error(e_limitcheck);
-	if (nt->sub[sub_index].names == 0)
-	    break;
+        if (sub_index > nt->max_sub_count)
+            return_error(e_limitcheck);
+        if (nt->sub[sub_index].names == 0)
+            break;
     }
     nt->sub_next = sub_index + 1;
     if (nt->sub_next > nt->sub_count)
-	nt->sub_count = nt->sub_next;
+        nt->sub_count = nt->sub_next;
     sub = gs_alloc_struct(mem, name_sub_table, &st_name_sub_table,
-			  "name_alloc_sub(sub-table)");
+                          "name_alloc_sub(sub-table)");
     ssub = gs_alloc_struct(mem, name_string_sub_table_t,
-			   &st_name_string_sub_table,
-			  "name_alloc_sub(string sub-table)");
+                           &st_name_string_sub_table,
+                          "name_alloc_sub(string sub-table)");
     if (sub == 0 || ssub == 0) {
-	gs_free_object(mem, ssub, "name_alloc_sub(string sub-table)");
-	gs_free_object(mem, sub, "name_alloc_sub(sub-table)");
-	return_error(e_VMerror);
+        gs_free_object(mem, ssub, "name_alloc_sub(string sub-table)");
+        gs_free_object(mem, sub, "name_alloc_sub(sub-table)");
+        return_error(e_VMerror);
     }
     memset(sub, 0, sizeof(name_sub_table));
     memset(ssub, 0, sizeof(name_string_sub_table_t));
@@ -506,28 +505,28 @@ name_alloc_sub(name_table * nt)
     /* Add the newly allocated entries to the free list. */
     /* Note that the free list will only be properly sorted if */
     /* it was empty initially. */
-    name_scan_sub(nt, sub_index, false);
+    name_scan_sub(nt, sub_index, false, false);
 #ifdef DEBUG
     if (gs_debug_c('n')) {	/* Print the lengths of the hash chains. */
-	int i0;
+        int i0;
 
-	for (i0 = 0; i0 < NT_HASH_SIZE; i0 += 16) {
-	    int i;
+        for (i0 = 0; i0 < NT_HASH_SIZE; i0 += 16) {
+            int i;
 
-	    dlprintf1("[n]chain %d:", i0);
-	    for (i = i0; i < i0 + 16; i++) {
-		int n = 0;
-		uint nidx;
+            dmlprintf1(mem, "[n]chain %d:", i0);
+            for (i = i0; i < i0 + 16; i++) {
+                int n = 0;
+                uint nidx;
 
-		for (nidx = nt->hash[i]; nidx != 0;
-		     nidx = name_next_index(nidx,
-					    names_index_string_inline(nt, nidx))
-		    )
-		    n++;
-		dprintf1(" %d", n);
-	    }
-	    dputc('\n');
-	}
+                for (nidx = nt->hash[i]; nidx != 0;
+                     nidx = name_next_index(nidx,
+                                            names_index_string_inline(nt, nidx))
+                    )
+                    n++;
+                dmprintf1(mem, " %d", n);
+            }
+            dmputc(mem, '\n');
+        }
     }
 #endif
     return 0;
@@ -535,12 +534,24 @@ name_alloc_sub(name_table * nt)
 
 /* Free a sub-table. */
 static void
-name_free_sub(name_table * nt, uint sub_index)
+name_free_sub(name_table * nt, uint sub_index, bool unmark)
 {
+    /* If the subtable is in a previous save level, gs_free_object()
+     * may not actually free the memory, in case that happens, we need
+     * to explicitly remove the gc mark if requested.
+     */
+    if (unmark) {
+        name_sub_table *sub = nt->sub[sub_index].names;
+        name_string_sub_table_t *ssub = nt->sub[sub_index].strings;
+
+        o_set_unmarked((obj_header_t *)sub - 1);
+        o_set_unmarked((obj_header_t *)ssub - 1);
+    }
+
     gs_free_object(nt->memory, nt->sub[sub_index].strings,
-		   "name_free_sub(string sub-table)");
+                   "name_free_sub(string sub-table)");
     gs_free_object(nt->memory, nt->sub[sub_index].names,
-		   "name_free_sub(sub-table)");
+                   "name_free_sub(sub-table)");
     nt->sub[sub_index].names = 0;
     nt->sub[sub_index].strings = 0;
 }
@@ -550,7 +561,7 @@ name_free_sub(name_table * nt, uint sub_index)
 /* will stay sorted.  If all entries are unmarked and free_empty is true, */
 /* free the sub-table. */
 static void
-name_scan_sub(name_table * nt, uint sub_index, bool free_empty)
+name_scan_sub(name_table * nt, uint sub_index, bool free_empty, bool unmark)
 {
     name_string_sub_table_t *ssub = nt->sub[sub_index].strings;
     uint free = nt->free;
@@ -559,53 +570,53 @@ name_scan_sub(name_table * nt, uint sub_index, bool free_empty)
     bool keep = !free_empty;
 
     if (ssub == 0)
-	return;
+        return;
     if (nbase == 0)
-	nbase = 1, keep = true;	/* don't free name 0 */
+        nbase = 1, keep = true;	/* don't free name 0 */
     for (;; --ncnt) {
-	uint nidx = name_count_to_index(ncnt);
-	name_string_t *pnstr = &ssub->strings[nidx & nt_sub_index_mask];
+        uint nidx = name_count_to_index(ncnt);
+        name_string_t *pnstr = &ssub->strings[nidx & nt_sub_index_mask];
 
-	if (pnstr->mark)
-	    keep = true;
-	else {
-	    set_name_next_index(nidx, pnstr, free);
-	    free = nidx;
-	}
-	if (ncnt == nbase)
-	    break;
+        if (pnstr->mark)
+            keep = true;
+        else {
+            set_name_next_index(nidx, pnstr, free);
+            free = nidx;
+        }
+        if (ncnt == nbase)
+            break;
     }
     if (keep)
-	nt->free = free;
+        nt->free = free;
     else {
-	/* No marked entries, free the sub-table. */
-	name_free_sub(nt, sub_index);
-	if (sub_index == nt->sub_count - 1) {
-	    /* Back up over a final run of deleted sub-tables. */
-	    do {
-		--sub_index;
-	    } while (nt->sub[sub_index].names == 0);
-	    nt->sub_count = sub_index + 1;
-	    if (nt->sub_next > sub_index)
-		nt->sub_next = sub_index;
-	} else if (nt->sub_next == sub_index)
-	    nt->sub_next--;
+        /* No marked entries, free the sub-table. */
+        name_free_sub(nt, sub_index, unmark);
+        if (sub_index == nt->sub_count - 1) {
+            /* Back up over a final run of deleted sub-tables. */
+            do {
+                --sub_index;
+            } while (nt->sub[sub_index].names == 0);
+            nt->sub_count = sub_index + 1;
+            if (nt->sub_next > sub_index)
+                nt->sub_next = sub_index;
+        } else if (nt->sub_next == sub_index)
+            nt->sub_next--;
     }
 }
 
 /* Garbage collector enumeration and relocation procedures. */
-static 
+static
 ENUM_PTRS_BEGIN_PROC(name_table_enum_ptrs)
 {
     EV_CONST name_table *const nt = vptr;
     uint i = index >> 1;
 
     if (i >= nt->sub_count)
-	return 0;
+        return 0;
     if (index & 1)
-	ENUM_RETURN(nt->sub[i].strings);
+        ENUM_RETURN(nt->sub[i].strings);
     else
-	ENUM_RETURN(nt->sub[i].names);
+        ENUM_RETURN(nt->sub[i].names);
 }
 ENUM_PTRS_END_PROC
 static RELOC_PTRS_WITH(name_table_reloc_ptrs, name_table *nt)
@@ -615,8 +626,8 @@ static RELOC_PTRS_WITH(name_table_reloc_ptrs, name_table *nt)
 
     /* Now we can relocate the sub-table pointers. */
     for (i = 0; i < sub_count; i++) {
-	RELOC_VAR(nt->sub[i].names);
-	RELOC_VAR(nt->sub[i].strings);
+        RELOC_VAR(nt->sub[i].names);
+        RELOC_VAR(nt->sub[i].strings);
     }
     /*
      * We also need to relocate the cached value pointers.
@@ -637,14 +648,14 @@ static RELOC_PTRS_BEGIN(name_string_sub_reloc_ptrs)
     uint i;
 
     for (i = 0; i < nt_sub_size; ++pnstr, ++i) {
-	if (pnstr->string_bytes != 0 && !pnstr->foreign_string) {
-	    gs_const_string nstr;
+        if (pnstr->string_bytes != 0 && !pnstr->foreign_string) {
+            gs_const_string nstr;
 
-	    nstr.data = pnstr->string_bytes;
-	    nstr.size = pnstr->string_size;
-	    RELOC_CONST_STRING_VAR(nstr);
-	    pnstr->string_bytes = nstr.data;
-	}
+            nstr.data = pnstr->string_bytes;
+            nstr.size = pnstr->string_size;
+            RELOC_CONST_STRING_VAR(nstr);
+            pnstr->string_bytes = nstr.data;
+        }
     }
 }
 RELOC_PTRS_END

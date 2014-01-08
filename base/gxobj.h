@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxobj.h 8307 2007-10-20 19:14:28Z alexcher $ */
+
 /* Memory manager implementation structures for Ghostscript */
 
 #ifndef gxobj_INCLUDED
@@ -23,13 +25,44 @@
 #  define IGC_PTR_STABILITY_CHECK 0
 #endif
 
+#ifndef GS_USE_MEMORY_HEADER_ID
+#define GS_USE_MEMORY_HEADER_ID 1
+#endif
+
+#if GS_USE_MEMORY_HEADER_ID
+
+  typedef gs_id hdr_id_t;
+
+  extern hdr_id_t hdr_id;
+
+# define HDR_ID_OFFSET (sizeof(obj_header_t) - offset_of(obj_header_t, d.o.hdr_id))
+
+# ifdef DEBUG
+
+# define ASSIGN_HDR_ID(obj) (*(hdr_id_t *)(((byte *)obj) - HDR_ID_OFFSET)) = hdr_id++
+
+  gs_id get_mem_hdr_id (void *ptr);
+
+# else /* DEBUG */
+
+#  define ASSIGN_HDR_ID(obj_hdr)
+
+# endif /* DEBUG */
+
+#else
+
+# define ASSIGN_HDR_ID(obj_hdr)
+# define HDR_ID_OFFSET 0
+
+#endif /* GS_USE_MEMORY_HEADER_ID */
+
 /* ================ Objects ================ */
 
 /*
  * Object headers have the form:
-	-l- -mark/back-
-	-size-
-	-type/reloc-
+        -l- -mark/back-
+        -size-
+        -type/reloc-
  * l (aLone) is a single bit.  Mark/back is 1 bit shorter than a uint.  We
  * round the header size up to the next multiple of the most severe
  * alignment restriction (4 or 8 bytes).
@@ -77,23 +110,27 @@
 #define obj_back_scale (1 << obj_back_shift)
 typedef struct obj_header_data_s {
     union _f {
-	struct _h {
-	    unsigned alone:1;
-	} h;
-	struct _m {
-	    unsigned _:1, smark:obj_mb_bits;
-	} m;
-	struct _b {
-	    unsigned _:1, back:obj_mb_bits;
-	} b;
+        struct _h {
+            unsigned alone:1, pad:obj_mb_bits;
+        } h;
+        struct _m {
+            unsigned _:1, smark:obj_mb_bits;
+        } m;
+        struct _b {
+            unsigned _:1, back:obj_mb_bits;
+        } b;
     } f;
     uint size;
     union _t {
-	gs_memory_type_ptr_t type;
-	uint reloc;
+        gs_memory_type_ptr_t type;
+        size_t reloc;
     } t;
 #   if IGC_PTR_STABILITY_CHECK
     unsigned space_id:3; /* r_space_bits + 1 bit for "instability". */
+#   endif
+
+#   if GS_USE_MEMORY_HEADER_ID
+    hdr_id_t hdr_id; /* should be last, to save wasting space in the "strings" case. Makes object easier to trace thru GC */
 #   endif
 } obj_header_data_t;
 
@@ -125,21 +162,22 @@ typedef struct obj_header_data_s {
 #endif
 #define obj_align_mask (obj_align_mod-1)
 #define obj_align_round(siz)\
-  (uint)(((siz) + obj_align_mask) & -obj_align_mod)
+  (size_t)(((siz) + obj_align_mask) & -obj_align_mod)
 #define obj_size_round(siz)\
   obj_align_round((siz) + sizeof(obj_header_t))
 
 /* Define the real object header type, taking alignment into account. */
 struct obj_header_s {		/* must be a struct because of forward reference */
     union _d {
-	obj_header_data_t o;
-	byte _pad[ROUND_UP(sizeof(obj_header_data_t), obj_align_mod)];
+        obj_header_data_t o;
+        byte _pad[ROUND_UP(sizeof(obj_header_data_t), obj_align_mod)];
     }
     d;
 };
 
 /* Define some reasonable abbreviations for the fields. */
 #define o_alone d.o.f.h.alone
+#define o_pad d.o.f.h.pad
 #define o_back d.o.f.b.back
 #define o_smark d.o.f.m.smark
 #define o_size d.o.size

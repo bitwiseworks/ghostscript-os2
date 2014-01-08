@@ -1,22 +1,26 @@
-#  Copyright (C) 2001-2007 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: ugcclib.mak 9198 2008-11-05 20:41:22Z giles $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 # makefile for Unix / gcc library testing.
 
 BINDIR=./libobj
 GLSRCDIR=./base
+DEVSRCDIR=./devices
 GLGENDIR=./libobj
 GLOBJDIR=./libobj
+DEVGENDIR=./libobj
+DEVOBJDIR=./libobj
 PSRESDIR=./Resource
 DD=$(GLGENDIR)/
 GLD=$(GLGENDIR)/
@@ -30,7 +34,7 @@ gsdir = /usr/local/share/ghostscript
 gsdatadir = $(gsdir)/$(GS_DOT_VERSION)
 GS_DOCDIR=$(gsdatadir)/doc
 GS_LIB_DEFAULT=$(gsdatadir)/Resource/Init:$(gsdatadir)/lib:$(gsdatadir)/Resource/Font
-SEARCH_HERE_FIRST=1
+SEARCH_HERE_FIRST=0
 GS_INIT=gs_init.ps
 
 #GENOPT=-DDEBUG
@@ -38,8 +42,9 @@ GENOPT=
 GS=gslib
 
 # We don't expect to build debug or profiling configurations....
-DEBUGRELDIR=.
-PGRELDIR=.
+DEBUGDIRPREFIX=
+MEMENTODIRPREFIX=
+PGDIRPREFIX=
 
 JSRCDIR=jpeg
 SHARE_JPEG=0
@@ -57,22 +62,24 @@ SHARE_JBIG2=0
 JBIG2_LIB=jbig2dec
 JBIG2SRCDIR=jbig2dec
 
-# Define the directory where the icclib source are stored.
-# See icclib.mak for more information
+# Define the directory where the lcms source is stored.
+# See lcms.mak for more information
 
-ICCSRCDIR=icclib
+LCMSSRCDIR=lcms
+
+# Define the directory where the lcms2 source is stored.
+# See lcms2.mak for more information
+
+LCMS2SRCDIR=lcms2
 
 # Define the directory where the ijs source is stored,
 # and the process forking method to use for the server.
 # See ijs.mak for more information.
 
+SHARE_IJS=0
+IJS_NAME=
 IJSSRCDIR=ijs
 IJSEXECTYPE=unix
-
-# Define the directory where the imdi library source is stored.
-# See devs.mak for more information
-
-IMDISRCDIR=imdi
 
 # Define how to build the library archives.  (These are not used in any
 # standard configuration.)
@@ -104,8 +111,7 @@ SYNC=posync
 
 FEATURE_DEVS=$(GLD)dps2lib.dev $(GLD)psl2cs.dev $(GLD)cielib.dev\
  $(GLD)psl3lib.dev $(GLD)path1lib.dev $(GLD)patlib.dev $(GLD)htxlib.dev\
- $(GLD)cidlib.dev $(GLD)psf0lib.dev $(GLD)psf1lib.dev\
- $(GLD)roplib.dev
+ $(GLD)cidlib.dev $(GLD)psf0lib.dev $(GLD)psf1lib.dev
 
 COMPILE_INITS?=0
 BAND_LIST_STORAGE=file
@@ -150,11 +156,10 @@ include $(GLSRCDIR)/unixhead.mak
 include $(GLSRCDIR)/gs.mak
 include $(GLSRCDIR)/lib.mak
 include $(GLSRCDIR)/jpeg.mak
-# zlib.mak must precede libpng.mak
+# zlib.mak must precede png.mak
 include $(GLSRCDIR)/zlib.mak
-include $(GLSRCDIR)/libpng.mak
+include $(GLSRCDIR)/png.mak
 include $(GLSRCDIR)/jbig2.mak
-include $(GLSRCDIR)/icclib.mak
 include $(GLSRCDIR)/ijs.mak
 include $(GLSRCDIR)/devs.mak
 include $(GLSRCDIR)/contrib.mak
@@ -171,7 +176,6 @@ $(GS_XE): $(ld_tr) $(ECHOGS_XE) $(LIB_ALL) $(DEVS_ALL) $(GLOBJ)gslib.$(OBJ) $(LI
 	cat $(ld_tr) >>$(ldt_tr)
 	$(ECHOGS_XE) -a $(ldt_tr) -s - $(EXTRALIBS) $(STDLIBS)
 	if [ x$(XLIBDIR) != x ]; then LD_RUN_PATH=$(XLIBDIR); export LD_RUN_PATH; fi; $(SH) <$(ldt_tr)
-
 
 GSLIB_A=libgsgraph.a
 lar_tr=$(GLOBJ)lar.tr

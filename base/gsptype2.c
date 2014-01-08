@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsptype2.c 9934 2009-08-05 22:12:58Z marcos $ */
+
 /* PatternType 2 implementation */
 #include "gx.h"
 #include "gserrors.h"
@@ -27,6 +29,7 @@
 #include "gzpath.h"
 #include "gzcpath.h"
 #include "gzstate.h"
+#include "gxdevsop.h"
 
 /* GC descriptors */
 private_st_pattern2_template();
@@ -37,7 +40,7 @@ static ENUM_PTRS_BEGIN(pattern2_instance_enum_ptrs) {
     if (index < st_pattern2_template_max_ptrs) {
         gs_ptr_type_t ptype =
             ENUM_SUPER_ELT(gs_pattern2_instance_t, st_pattern2_template,
-                           template, 0);
+                           templat, 0);
 
         if (ptype)
             return ptype;
@@ -48,7 +51,7 @@ static ENUM_PTRS_BEGIN(pattern2_instance_enum_ptrs) {
 ENUM_PTRS_END
 static RELOC_PTRS_BEGIN(pattern2_instance_reloc_ptrs) {
     RELOC_PREFIX(st_pattern_instance);
-    RELOC_SUPER(gs_pattern2_instance_t, st_pattern2_template, template);
+    RELOC_SUPER(gs_pattern2_instance_t, st_pattern2_template, templat);
 } RELOC_PTRS_END
 
 /* Define a PatternType 2 pattern. */
@@ -95,7 +98,7 @@ gs_pattern2_make_pattern(gs_client_color * pcc,
     if (code < 0)
         return code;
     pinst = (gs_pattern2_instance_t *)pcc->pattern;
-    pinst->template = *ptemp;
+    pinst->templat = *ptemp;
     pinst->shfill = false;
     return 0;
 }
@@ -105,7 +108,7 @@ static const gs_pattern_template_t *
 gs_pattern2_get_pattern(const gs_pattern_instance_t *pinst)
 {
     return (const gs_pattern_template_t *)
-        &((const gs_pattern2_instance_t *)pinst)->template;
+        &((const gs_pattern2_instance_t *)pinst)->templat;
 }
 
 /* Set the 'shfill' flag to a PatternType 2 pattern instance. */
@@ -115,12 +118,11 @@ gs_pattern2_set_shfill(gs_client_color * pcc)
     gs_pattern2_instance_t *pinst;
 
     if (pcc->pattern->type != &gs_pattern2_type)
-	return_error(gs_error_unregistered); /* Must not happen. */
+        return_error(gs_error_unregistered); /* Must not happen. */
     pinst = (gs_pattern2_instance_t *)pcc->pattern;
     pinst->shfill = true;
     return 0;
 }
-
 
 /* ---------------- Rendering ---------------- */
 
@@ -144,7 +146,7 @@ const gx_device_color_type_t gx_dc_pattern2 = {
     gx_dc_ht_get_phase,
     gx_dc_pattern2_load, gx_dc_pattern2_fill_rectangle,
     gx_dc_default_fill_masked, gx_dc_pattern2_equal,
-    gx_dc_cannot_write, gx_dc_cannot_read, 
+    gx_dc_cannot_write, gx_dc_cannot_read,
     gx_dc_pattern_get_nonzero_comps
 };
 
@@ -189,48 +191,56 @@ gs_pattern2_remap_color(const gs_client_color * pc, const gs_color_space * pcs,
 /*
  * Perform actions required at set_color time. Since PatternType 2
  * patterns specify a color space, we must update the overprint
- * information as required by that color space. We temporarily disable
- * overprint_mode, as it is never applicable when using shading patterns.
+ * information as required by that color space. We must also update
+ * any overprint information and make sure that the graphic state
+ * stored in the pattern instance has the proper color map and overprint
+ * information.
  */
 static int
 gs_pattern2_set_color(const gs_client_color * pcc, gs_state * pgs)
 {
     gs_pattern2_instance_t * pinst = (gs_pattern2_instance_t *)pcc->pattern;
-    gs_color_space * pcs = pinst->template.Shading->params.ColorSpace;
-    int code, save_overprint_mode = pgs->overprint_mode;
+    gs_color_space * pcs = pinst->templat.Shading->params.ColorSpace;
+    int code, k, num_comps;
 
-    pgs->overprint_mode = 0;
+    pinst->saved->overprint_mode = pgs->overprint_mode;
+    pinst->saved->overprint = pgs->overprint;
+    
+    num_comps = pgs->device->color_info.num_components;
+    for (k = 0; k < num_comps; k++) {
+        pgs->color_component_map.color_map[k] = 
+            pinst->saved->color_component_map.color_map[k];
+    }
     code = pcs->type->set_overprint(pcs, pgs);
-    pgs->overprint_mode = save_overprint_mode;
     return code;
 }
 
 /* Fill a rectangle with a PatternType 2 color. */
 /* WARNING: This function doesn't account the shading BBox
-   to allow the clipent to optimize the clipping 
-   with changing the order of clip patrhs and rects.
-   The client must clip with the shading BBOx before calling this function. */
+   to allow the clipent to optimize the clipping
+   with changing the order of clip paths and rects.
+   The client must clip with the shading BBox before calling this function. */
 static int
 gx_dc_pattern2_fill_rectangle(const gx_device_color * pdevc, int x, int y,
                               int w, int h, gx_device * dev,
                               gs_logical_operation_t lop,
                               const gx_rop_source_t * source)
 {
-    if (dev_proc(dev, pattern_manage)(dev, gs_no_id, NULL, pattern_manage__is_cpath_accum)) {
-	/* Performing a conversion of imagemask into a clipping path.
-	   Fall back to the device procedure. */
-	return dev_proc(dev, fill_rectangle)(dev, x, y, w, h, (gx_color_index)0/*any*/);
+    if (dev_proc(dev, dev_spec_op)(dev, gxdso_pattern_is_cpath_accum, NULL, 0)) {
+        /* Performing a conversion of imagemask into a clipping path.
+           Fall back to the device procedure. */
+        return dev_proc(dev, fill_rectangle)(dev, x, y, w, h, (gx_color_index)0/*any*/);
     } else {
-	gs_fixed_rect rect;
-	gs_pattern2_instance_t *pinst =
-	    (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
+        gs_fixed_rect rect;
+        gs_pattern2_instance_t *pinst =
+            (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
 
-	rect.p.x = int2fixed(x);
-	rect.p.y = int2fixed(y);
-	rect.q.x = int2fixed(x + w);
-	rect.q.y = int2fixed(y + h);
-	return gs_shading_do_fill_rectangle(pinst->template.Shading, &rect, dev,
-				    (gs_imager_state *)pinst->saved, !pinst->shfill);
+        rect.p.x = int2fixed(x);
+        rect.p.y = int2fixed(y);
+        rect.q.x = int2fixed(x + w);
+        rect.q.y = int2fixed(y + h);
+        return gs_shading_do_fill_rectangle(pinst->templat.Shading, &rect, dev,
+                                    (gs_imager_state *)pinst->saved, !pinst->shfill);
     }
 }
 
@@ -253,7 +263,7 @@ gx_dc_pattern2_equal(const gx_device_color * pdevc1,
  */
 static void
 gx_dc_pattern2_save_dc(
-    const gx_device_color * pdevc, 
+    const gx_device_color * pdevc,
     gx_device_color_saved * psdc )
 {
     gs_pattern2_instance_t * pinst = (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
@@ -267,16 +277,16 @@ gx_dc_pattern2_save_dc(
 /* This is just a bridge to an old code. */
 int
 gx_dc_pattern2_shade_bbox_transform2fixed(const gs_rect * rect, const gs_imager_state * pis,
-			   gs_fixed_rect * rfixed)
+                           gs_fixed_rect * rfixed)
 {
     gs_rect dev_rect;
     int code = gs_bbox_transform(rect, &ctm_only(pis), &dev_rect);
 
     if (code >= 0) {
-	rfixed->p.x = float2fixed(dev_rect.p.x);
-	rfixed->p.y = float2fixed(dev_rect.p.y);
-	rfixed->q.x = float2fixed(dev_rect.q.x);
-	rfixed->q.y = float2fixed(dev_rect.q.y);
+        rfixed->p.x = float2fixed(dev_rect.p.x);
+        rfixed->p.y = float2fixed(dev_rect.p.y);
+        rfixed->q.x = float2fixed(dev_rect.q.x);
+        rfixed->q.y = float2fixed(dev_rect.q.y);
     }
     return code;
 }
@@ -289,12 +299,12 @@ gx_dc_pattern2_get_bbox(const gx_device_color * pdevc, gs_fixed_rect *bbox)
         (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
     int code;
 
-    if (!pinst->template.Shading->params.have_BBox)
-	return 0;
+    if (!pinst->templat.Shading->params.have_BBox)
+        return 0;
     code = gx_dc_pattern2_shade_bbox_transform2fixed(
-		&pinst->template.Shading->params.BBox, (gs_imager_state *)pinst->saved, bbox);
+                &pinst->templat.Shading->params.BBox, (gs_imager_state *)pinst->saved, bbox);
     if (code < 0)
-	return code;
+        return code;
     return 1;
 }
 
@@ -302,7 +312,7 @@ int
 gx_dc_pattern2_color_has_bbox(const gx_device_color * pdevc)
 {
     gs_pattern2_instance_t *pinst = (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
-    const gs_shading_t *psh = pinst->template.Shading;
+    const gs_shading_t *psh = pinst->templat.Shading;
 
     return psh->params.have_BBox;
 }
@@ -312,14 +322,14 @@ static int
 gx_dc_shading_path_add_box(gx_path *ppath, const gx_device_color * pdevc)
 {
     gs_pattern2_instance_t *pinst = (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
-    const gs_shading_t *psh = pinst->template.Shading;
+    const gs_shading_t *psh = pinst->templat.Shading;
 
     if (!psh->params.have_BBox)
-	return_error(gs_error_unregistered); /* Do not call in this case. */
+        return_error(gs_error_unregistered); /* Do not call in this case. */
     else {
-	gs_state *pis = pinst->saved;
+        gs_state *pis = pinst->saved;
 
-	return gs_shading_path_add_box(ppath, &psh->params.BBox, &pis->ctm);
+        return gs_shading_path_add_box(ppath, &psh->params.BBox, &pis->ctm);
     }
 }
 
@@ -329,7 +339,7 @@ gx_dc_pattern2_clip_with_bbox(const gx_device_color * pdevc, gx_device * pdev,
                               gx_clip_path *cpath_local, const gx_clip_path **ppcpath1)
 {
     if (gx_dc_is_pattern2_color(pdevc) && gx_dc_pattern2_color_has_bbox(pdevc) &&
-            (*dev_proc(pdev, pattern_manage))(pdev, gs_no_id, NULL, pattern_manage__shading_area) == 0) {
+            (*dev_proc(pdev, dev_spec_op))(pdev, gxdso_pattern_shading_area, NULL, 0) == 0) {
         gs_pattern2_instance_t *pinst = (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
         gx_path box_path;
         gs_memory_t *mem = (*ppcpath1 != NULL ? (*ppcpath1)->path.memory : pdev->memory);
@@ -354,26 +364,26 @@ gx_dc_pattern2_clip_with_bbox(const gx_device_color * pdevc, gx_device * pdev,
 
 /* Intersect a clipping path a shading BBox. */
 int
-gx_dc_pattern2_clip_with_bbox_simple(const gx_device_color * pdevc, gx_device * pdev, 
-			      gx_clip_path *cpath_local)
+gx_dc_pattern2_clip_with_bbox_simple(const gx_device_color * pdevc, gx_device * pdev,
+                              gx_clip_path *cpath_local)
 {
     int code = 0;
 
     if (gx_dc_is_pattern2_color(pdevc) && gx_dc_pattern2_color_has_bbox(pdevc) &&
-	    (*dev_proc(pdev, pattern_manage))(pdev, gs_no_id, NULL, pattern_manage__shading_area) == 0) {
-	gs_pattern2_instance_t *pinst = (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
-	gx_path box_path;
-	gs_memory_t *mem = cpath_local->path.memory;
+            (*dev_proc(pdev, dev_spec_op))(pdev, gxdso_pattern_shading_area, NULL, 0) == 0) {
+        gs_pattern2_instance_t *pinst = (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
+        gx_path box_path;
+        gs_memory_t *mem = cpath_local->path.memory;
 
-	gx_path_init_local(&box_path, mem);
-	code = gx_dc_shading_path_add_box(&box_path, pdevc);
-	if (code == gs_error_limitcheck) {
-	    /* Ignore huge BBox - bug 689027. */
-	    code = 0;
-	} else if (code >= 0) {
-	    code = gx_cpath_intersect(cpath_local, &box_path, gx_rule_winding_number, (gs_imager_state *)pinst->saved);
-	}
-	gx_path_free(&box_path, "gx_default_fill_path(path_bbox)");
+        gx_path_init_local(&box_path, mem);
+        code = gx_dc_shading_path_add_box(&box_path, pdevc);
+        if (code == gs_error_limitcheck) {
+            /* Ignore huge BBox - bug 689027. */
+            code = 0;
+        } else if (code >= 0) {
+            code = gx_cpath_intersect(cpath_local, &box_path, gx_rule_winding_number, (gs_imager_state *)pinst->saved);
+        }
+        gx_path_free(&box_path, "gx_default_fill_path(path_bbox)");
     }
     return code;
 }
@@ -383,35 +393,34 @@ int
 gx_dc_pattern2_is_rectangular_cell(const gx_device_color * pdevc, gx_device * pdev, gs_fixed_rect *rect)
 {
     if (gx_dc_is_pattern2_color(pdevc) && gx_dc_pattern2_color_has_bbox(pdevc) &&
-	    (*dev_proc(pdev, pattern_manage))(pdev, gs_no_id, NULL, pattern_manage__shading_area) == 0) {
-	gs_pattern2_instance_t *pinst = (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
-	const gs_shading_t *psh = pinst->template.Shading;
-	gs_fixed_point p, q; 
+            (*dev_proc(pdev, dev_spec_op))(pdev, gxdso_pattern_shading_area, NULL, 0) == 0) {
+        gs_pattern2_instance_t *pinst = (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
+        const gs_shading_t *psh = pinst->templat.Shading;
+        gs_fixed_point p, q;
 
-	if (is_xxyy(&ctm_only(pinst->saved)))
-	    if (psh->params.have_BBox) {
-		int code = gs_point_transform2fixed(&pinst->saved->ctm, 
-			    psh->params.BBox.p.x, psh->params.BBox.p.y, &p);
-		if (code < 0)
-		    return code;
-		code = gs_point_transform2fixed(&pinst->saved->ctm, 
-			    psh->params.BBox.q.x, psh->params.BBox.q.y, &q);
-		if (code < 0)
-		    return code;
-		if (p.x > q.x) {
-		    p.x ^= q.x; q.x ^= p.x; p.x ^= q.x;
-		}
-		if (p.y > q.y) {
-		    p.y ^= q.y; q.y ^= p.y; p.y ^= q.y;
-		}
-		rect->p = p;
-		rect->q = q;
-		return 1;
-	    }
+        if (is_xxyy(&ctm_only(pinst->saved)))
+            if (psh->params.have_BBox) {
+                int code = gs_point_transform2fixed(&pinst->saved->ctm,
+                            psh->params.BBox.p.x, psh->params.BBox.p.y, &p);
+                if (code < 0)
+                    return code;
+                code = gs_point_transform2fixed(&pinst->saved->ctm,
+                            psh->params.BBox.q.x, psh->params.BBox.q.y, &q);
+                if (code < 0)
+                    return code;
+                if (p.x > q.x) {
+                    p.x ^= q.x; q.x ^= p.x; p.x ^= q.x;
+                }
+                if (p.y > q.y) {
+                    p.y ^= q.y; q.y ^= p.y; p.y ^= q.y;
+                }
+                rect->p = p;
+                rect->q = q;
+                return 1;
+            }
     }
     return 0;
 }
-
 
 /* Get a shading color space. */
 const gs_color_space *
@@ -419,11 +428,10 @@ gx_dc_pattern2_get_color_space(const gx_device_color * pdevc)
 {
     gs_pattern2_instance_t *pinst =
         (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
-    const gs_shading_t *psh = pinst->template.Shading;
+    const gs_shading_t *psh = pinst->templat.Shading;
 
     return psh->params.ColorSpace;
 }
-
 
 /* Check device color for a possibly self-overlapping shading. */
 bool
@@ -432,13 +440,13 @@ gx_dc_pattern2_can_overlap(const gx_device_color *pdevc)
     gs_pattern2_instance_t * pinst;
 
     if (pdevc->type != &gx_dc_pattern2)
-	return false;
+        return false;
     pinst = (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
-    switch (pinst->template.Shading->head.type) {
-	case 3: case 6: case 7:
-	    return true;
-	default:
-	    return false;
+    switch (pinst->templat.Shading->head.type) {
+        case 3: case 6: case 7:
+            return true;
+        default:
+            return false;
     }
 }
 
@@ -449,8 +457,8 @@ bool gx_dc_pattern2_has_background(const gx_device_color *pdevc)
     const gs_shading_t *Shading;
 
     if (pdevc->type != &gx_dc_pattern2)
-	return false;
+        return false;
     pinst = (gs_pattern2_instance_t *)pdevc->ccolor.pattern;
-    Shading = pinst->template.Shading;
+    Shading = pinst->templat.Shading;
     return !pinst->shfill && Shading->params.Background != NULL;
 }

@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsropt.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* RasterOp / transparency type definitions */
 
 #ifndef gsropt_INCLUDED
@@ -30,6 +32,42 @@
  */
 #define TRANSPARENCY_PER_H_P
 
+/* Raster ops are explained in Chapter 5 of "The PCL 5 Color Technical
+ * Reference Manual", but essentially, they provide a way of mixing
+ * various bitmaps together. The most general form is where a texture
+ * bitmap, a source bitmap, and a destination bitmap are added together to
+ * give a new destination bitmap value.
+ *
+ * Each bitmap value is either 0 or 1, so essentially each raster op is
+ * a function of the form f(D,S,T). (Confusingly, the HP documentation uses
+ * the name 'pattern' in the english descriptive text in an inconsistent way
+ * to sometimes mean 'texture' and sometimes mean something that is used to
+ * help generate the texture. We will use texture exclusively here.)
+ *
+ * There are therefore 8 possible values on input to such functions, and 2
+ * possible output values for each input. Hence 2^8 = 256 possible raster
+ * op functions.
+ *
+ * For any given function, f(D,S,T), we can form an 8 bit number as follows:
+ *  Bit 0 = f(0,0,0)
+ *  Bit 1 = f(1,0,0)
+ *  Bit 2 = f(0,1,0)
+ *  Bit 3 = f(1,1,0)
+ *  Bit 4 = f(0,0,1)
+ *  Bit 5 = f(1,0,1)
+ *  Bit 6 = f(0,1,1)
+ *  Bit 7 = f(1,1,1)
+ * Running this in reverse for each number from 0 to 255 we have an
+ * enumeratation of the possible 3 input raster op functions.
+ *
+ * We could therefore define F(op,D,S,T) to be a 'master' function that
+ * encapsulates all these raster op functions as follows:
+ *  F(op,D,S,T) = !!(op & ((D?0xAA:0x55) & (S?0xCC:0x33) & (T?0xF0:0xF)))
+ * We don't actually use that technique here (as it only works for 1bpp
+ * inputs, and we actually use the rasterops for doing multiple bits at
+ * once - it is mentioned for interests sake only.
+ */
+
 /*
  * By the magic of Boolean algebra, we can operate on the rop codes using
  * Boolean operators and get the right result.  E.g., the value of
@@ -40,9 +78,9 @@
 /* 2-input RasterOp */
 typedef enum {
     rop2_0 = 0,
-    rop2_S = 0xc,		/* source */
+    rop2_S = 0xc,               /* source */
 #define rop2_S_shift 2
-    rop2_D = 0xa,		/* destination */
+    rop2_D = 0xa,               /* destination */
 #define rop2_D_shift 1
     rop2_1 = 0xf,
 #define rop2_operand(shift, d, s)\
@@ -59,11 +97,11 @@ typedef enum {
 /* 3-input RasterOp */
 typedef enum {
     rop3_0 = 0,
-    rop3_T = 0xf0,		/* texture */
+#define rop3_T 0xf0              /* texture */
 #define rop3_T_shift 4
-    rop3_S = 0xcc,		/* source */
+#define rop3_S 0xcc              /* source */
 #define rop3_S_shift 2
-    rop3_D = 0xaa,		/* destination */
+    rop3_D = 0xaa,              /* destination */
 #define rop3_D_shift 1
     rop3_1 = 0xff,
     rop3_default = rop3_T | rop3_S
@@ -104,7 +142,13 @@ typedef enum {
 #define rop3_swap_S_T(op)\
   ( (((op) & rop3_S & ~rop3_T) << (rop3_T_shift - rop3_S_shift)) |\
     (((op) & ~rop3_S & rop3_T) >> (rop3_T_shift - rop3_S_shift)) |\
-    ((op) & (~rop3_1 | (rop3_S ^ rop3_T))) )
+    ((op) & ~(rop3_S ^ rop3_T)) )
+
+#define lop_swap_S_T(op)\
+  ( ((rop3_swap_S_T(op)) & ~(lop_S_transparent | lop_T_transparent)) |\
+    (((op) & lop_S_transparent) ? lop_T_transparent : 0) |\
+    (((op) & lop_T_transparent) ? lop_S_transparent : 0) )
+
 /*
  * Account for transparency.
  */
@@ -130,11 +174,24 @@ typedef enum {
 #define rop3_uses_T(op) rop3_uses_(op, rop3_T, rop3_T_shift)
 /*
  * Test whether an operation is idempotent, i.e., whether
- * f(D, S, T) = f(f(D, S, T), S, T).  This is equivalent to the condition that
- * for all values s and t, !( f(0,s,t) == 1 && f(1,s,t) == 0 ).
+ *      f(D, S, T) = f(f(D, S, T), S, T)   (for all D,S,T)
+ * f has a range of 0 or 1, so this is equivalent to the condition that:
+ *    There exists no s,t, s.t. (f(0,s,t) == 1 && f(1,s,t) == 0)
+ * or equivalently:
+ *    For all s, t, ~(f(0,s,t) == 1 &&   f(1,s,t) == 0 )
+ * or For all s, t, ~(f(0,s,t) == 1 && ~(f(1,s,t) == 1))
+ * or For all s, t, ~((f(0,s,t) & ~f(1,s,t)) == 1)
+ * or For all s, t,  ((f(0,s,t) & ~f(1,s,t)) == 0)
+ *
+ * We can code this as a logical operation by observing that:
+ *     ((~op)                 & rop3_D) gives us a bitfield of ~f(1,s,t)
+ *     (((op)<<rop_3_D_shift) & rop3_D) gives us a bitfield of  f(0,s,t)
+ * So
+ *     ((~op) & rop3_D) & ((op<<rop3_D_shift) & rop3_D) == 0 iff idempotent
+ * === ((~op) & (op<<rop3_D_shift) & rop3_D) == 0 iff idempotent
  */
 #define rop3_is_idempotent(op)\
-  !( (op) & ~((op) << rop3_D_shift) & rop3_D )
+  !( (~op) & ((op) << rop3_D_shift) & rop3_D )
 
 /* Transparency */
 #define source_transparent_default false
@@ -148,14 +205,15 @@ typedef enum {
  *
  * In addition, we define a "pdf14" flag which indicates that PDF
  * transparency is in effect. This doesn't change rendering in any way,
- * but does force the lop to be considered non-idempotent.
+ * but does force the lop to be considered non-idempotent. The lop_pdf14
+ * bit is used for fill/stroke ops but even if this is clear, we still
+ * may be painting in a transparency buffer in an idempotent mode.
  */
-#define lop_rop(lop) ((gs_rop3_t)((lop) & 0xff))	/* must be low-order bits */
+#define lop_rop(lop) ((gs_rop3_t)((lop) & 0xff))        /* must be low-order bits */
 #define lop_S_transparent 0x100
 #define lop_T_transparent 0x200
-#define lop_pdf14 0x4000
-#define lop_ral_shift 10
-#define lop_ral_mask 0xf
+#define lop_pdf14 0x400
+
 typedef uint gs_logical_operation_t;
 
 #define lop_default\
@@ -164,10 +222,10 @@ typedef uint gs_logical_operation_t;
    (pattern_transparent_default ? lop_T_transparent : 0))
 
      /* Test whether a logical operation uses S or T. */
-#ifdef TRANSPARENCY_PER_H_P	/* bizarre but necessary definition */
+#ifdef TRANSPARENCY_PER_H_P     /* bizarre but necessary definition */
 #define lop_uses_S(lop)\
   (rop3_uses_S(lop) || ((lop) & (lop_S_transparent | lop_T_transparent)))
-#else				/* reasonable definition */
+#else                           /* reasonable definition */
 #define lop_uses_S(lop)\
   (rop3_uses_S(lop) || ((lop) & lop_S_transparent))
 #endif
@@ -215,5 +273,124 @@ extern const rop_proc rop_proc_table[256];
 
 /* Define the table of RasterOp operand usage. */
 extern const byte /*rop_usage_t*/ rop_usage_table[256];
+
+/* Rather than just doing one raster operation at a time (which costs us
+ * a significant amount of time due to function call overheads), we attempt
+ * to ameliorate this by doing runs of raster operations at a time.
+ */
+
+/* The raster op run operator type */
+typedef struct rop_run_op_s rop_run_op;
+
+/* The contents of these structs should really be private, but we define them
+ * in the open here to allow us to easily allocate the space on the stack
+ * and thus avoid costly malloc/free overheads. */
+typedef union rop_source_s {
+    struct {
+        const byte *ptr;
+        int         pos;
+    } b;
+    rop_operand c;
+} rop_source;
+
+struct rop_run_op_s {
+    void (*run)(rop_run_op *, byte *dest, int len);
+    void (*runswap)(rop_run_op *, byte *dest, int len);
+    rop_source s;
+    rop_source t;
+    int rop;
+    byte depth;
+    byte flags;
+    byte dpos;
+    const byte *scolors;
+    const byte *tcolors;
+    void (*release)(rop_run_op *);
+    void *opaque;
+};
+
+/* Flags for passing into rop_get_run_op */
+enum {
+    rop_s_constant = 1,
+    rop_t_constant = 2,
+    rop_s_1bit     = 4,
+    rop_t_1bit     = 8
+};
+
+/* To use a rop_run_op, allocate it on the stack, then call
+ * rop_get_run_op with a pointer to it to fill it in with details of an
+ * implementer. If you're lucky (doing a popular rop) you'll get an optimised
+ * implementation. If you're not, you'll get a general purpose slow rop. You
+ * will always get an implementation of some kind though.
+ *
+ * You should logical or together the flags - this tells the routine whether
+ * s and t are constant, or will be varying across the run.
+ */
+void rop_get_run_op(rop_run_op *op, int rop, int depth, int flags);
+
+/* Next, you should set the values of S and T. Each of these can either be
+ * a constant value, or a pointer to a run of bytes. It is the callers
+ * responsibility to set these in the correct way (corresponding to the flags
+ * passed into the call to rop_get_run_op.
+ *
+ * For cases where depth < 8, and a bitmap is used, we have to specify the
+ * start bit position within the byte. (All data in rop bitmaps is considered
+ * to be bigendian). */
+void rop_set_s_constant(rop_run_op *op, int s);
+void rop_set_s_bitmap(rop_run_op *op, const byte *s);
+void rop_set_s_bitmap_subbyte(rop_run_op *op, const byte *s, int startbitpos);
+void rop_set_s_colors(rop_run_op *op, const byte *scolors);
+void rop_set_t_constant(rop_run_op *op, int t);
+void rop_set_t_bitmap(rop_run_op *op, const byte *t);
+void rop_set_t_bitmap_subbyte(rop_run_op *op, const byte *s, int startbitpos);
+void rop_set_t_colors(rop_run_op *op, const byte *scolors);
+
+/* At last we call the rop_run function itself. (This can happen multiple
+ * times, perhaps once per scanline, with any required calls to the
+ * rop_set_{s,t} functions.) The length field is given in terms of 'number
+ * of depth bits'.
+ *
+ * This version is for the depth >= 8 case. */
+void rop_run(rop_run_op *op, byte *d, int len);
+
+/* This version tells us how many bits to skip over in the first byte, and
+ * is therefore only useful in the depth < 8 case. */
+void rop_run_subbyte(rop_run_op *op, byte *d, int startbitpos, int len);
+
+/* And finally we release our rop (in case any allocation was done). */
+void rop_release_run_op(rop_run_op *op);
+
+/* We offer some of these functions implemented as macros for speed */
+#define rop_set_s_constant(OP,S)          ((OP)->s.c = (S))
+#define rop_set_s_bitmap(OP,S)            ((OP)->s.b.ptr = (S))
+#define rop_set_s_bitmap_subbyte(OP,S,B) (((OP)->s.b.ptr = (S)),((OP)->s.b.pos = (B)))
+#define rop_set_s_colors(OP,S)            ((OP)->scolors = (const byte *)(S))
+#define rop_set_t_constant(OP,T)          ((OP)->t.c = (T))
+#define rop_set_t_bitmap(OP,T)            ((OP)->t.b.ptr = (T))
+#define rop_set_t_bitmap_subbyte(OP,T,B) (((OP)->t.b.ptr = (T)),((OP)->t.b.pos = (B)))
+#define rop_set_t_colors(OP,T)            ((OP)->tcolors = (const byte *)(T))
+#define rop_run(OP,D,LEN)                (((OP)->run)(OP,D,LEN))
+#define rop_run_subbyte(OP,D,S,L)        (((OP)->dpos=(byte)S),((OP)->run)(OP,D,L))
+#define rop_release_run_op(OP)           do { rop_run_op *OP2 = (OP); \
+                                              if (OP2->release) OP2->release(OP2); \
+                                         } while (0==1)
+
+#ifdef _MSC_VER /* Are we using MSVC? */
+#  if defined(_M_IX86) || defined(_M_AMD64) /* Are we on an x86? */
+#    if MSC_VER >= 1400  /* old versions have _byteswap_ulong() in stdlib.h */
+#      include "intrin.h"
+#    endif
+#  define ENDIAN_SWAP_INT _byteswap_ulong
+#endif
+
+#elif defined(HAVE_BSWAP32)
+
+#define ENDIAN_SWAP_INT __builtin_bswap32
+
+#elif defined(HAVE_BYTESWAP_H)
+
+#include <byteswap.h>
+#define ENDIAN_SWAP_INT bswap_32
+
+#endif
 
 #endif /* gsropt_INCLUDED */

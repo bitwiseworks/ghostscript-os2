@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxhintn.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Type 1 hinter, prototypes */
 
 #ifndef gxhintn_INCLUDED
@@ -184,14 +186,14 @@ typedef struct t1_hinter_s
 
 void t1_hinter__init(t1_hinter * this, gx_path *output_path);
 int  t1_hinter__set_mapping(t1_hinter * this, gs_matrix_fixed * ctm,
-			gs_matrix * FontMatrix, gs_matrix * baseFontMatrix,
-			int log2_pixels_x, int log2_pixels_y,
-			int log2_subpixels_x, int log2_subpixels_y,
-			fixed origin_x, fixed origin_y, bool align_to_pixels);
-int  t1_hinter__set_font_data(t1_hinter * this, int FontType, gs_type1_data *pdata, 
-			bool no_grid_fitting, bool is_resource);
-int  t1_hinter__set_font42_data(t1_hinter * this, int FontType, gs_type42_data *pdata, 
-			bool no_grid_fitting);
+                        gs_matrix * FontMatrix, gs_matrix * baseFontMatrix,
+                        int log2_pixels_x, int log2_pixels_y,
+                        int log2_subpixels_x, int log2_subpixels_y,
+                        fixed origin_x, fixed origin_y, bool align_to_pixels);
+int  t1_hinter__set_font_data(t1_hinter * this, int FontType, gs_type1_data *pdata,
+                        bool no_grid_fitting, bool is_resource);
+int  t1_hinter__set_font42_data(t1_hinter * this, int FontType, gs_type42_data *pdata,
+                        bool no_grid_fitting);
 
 int  t1_hinter__sbw(t1_hinter * this, fixed sbx, fixed sby, fixed wx,  fixed wy);
 int  t1_hinter__sbw_seac(t1_hinter * this, fixed sbx, fixed sby);

@@ -1,20 +1,22 @@
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
+   All Rights Reserved.
+
+   This software is provided AS-IS with no warranty, either express or
+   implied.
+
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
+*/
+
 /*
     jbig2dec
-
-    Copyright (C) 2001-2005 Artifex Software, Inc.
-
-    This software is provided AS-IS with no warranty,
-    either express or implied.
-
-    This software is distributed under license and may not
-    be copied, modified or distributed except as expressly
-    authorized under the terms of the license contained in
-    the file LICENSE in this distribution.
-
-    For further licensing information refer to http://artifex.com/ or
-    contact Artifex Software, Inc., 7 Mt. Lassen Drive - Suite A-134,
-    San Rafael, CA  94903, U.S.A., +1(415)492-9861.
 */
+
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -28,10 +30,6 @@
 #include "jbig2_priv.h"
 #include "jbig2_arith.h"
 
-#ifdef JBIG2_DEBUG
-#include <stdio.h>
-#endif
-
 struct _Jbig2ArithState {
   uint32_t C;
   int A;
@@ -43,6 +41,8 @@ struct _Jbig2ArithState {
 
   Jbig2WordStream *ws;
   int offset;
+
+  Jbig2Ctx *ctx;
 };
 
 #undef SOFTWARE_CONVENTION
@@ -61,7 +61,7 @@ struct _Jbig2ArithState {
 
  */
 
-static void
+static int
 jbig2_arith_bytein (Jbig2ArithState *as)
 {
   byte B;
@@ -76,7 +76,12 @@ jbig2_arith_bytein (Jbig2ArithState *as)
       if (as->next_word_bytes == 1)
 	{
 	  Jbig2WordStream *ws = as->ws;
-	  as->next_word = ws->get_next_word (ws, as->offset);
+	  if (ws->get_next_word (ws, as->offset, &as->next_word))
+	    {
+	      jbig2_error(as->ctx, JBIG2_SEVERITY_FATAL, -1,
+		"end of jbig2 buffer reached at offset %d", as->offset);
+	      return -1;
+	    }
 	  as->offset += 4;
 	  B1 = (byte)((as->next_word >> 24) & 0xFF);
 	  if (B1 > 0x8F)
@@ -147,7 +152,12 @@ jbig2_arith_bytein (Jbig2ArithState *as)
 	{
 	  Jbig2WordStream *ws = as->ws;
 
-	  as->next_word = ws->get_next_word (ws, as->offset);
+	  if (ws->get_next_word (ws, as->offset, &as->next_word))
+	    {
+	      jbig2_error(as->ctx, JBIG2_SEVERITY_FATAL, -1,
+		"end of jbig2 buffer reached at offset %d", as->offset);
+	      return -1;
+	    }
 	  as->offset += 4;
 	  as->next_word_bytes = 4;
 	}
@@ -158,11 +168,10 @@ jbig2_arith_bytein (Jbig2ArithState *as)
       as->C += (B << 8);
 #endif
     }
+    return 0;
 }
 
 #if defined(JBIG2_DEBUG) || defined(JBIG2_DEBUG_ARITH)
-#include <stdio.h>
-
 static void
 jbig2_arith_trace (Jbig2ArithState *as, Jbig2ArithCx cx)
 {
@@ -180,29 +189,47 @@ jbig2_arith_new (Jbig2Ctx *ctx, Jbig2WordStream *ws)
 {
   Jbig2ArithState *result;
 
-  result = (Jbig2ArithState *)jbig2_alloc(ctx->allocator,
-	sizeof(Jbig2ArithState));
+  result = jbig2_new(ctx, Jbig2ArithState, 1);
+  if (result == NULL)
+  {
+      jbig2_error(ctx, JBIG2_SEVERITY_FATAL, -1,
+          "failed to allocate Jbig2ArithState in jbig2_arith_new");
+      return result;
+  }
 
   result->ws = ws;
+  result->ctx = ctx;
 
-  result->next_word = ws->get_next_word (ws, 0);
+  if (ws->get_next_word (ws, 0, &result->next_word))
+  {
+      jbig2_error(ctx, JBIG2_SEVERITY_FATAL, -1,
+          "unable to get first word in jbig2_arith_new");
+      jbig2_free(ctx->allocator, result);
+      return NULL;
+  }
   result->next_word_bytes = 4;
   result->offset = 4;
 
-  /* Figure G.1 */
+  /* Figure E.20 */
 #ifdef SOFTWARE_CONVENTION
   result->C = (~(result->next_word >> 8)) & 0xFF0000;
 #else
   result->C = (result->next_word >> 8) & 0xFF0000;
 #endif
 
-  jbig2_arith_bytein (result);
+  if (jbig2_arith_bytein (result))
+  {
+      jbig2_free(ctx->allocator, result);
+      return NULL;
+  }
   result->C <<= 7;
   result->CT -= 7;
   result->A = 0x8000;
 
   return result;
 }
+
+#define MAX_QE_ARRAY_SIZE 47
 
 /* could put bit fields in to minimize memory usage */
 typedef struct {
@@ -211,7 +238,7 @@ typedef struct {
   byte lps_xor; /* lps_xor = index ^ NLPS ^ (SWITCH << 7) */
 } Jbig2ArithQe;
 
-const Jbig2ArithQe jbig2_arith_Qe[] = {
+const Jbig2ArithQe jbig2_arith_Qe[MAX_QE_ARRAY_SIZE] = {
   { 0x5601,  1 ^  0,  1 ^  0 ^ 0x80 },
   { 0x3401,  2 ^  1,  6 ^  1 },
   { 0x1801,  3 ^  2,  9 ^  2 },
@@ -261,29 +288,40 @@ const Jbig2ArithQe jbig2_arith_Qe[] = {
   { 0x5601, 46 ^ 46, 46 ^ 46 }
 };
 
-static void
+static int
 jbig2_arith_renormd (Jbig2ArithState *as)
 {
   /* Figure E.18 */
   do
     {
-      if (as->CT == 0)
-	jbig2_arith_bytein (as);
+      if ((as->CT == 0) && (jbig2_arith_bytein (as) < 0))
+        return -1;
       as->A <<= 1;
       as->C <<= 1;
       as->CT--;
     }
   while ((as->A & 0x8000) == 0);
+  return 0;
 }
 
 bool
 jbig2_arith_decode (Jbig2ArithState *as, Jbig2ArithCx *pcx)
 {
   Jbig2ArithCx cx = *pcx;
-  const Jbig2ArithQe *pqe = &jbig2_arith_Qe[cx & 0x7f];
+  const Jbig2ArithQe *pqe;
+  unsigned int index = cx & 0x7f;
   bool D;
 
-  /* Figure G.2 */
+  if (index >= MAX_QE_ARRAY_SIZE)
+  {
+	  return -1;
+  }
+  else
+  {
+	  pqe = &jbig2_arith_Qe[index];
+  }
+
+  /* Figure E.15 */
   as->A -= pqe->Qe;
   if (
 #ifdef SOFTWARE_CONVENTION
@@ -310,7 +348,8 @@ jbig2_arith_decode (Jbig2ArithState *as, Jbig2ArithCx *pcx)
 	      D = cx >> 7;
 	      *pcx ^= pqe->mps_xor;
 	    }
-	  jbig2_arith_renormd (as);
+	  if (jbig2_arith_renormd (as))
+	    return -1;
 	  return D;
 	}
       else
@@ -334,15 +373,16 @@ jbig2_arith_decode (Jbig2ArithState *as, Jbig2ArithCx *pcx)
 	  D = 1 - (cx >> 7);
 	  *pcx ^= pqe->lps_xor;
 	}
-      jbig2_arith_renormd (as);
+      if (jbig2_arith_renormd (as))
+	return -1;
       return D;
     }
 }
 
 #ifdef TEST
 
-static uint32_t
-test_get_word (Jbig2WordStream *self, int offset)
+static int
+test_get_word (Jbig2WordStream *self, int offset, uint32_t *word)
 {
   byte stream[] = {
     0x84, 0xC7, 0x3B, 0xFC, 0xE1, 0xA1, 0x43, 0x04, 0x02, 0x20, 0x00, 0x00,
@@ -351,10 +391,10 @@ test_get_word (Jbig2WordStream *self, int offset)
     0x00, 0x00
   };
   if (offset >= sizeof(stream))
-    return 0;
-  else
-    return (stream[offset] << 24) | (stream[offset + 1] << 16) |
-      (stream[offset + 2] << 8) | stream[offset + 3];
+    return -1;
+  *word = (stream[offset] << 24) | (stream[offset + 1] << 16) |
+    (stream[offset + 2] << 8) | stream[offset + 3];
+  return 0;
 }
 
 int

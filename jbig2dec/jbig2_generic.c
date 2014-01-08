@@ -1,20 +1,22 @@
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
+   All Rights Reserved.
+
+   This software is provided AS-IS with no warranty, either express or
+   implied.
+
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
+*/
+
 /*
     jbig2dec
-
-    Copyright (C) 2002-2005 Artifex Software, Inc.
-
-    This software is provided AS-IS with no warranty,
-    either express or implied.
-
-    This software is distributed under license and may not
-    be copied, modified or distributed except as expressly
-    authorized under the terms of the license contained in
-    the file LICENSE in this distribution.
-
-    For further licensing information refer to http://artifex.com/ or
-    contact Artifex Software, Inc., 7 Mt. Lassen Drive - Suite A-134,
-    San Rafael, CA  94903, U.S.A., +1(415)492-9861.
 */
+
 
 /**
  * Generic region handlers.
@@ -69,6 +71,9 @@ jbig2_decode_generic_template0(Jbig2Ctx *ctx,
   printf("P4\n%d %d\n", GBW, GBH);
 #endif
 
+  if (GBW <= 0)
+    return 0;
+
   for (y = 0; y < GBH; y++)
     {
       uint32_t CONTEXT;
@@ -101,6 +106,8 @@ jbig2_decode_generic_template0(Jbig2Ctx *ctx,
 	      bool bit;
 
 	      bit = jbig2_arith_decode(as, &GB_stats[CONTEXT]);
+	      if (bit < 0)
+		return -1;
 	      result |= bit << (7 - x_minor);
 	      CONTEXT = ((CONTEXT & 0x7bf7) << 1) | bit |
 		((line_m1 >> (7 - x_minor)) & 0x10) |
@@ -157,6 +164,8 @@ jbig2_decode_generic_template0_unopt(Jbig2Ctx *ctx,
       CONTEXT |= jbig2_image_get_pixel(image, x + params->gbat[6],
 	y + params->gbat[7]) << 15;
       bit = jbig2_arith_decode(as, &GB_stats[CONTEXT]);
+      if (bit < 0)
+	return -1;
       jbig2_image_set_pixel(image, x, y, bit);
     }
   }
@@ -182,6 +191,9 @@ jbig2_decode_generic_template1(Jbig2Ctx *ctx,
 #ifdef OUTPUT_PBM
   printf("P4\n%d %d\n", GBW, GBH);
 #endif
+
+  if (GBW <= 0)
+    return 0;
 
   for (y = 0; y < GBH; y++)
     {
@@ -215,6 +227,8 @@ jbig2_decode_generic_template1(Jbig2Ctx *ctx,
 	      bool bit;
 
 	      bit = jbig2_arith_decode(as, &GB_stats[CONTEXT]);
+	      if (bit < 0)
+		return -1;
 	      result |= bit << (7 - x_minor);
 	      CONTEXT = ((CONTEXT & 0xefb) << 1) | bit |
 		((line_m1 >> (8 - x_minor)) & 0x8) |
@@ -251,6 +265,9 @@ jbig2_decode_generic_template2(Jbig2Ctx *ctx,
   printf("P4\n%d %d\n", GBW, GBH);
 #endif
 
+  if (GBW <= 0)
+    return 0;
+
   for (y = 0; y < GBH; y++)
     {
       uint32_t CONTEXT;
@@ -283,6 +300,8 @@ jbig2_decode_generic_template2(Jbig2Ctx *ctx,
 	      bool bit;
 
 	      bit = jbig2_arith_decode(as, &GB_stats[CONTEXT]);
+	      if (bit < 0)
+		return -1;
 	      result |= bit << (7 - x_minor);
 	      CONTEXT = ((CONTEXT & 0x1bd) << 1) | bit |
 		((line_m1 >> (10 - x_minor)) & 0x4) |
@@ -319,6 +338,9 @@ jbig2_decode_generic_template2a(Jbig2Ctx *ctx,
   printf("P4\n%d %d\n", GBW, GBH);
 #endif
 
+  if (GBW <= 0)
+    return 0;
+
   for (y = 0; y < GBH; y++)
     {
       uint32_t CONTEXT;
@@ -351,6 +373,8 @@ jbig2_decode_generic_template2a(Jbig2Ctx *ctx,
 	      bool bit;
 
 	      bit = jbig2_arith_decode(as, &GB_stats[CONTEXT]);
+	      if (bit < 0)
+		return -1;
 	      result |= bit << (7 - x_minor);
 	      CONTEXT = ((CONTEXT & 0x1b9) << 1) | bit |
 		((line_m1 >> (10 - x_minor)) & 0x8) |
@@ -388,6 +412,9 @@ jbig2_decode_generic_template3(Jbig2Ctx *ctx,
   printf("P4\n%d %d\n", GBW, GBH);
 #endif
 
+  if (GBW <= 0)
+    return 0;
+
   for (y = 0; y < GBH; y++)
     {
       uint32_t CONTEXT;
@@ -414,6 +441,8 @@ jbig2_decode_generic_template3(Jbig2Ctx *ctx,
 	      bool bit;
 
 	      bit = jbig2_arith_decode(as, &GB_stats[CONTEXT]);
+	      if (bit < 0)
+		return -1;
 	      result |= bit << (7 - x_minor);
 	      CONTEXT = ((CONTEXT & 0x1f7) << 1) | bit |
 		((line_m1 >> (10 - x_minor)) & 0x010);
@@ -460,6 +489,8 @@ jbig2_decode_generic_template3_unopt(Jbig2Ctx *ctx,
       CONTEXT |= jbig2_image_get_pixel(image, x - 2, y - 1) << 8;
       CONTEXT |= jbig2_image_get_pixel(image, x - 3, y - 1) << 9;
       bit = jbig2_arith_decode(as, &GB_stats[CONTEXT]);
+      if (bit < 0)
+	return -1;
       jbig2_image_set_pixel(image, x, y, bit);
     }
   }
@@ -496,7 +527,10 @@ jbig2_decode_generic_template0_TPGDON(Jbig2Ctx *ctx,
 
   for (y = 0; y < GBH; y++)
   {
-    LTP ^= jbig2_arith_decode(as, &GB_stats[0x9B25]);
+    bit = jbig2_arith_decode(as, &GB_stats[0x9B25]);
+    if (bit < 0)
+      return -1;
+    LTP ^= bit;
     if (!LTP) {
       for (x = 0; x < GBW; x++) {
         CONTEXT  = jbig2_image_get_pixel(image, x - 1, y);
@@ -520,6 +554,8 @@ jbig2_decode_generic_template0_TPGDON(Jbig2Ctx *ctx,
         CONTEXT |= jbig2_image_get_pixel(image, x + params->gbat[6],
 					y + params->gbat[7]) << 15;
         bit = jbig2_arith_decode(as, &GB_stats[CONTEXT]);
+        if (bit < 0)
+	  return -1;
         jbig2_image_set_pixel(image, x, y, bit);
       }
     } else {
@@ -546,7 +582,10 @@ jbig2_decode_generic_template1_TPGDON(Jbig2Ctx *ctx,
   int LTP = 0;
 
   for (y = 0; y < GBH; y++) {
-    LTP ^= jbig2_arith_decode(as, &GB_stats[0x0795]);
+    bit = jbig2_arith_decode(as, &GB_stats[0x0795]);
+    if (bit < 0)
+      return -1;
+    LTP ^= bit;
     if (!LTP) {
       for (x = 0; x < GBW; x++) {
         CONTEXT  = jbig2_image_get_pixel(image, x - 1, y);
@@ -564,6 +603,8 @@ jbig2_decode_generic_template1_TPGDON(Jbig2Ctx *ctx,
         CONTEXT |= jbig2_image_get_pixel(image, x    , y - 2) << 11;
         CONTEXT |= jbig2_image_get_pixel(image, x - 1, y - 2) << 12;
         bit = jbig2_arith_decode(as, &GB_stats[CONTEXT]);
+        if (bit < 0)
+	  return -1;
         jbig2_image_set_pixel(image, x, y, bit);
       }
     } else {
@@ -590,7 +631,10 @@ jbig2_decode_generic_template2_TPGDON(Jbig2Ctx *ctx,
   int LTP = 0;
 
   for (y = 0; y < GBH; y++) {
-    LTP ^= jbig2_arith_decode(as, &GB_stats[0xE5]);
+    bit = jbig2_arith_decode(as, &GB_stats[0xE5]);
+    if (bit < 0)
+      return -1;
+    LTP ^= bit;
     if (!LTP) {
       for (x = 0; x < GBW; x++) {
         CONTEXT  = jbig2_image_get_pixel(image, x - 1, y);
@@ -605,6 +649,8 @@ jbig2_decode_generic_template2_TPGDON(Jbig2Ctx *ctx,
         CONTEXT |= jbig2_image_get_pixel(image, x    , y - 2) << 8;
         CONTEXT |= jbig2_image_get_pixel(image, x - 1, y - 2) << 9;
         bit = jbig2_arith_decode(as, &GB_stats[CONTEXT]);
+        if (bit < 0)
+	  return -1;
         jbig2_image_set_pixel(image, x, y, bit);
       }
     } else {
@@ -631,7 +677,10 @@ jbig2_decode_generic_template3_TPGDON(Jbig2Ctx *ctx,
   int LTP = 0;
 
   for (y = 0; y < GBH; y++) {
-    LTP ^= jbig2_arith_decode(as, &GB_stats[0x0195]);
+    bit = jbig2_arith_decode(as, &GB_stats[0x0195]);
+    if (bit < 0)
+      return -1;
+    LTP ^= bit;
     if (!LTP) {
       for (x = 0; x < GBW; x++) {
         CONTEXT  = jbig2_image_get_pixel(image, x - 1, y);
@@ -646,6 +695,8 @@ jbig2_decode_generic_template3_TPGDON(Jbig2Ctx *ctx,
         CONTEXT |= jbig2_image_get_pixel(image, x - 2, y - 1) << 8;
         CONTEXT |= jbig2_image_get_pixel(image, x - 3, y - 1) << 9;
         bit = jbig2_arith_decode(as, &GB_stats[CONTEXT]);
+        if (bit < 0)
+	  return -1;
         jbig2_image_set_pixel(image, x, y, bit);
       }
     } else {
@@ -769,10 +820,10 @@ jbig2_immediate_generic_region(Jbig2Ctx *ctx, Jbig2Segment *segment,
   int offset;
   int gbat_bytes = 0;
   Jbig2GenericRegionParams params;
-  int code;
-  Jbig2Image *image;
-  Jbig2WordStream *ws;
-  Jbig2ArithState *as;
+  int code = 0;
+  Jbig2Image *image = NULL;
+  Jbig2WordStream *ws = NULL;
+  Jbig2ArithState *as = NULL;
   Jbig2ArithCx *GB_stats = NULL;
 
   /* 7.4.6 */
@@ -825,29 +876,46 @@ jbig2_immediate_generic_region(Jbig2Ctx *ctx, Jbig2Segment *segment,
   if (params.MMR)
     {
       code = jbig2_decode_generic_mmr(ctx, segment, &params,
-				      segment_data + offset, segment->data_length - offset,
-				      image);
+          segment_data + offset, segment->data_length - offset, image);
     }
   else
     {
       int stats_size = jbig2_generic_stats_size(ctx, params.GBTEMPLATE);
-      GB_stats = jbig2_alloc(ctx->allocator, stats_size);
+      GB_stats = jbig2_new(ctx, Jbig2ArithCx, stats_size);
+      if (GB_stats == NULL)
+      {
+          code = jbig2_error(ctx, JBIG2_SEVERITY_FATAL, segment->number,
+              "unable to allocate GB_stats in jbig2_immediate_generic_region");
+          goto cleanup;
+      }
       memset(GB_stats, 0, stats_size);
 
-      ws = jbig2_word_stream_buf_new(ctx,
-				     segment_data + offset,
-				     segment->data_length - offset);
+      ws = jbig2_word_stream_buf_new(ctx, segment_data + offset,
+          segment->data_length - offset);
+      if (ws == NULL)
+      {
+          code = jbig2_error(ctx, JBIG2_SEVERITY_FATAL, segment->number,
+              "unable to allocate ws in jbig2_immediate_generic_region");
+          goto cleanup;
+      }
       as = jbig2_arith_new(ctx, ws);
+      if (as == NULL)
+      {
+          code = jbig2_error(ctx, JBIG2_SEVERITY_FATAL, segment->number,
+              "unable to allocate as in jbig2_immediate_generic_region");
+          goto cleanup;
+      }
       code = jbig2_decode_generic_region(ctx, segment, &params,
 					 as, image, GB_stats);
-      jbig2_free(ctx->allocator, as);
-      jbig2_word_stream_buf_free(ctx, ws);
-
-      jbig2_free(ctx->allocator, GB_stats);
     }
 
   jbig2_page_add_result(ctx, &ctx->pages[ctx->current_page],
-			image, rsi.x, rsi.y, JBIG2_COMPOSE_OR);
+			image, rsi.x, rsi.y, rsi.op);
+
+cleanup:
+  jbig2_free(ctx->allocator, as);
+  jbig2_word_stream_buf_free(ctx, ws);
+  jbig2_free(ctx->allocator, GB_stats);
   jbig2_image_release(ctx, image);
 
   return code;

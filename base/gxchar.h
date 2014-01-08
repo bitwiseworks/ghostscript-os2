@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxchar.h 8219 2007-08-31 04:47:58Z leonardo $ */
+
 /* Internal character definition for Ghostscript library */
 /* Requires gsmatrix.h, gxfixed.h */
 
@@ -72,21 +74,19 @@ struct gs_show_enum_s {
     int level;			/* save the level of pgs */
     gs_char_path_mode charpath_flag;
     gs_state *show_gstate;	/* for setting pgs->show_gstate */
-				/* at returns/callouts */
+                                /* at returns/callouts */
     int can_cache;		/* -1 if can't use cache at all, */
-				/* 0 if can read but not load, */
-				/* 1 if can read and load */
+                                /* 0 if can read but not load, */
+                                /* 1 if can read and load */
     gs_int_rect ibox;		/* int version of quick-check */
-				/* (inner) clipping box */
+                                /* (inner) clipping box */
     gs_int_rect obox;		/* int version of (outer) clip box */
     int ftx, fty;		/* transformed font translation */
     /* Following are updated dynamically */
     gs_glyph (*encode_char)(gs_font *, gs_char, gs_glyph_space_t);  /* copied from font */
-    gs_log2_scale_point fapi_log2_scale; /* scaling factors for oversampling with FAPI, -1 = not valid */
-    gs_point fapi_glyph_shift;          /* glyph shift for FAPI-handled font */
     gx_device_memory *dev_cache;	/* cache device */
     gx_device_memory *dev_cache2;	/* underlying alpha memory device, */
-				/* if dev_cache is an alpha buffer */
+                                /* if dev_cache is an alpha buffer */
     gx_device_null *dev_null;	/* null device for stringwidth */
     /*uint index; */		/* index within string */
     /*uint xy_index;*/		/* index within X/Y widths */
@@ -96,8 +96,8 @@ struct gs_show_enum_s {
     gs_point wxy_float;		/* same for huge characters */
     bool use_wxy_float;
     gs_fixed_point origin;	/* unrounded origin of current char */
-				/* in device coords, needed for */
-				/* charpath and WMode=1 */
+                                /* in device coords, needed for */
+                                /* charpath and WMode=1 */
     cached_char *cc;		/* being accumulated */
     /*gs_point returned.total_width;*/		/* total width of string, set at end */
     show_width_status width_status;
@@ -126,13 +126,16 @@ int  gx_add_cached_char(gs_font_dir *, gx_device_memory *, cached_char *, cached
 void gx_add_char_bits(gs_font_dir *, cached_char *, const gs_log2_scale_point *);
 cached_char *
             gx_lookup_cached_char(const gs_font *, const cached_fm_pair *, gs_glyph, int, int, gs_fixed_point *);
-int gx_lookup_xfont_char(const gs_state * pgs, cached_fm_pair * pair,
-		     gs_char chr, gs_glyph glyph, int wmode, cached_char **pcc);
+
 int gx_image_cached_char(gs_show_enum *, cached_char *);
 void gx_compute_text_oversampling(const gs_show_enum * penum, const gs_font *pfont,
-				  int alpha_bits, gs_log2_scale_point *p_log2_scale);
+                                  int alpha_bits, gs_log2_scale_point *p_log2_scale);
 int set_char_width(gs_show_enum *penum, gs_state *pgs, floatp wx, floatp wy);
 int gx_default_text_restore_state(gs_text_enum_t *pte);
 int gx_hld_stringwidth_begin(gs_imager_state * pis, gx_path **path);
+
+/* Define the maximum size of a full temporary bitmap when rasterizing, */
+/* in bits (not bytes). */
+#define MAX_CCACHE_TEMP_BITMAP_BITS ((uint)80000)
 
 #endif /* gxchar_INCLUDED */

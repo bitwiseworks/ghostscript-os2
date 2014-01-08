@@ -102,8 +102,8 @@ typedef void* gpointer;
 #define g_module_close dlclose
 int dlsym_wrapper(void *lib, char const *name, void **symbol)
 {
-	*symbol=dlsym(lib, name);
-	return *symbol != 0;
+        *symbol=dlsym(lib, name);
+        return *symbol != 0;
 }
 #define g_module_symbol dlsym_wrapper
 #define g_module_error dlerror
@@ -271,7 +271,6 @@ typedef struct gx_device_omni_s {
 } gx_device_omni;
 typedef gx_device_omni omni_device;
 
-
 /* Define initializer for device */
 #define omni_device(procs, dname, w10, h10, xdpi, ydpi, lm, bm, rm, tm, color_bits, print_page)\
 { prn_device_std_margins_body(gx_device_omni, procs, dname,\
@@ -331,7 +330,6 @@ static gx_device_procs omni16m_procs = {
                   SetupDevice                       /** Import parameters, special */
 };
 
-
 gx_device_omni far_data gs_omni_device =
   omni_device (omni16m_procs,
                "omni",
@@ -342,8 +340,37 @@ gx_device_omni far_data gs_omni_device =
                1,                    /* Bpp value */
                omni_print_page);     /* sync routine for output of raster data */
 
-
 /* ------------------------------------------------------*/
+/* ------------------------------------------------------*/
+
+/* Colour mapping code copied from gdevbmpc.c to ensure that
+ * this driver does not depend on on other, optional source
+ * files.
+ */
+
+/* Map a r-g-b color to a color index. */
+static gx_color_index
+omni_map_16m_rgb_color(gx_device * dev, const gx_color_value cv[])
+{
+
+    gx_color_value r, g, b;
+    r = cv[0]; g = cv[1]; b = cv[2];
+    return gx_color_value_to_byte(r) +
+        ((uint) gx_color_value_to_byte(g) << 8) +
+        ((ulong) gx_color_value_to_byte(b) << 16);
+}
+
+/* Map a color index to a r-g-b color. */
+static int
+omni_map_16m_color_rgb(gx_device * dev, gx_color_index color,
+                  gx_color_value prgb[3])
+{
+    prgb[2] = gx_color_value_from_byte(color >> 16);
+    prgb[1] = gx_color_value_from_byte((color >> 8) & 0xff);
+    prgb[0] = gx_color_value_from_byte(color & 0xff);
+    return 0;
+}
+
 /* ------------------------------------------------------*/
 
 /* Generic routine to send the page to the printer. */
@@ -437,8 +464,8 @@ OpenDevice (gx_device *pdev  /* Driver instance to open */)
    {
       if (fDebugOutput) dprintf("Remapping color pointers\n");
 
-      set_dev_proc(pdev, map_rgb_color, bmp_map_16m_rgb_color);
-      set_dev_proc(pdev, map_color_rgb, bmp_map_16m_color_rgb);
+      set_dev_proc(pdev, map_rgb_color, omni_map_16m_rgb_color);
+      set_dev_proc(pdev, map_color_rgb, omni_map_16m_color_rgb);
    }
 
    if (pDev->iSync)
@@ -503,7 +530,7 @@ CloseDevice (gx_device * pdev)
       && pDev->pcoreOmni->pszJobOptions
       )
    {
-      gs_free (gs_lib_ctx_get_non_gc_memory_t(), pDev->pcoreOmni->pszJobOptions, strlen (pDev->pcoreOmni->pszJobOptions) + 1, 1, "Option String");
+      gs_free (pDev->memory->non_gc_memory, pDev->pcoreOmni->pszJobOptions, strlen (pDev->pcoreOmni->pszJobOptions) + 1, 1, "Option String");
    }
 
    if (  pDev->pcoreOmni
@@ -522,7 +549,7 @@ CloseDevice (gx_device * pdev)
 
    if (pDev->pcoreOmni)
    {
-      gs_free (gs_lib_ctx_get_non_gc_memory_t(), pDev->pcoreOmni, sizeof (core_omni_device), 1, "omni/device");
+      gs_free (pDev->memory->non_gc_memory, pDev->pcoreOmni, sizeof (core_omni_device), 1, "omni/device");
       pDev->pcoreOmni = 0;
    }
 
@@ -693,7 +720,7 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
    {
       PDEVSTRUCT p;
 
-      p = (PDEVSTRUCT)gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), 1, sizeof (Omni_Dev), "omni/instance");
+      p = (PDEVSTRUCT)gs_malloc (pgxdev->memory->non_gc_memory, 1, sizeof (Omni_Dev), "omni/instance");
       if (!p)
       {
           dprintf ("<<<<<<<<<<<<<<<<<<<<<< ERROR >>>>>>>>>>>>>>>>>>>>>>>\n\n");
@@ -707,7 +734,7 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
 
       memset (pDev, 0, sizeof (Omni_Dev));
 
-      pDev->pcoreOmni = (core_omni_device *)gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), 1, sizeof (core_omni_device), "omni/device");
+      pDev->pcoreOmni = (core_omni_device *)gs_malloc (pgxdev->memory->non_gc_memory, 1, sizeof (core_omni_device), "omni/device");
 
       if (!pDev->pcoreOmni)
       {
@@ -756,20 +783,20 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
 
       for (i = 0; i < sizeof (apszLibraryPaths)/sizeof (apszLibraryPaths[0]) && !pDev->hmodOmni; i++)
       {
-          pszDeviceLib = (char *)gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), 1,
+          pszDeviceLib = (char *)gs_malloc (pDev->memory->non_gc_memory, 1,
                                             strlen (cOmnilib)
                                             + strlen (apszLibraryPaths[i])
                                             + 1,
                                             "Devicestring");
           if (pszDeviceLib)
           {
-              sprintf (pszDeviceLib, "%s%s", apszLibraryPaths[i], cOmnilib);
+              gs_sprintf (pszDeviceLib, "%s%s", apszLibraryPaths[i], cOmnilib);
 
               pDev->hmodOmni = g_module_open (pszDeviceLib, (GModuleFlags)0);
 
               if (fDebugOutput) dprintf2 ("SetupDevice: Trying to load %s = %p\n", pszDeviceLib, pDev->hmodOmni);
           }
-          gs_free (gs_lib_ctx_get_non_gc_memory_t(), pszDeviceLib, strlen (pszDeviceLib) + 1, 1, "Devicestring");
+          gs_free (pDev->memory->non_gc_memory, pszDeviceLib, strlen (pszDeviceLib) + 1, 1, "Devicestring");
       }
 
       if (!pDev->hmodOmni)
@@ -783,14 +810,14 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
 
          for (i = 0; i < sizeof (apszLibraryPaths)/sizeof (apszLibraryPaths[0]) && !pDev->hmodOmni; i++)
          {
-             pszDeviceLib = (char *)gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), 1,
+             pszDeviceLib = (char *)gs_malloc (pDev->memory->non_gc_memory, 1,
                                                strlen (cOmnilib)
                                                + strlen (apszLibraryPaths[i])
                                                + 1,
                                                "Devicestring");
              if (pszDeviceLib)
              {
-                 sprintf (pszDeviceLib, "%s%s", apszLibraryPaths[i], cOmnilib);
+                 gs_sprintf (pszDeviceLib, "%s%s", apszLibraryPaths[i], cOmnilib);
 
                  pModule = g_module_open (pszDeviceLib, (GModuleFlags)0);
 
@@ -803,7 +830,7 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
                     g_module_close (pModule);
                  }
              }
-             gs_free (gs_lib_ctx_get_non_gc_memory_t(), pszDeviceLib, strlen (pszDeviceLib) + 1, 1, "Devicestring");
+             gs_free (pDev->memory->non_gc_memory, pszDeviceLib, strlen (pszDeviceLib) + 1, 1, "Devicestring");
          }
 
          return 1;
@@ -926,7 +953,7 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
          )
       {
          if (!pDev->pcoreOmni->pszJobOptions)
-            pDev->pcoreOmni->pszJobOptions = (char *)gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), 1, fname.size + 1, "Option String");
+            pDev->pcoreOmni->pszJobOptions = (char *)gs_malloc (pDev->memory->non_gc_memory, 1, fname.size + 1, "Option String");
          memcpy (pDev->pcoreOmni->pszJobOptions, fname.data, fname.size);
          pDev->pcoreOmni->pszJobOptions[fname.size] = '\0';
       }
@@ -1017,7 +1044,7 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
 
          for (i = 0; i < sizeof (apszLibraryPaths)/sizeof (apszLibraryPaths[0]) && !pModule; i++)
          {
-            pszDeviceLib = (char *)gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), 1,
+            pszDeviceLib = (char *)gs_malloc (pDev->memory->non_gc_memory, 1,
                                               strlen (cDialogName)
                                               + strlen (apszLibraryPaths[i])
                                               + 1,
@@ -1026,13 +1053,13 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
 
             if (pszDeviceLib)
             {
-                sprintf (pszDeviceLib, "%s%s", apszLibraryPaths[i], cDialogName);
+                gs_sprintf (pszDeviceLib, "%s%s", apszLibraryPaths[i], cDialogName);
 
                 if (fDebugOutput) dprintf1 ("attempting to load - %s\n", pszDeviceLib);
 
                 pModule = g_module_open (pszDeviceLib, (GModuleFlags)0);
             }
-            gs_free (gs_lib_ctx_get_non_gc_memory_t(), pszDeviceLib, strlen (pszDeviceLib) + 1, 1, "Devicestring");
+            gs_free (pDev->memory->non_gc_memory, pszDeviceLib, strlen (pszDeviceLib) + 1, 1, "Devicestring");
          }
 
          if (!pModule)
@@ -1043,7 +1070,7 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
 
             for (i = 0; i < sizeof (apszLibraryPaths)/sizeof (apszLibraryPaths[0]) && !pModule; i++)
             {
-               pszDeviceLib = (char *)gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), 1,
+               pszDeviceLib = (char *)gs_malloc (pDev->memory->non_gc_memory, 1,
                                                  strlen (cDialogName)
                                                  + strlen (apszLibraryPaths[i])
                                                  + 1,
@@ -1052,7 +1079,7 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
 
                if (pszDeviceLib)
                {
-                   sprintf (pszDeviceLib, "%s%s", apszLibraryPaths[i], cDialogName);
+                   gs_sprintf (pszDeviceLib, "%s%s", apszLibraryPaths[i], cDialogName);
 
                    pModule = g_module_open (pszDeviceLib, (GModuleFlags)0);
 
@@ -1065,7 +1092,7 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
                       g_module_close (pModule);
                    }
                }
-               gs_free (gs_lib_ctx_get_non_gc_memory_t(), pszDeviceLib, strlen (pszDeviceLib) + 1, 1, "Devicestring");
+               gs_free (pDev->memory->non_gc_memory, pszDeviceLib, strlen (pszDeviceLib) + 1, 1, "Devicestring");
             }
          }
          else
@@ -1080,13 +1107,13 @@ SetupDevice (gx_device *pgxdev, gs_param_list *plist)
 
                if (pDev->pcoreOmni->pszJobOptions)
                {
-                  gs_free (gs_lib_ctx_get_non_gc_memory_t(), pDev->pcoreOmni->pszJobOptions, strlen (pDev->pcoreOmni->pszJobOptions) + 1, 1, "Option String");
+                  gs_free (pDev->memory->non_gc_memory, pDev->pcoreOmni->pszJobOptions, strlen (pDev->pcoreOmni->pszJobOptions) + 1, 1, "Option String");
                   pDev->pcoreOmni->pszJobOptions = 0;
                }
 
                iLength = strlen (pszSelectedJobProperties);
 
-               pDev->pcoreOmni->pszJobOptions = (char *)gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), 1, iLength + 1, "Option String");
+               pDev->pcoreOmni->pszJobOptions = (char *)gs_malloc (pDev->memory->non_gc_memory, 1, iLength + 1, "Option String");
 
                strcpy (pDev->pcoreOmni->pszJobOptions, pszSelectedJobProperties);
 
@@ -1348,7 +1375,7 @@ PrintPage (gx_device_printer *pgx_prt_dev, FILE *prn_stream, int num_copies)
       iBytesToAlloc += (iNumColors - 1) * sizeof (RGB2);
    }
 
-   pbmi = (PBITMAPINFO2)gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), 1, iBytesToAlloc, "Bmpi Memory");
+   pbmi = (PBITMAPINFO2)gs_malloc (pDev->memory->non_gc_memory, 1, iBytesToAlloc, "Bmpi Memory");
    if (!pbmi)
    {
       eprintf("<<<<<<<<<<<<<<<<<<<<<< ERROR >>>>>>>>>>>>>>>>>>>>>>>\n\n");
@@ -1454,7 +1481,7 @@ PrintPage (gx_device_printer *pgx_prt_dev, FILE *prn_stream, int num_copies)
       }
    }
 
-   pGSData = (byte *)gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), uiBytesPerLine, 1, "bmp file buffer");
+   pGSData = (byte *)gs_malloc (pDev->memory->non_gc_memory, uiBytesPerLine, 1, "bmp file buffer");
 
    if (pGSData == 0)
       /* can't allocate row buffer */
@@ -1474,7 +1501,7 @@ PrintPage (gx_device_printer *pgx_prt_dev, FILE *prn_stream, int num_copies)
                                 pasyncDev->pDev->iVertDots,
                                 8000*1024);                 /*eight meg buffer */
 
-   pBitmapMem = (byte *) gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), 1, uiBytesPerLine * ulBandLength, "Bitmap Memory");
+   pBitmapMem = (byte *) gs_malloc (pDev->memory->non_gc_memory, 1, uiBytesPerLine * ulBandLength, "Bitmap Memory");
 
    if(!pBitmapMem)
    {
@@ -1509,7 +1536,6 @@ PrintPage (gx_device_printer *pgx_prt_dev, FILE *prn_stream, int num_copies)
 
    rectPageLocation.xLeft  = 0;
    rectPageLocation.xRight = pasyncDev->width;
-
 
    if (pDev->iPageNumber == 1)
    {
@@ -1587,7 +1613,7 @@ PrintPage (gx_device_printer *pgx_prt_dev, FILE *prn_stream, int num_copies)
             {
                if (prtMode.iBitCount < 16)
                {
-                  pMonoData = (byte *)gs_malloc (gs_lib_ctx_get_non_gc_memory_t(), 1, iYBand * ImageInfo.ulTrgBytesPerLine, "Mono Memory");
+                  pMonoData = (byte *)gs_malloc (pDev->memory->non_gc_memory, 1, iYBand * ImageInfo.ulTrgBytesPerLine, "Mono Memory");
 
                   if (pMonoData)
                   {
@@ -1635,7 +1661,7 @@ PrintPage (gx_device_printer *pgx_prt_dev, FILE *prn_stream, int num_copies)
                /* We're done with the mono band */
                /* now free up the mono buffer so we can get clean data buffer if more lines are to be */
                /* gray-scaled */
-               gs_free (gs_lib_ctx_get_non_gc_memory_t(), (char *)pMonoData, iYBand * ImageInfo.ulTrgBytesPerLine, 1, "Mono Memory");
+               gs_free (pDev->memory->non_gc_memory, (char *)pMonoData, iYBand * ImageInfo.ulTrgBytesPerLine, 1, "Mono Memory");
 
                pMonoData = NULL;
             }
@@ -1662,9 +1688,9 @@ PrintPage (gx_device_printer *pgx_prt_dev, FILE *prn_stream, int num_copies)
             }
 
             /*
-	     * implemented based on the number of lines sent to the
+             * implemented based on the number of lines sent to the
              * printer and not based on the bandsize
-	     */
+             */
 
             rectPageLocation.yTop -= iYBand;
 
@@ -1683,11 +1709,11 @@ PrintPage (gx_device_printer *pgx_prt_dev, FILE *prn_stream, int num_copies)
 
 done:
 
-   gs_free (gs_lib_ctx_get_non_gc_memory_t(), (char *) pBitmapMem, uiBytesPerLine * ulBandLength, 1, "Bitmap Memory");
+   gs_free (pDev->memory->non_gc_memory, (char *) pBitmapMem, uiBytesPerLine * ulBandLength, 1, "Bitmap Memory");
    dprintf ("Page Completed\n");
 
-   gs_free (gs_lib_ctx_get_non_gc_memory_t(), (char *)pGSData, uiBytesPerLine, 1, "bmp file buffer");
-   gs_free (gs_lib_ctx_get_non_gc_memory_t(), (char *)pbmi, uiBytesPerLine, 1, "Bpmi Memory");
+   gs_free (pDev->memory->non_gc_memory, (char *)pGSData, uiBytesPerLine, 1, "bmp file buffer");
+   gs_free (pDev->memory->non_gc_memory, (char *)pbmi, uiBytesPerLine, 1, "Bpmi Memory");
 
    /******************************************************************/
    /* Note:                                         @@08162000       */
@@ -2002,7 +2028,7 @@ GetSpaceParams (const gx_device_printer *pgx_prt_dev,
    space_params->band.BandHeight = (pgx_prt_dev->height + min_band_count - 1) / min_band_count;
 
    gdev_mem_data_size ((const gx_device_memory *)pgx_prt_dev, space_params->band.BandWidth,
-			space_params->band.BandHeight, &render_space);
+                        space_params->band.BandHeight, &render_space);
 
    /* need to include minimal writer requirements to satisfy rasterizer init */
    writer_space = 5000 /* add 5K slop for good measure */

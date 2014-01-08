@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: zpath.c 9043 2008-08-28 22:48:19Z giles $ */
+
 /* Basic path operators */
 #include "math_.h"
 #include "ghost.h"
@@ -23,7 +25,7 @@
 
 /* Forward references */
 static int common_to(i_ctx_t *,
-		      int (*)(gs_state *, floatp, floatp));
+                      int (*)(gs_state *, floatp, floatp));
 static int common_curve(i_ctx_t *,
   int (*)(gs_state *, floatp, floatp, floatp, floatp, floatp, floatp));
 
@@ -43,7 +45,7 @@ zcurrentpoint(i_ctx_t *i_ctx_p)
     int code = gs_currentpoint(igs, &pt);
 
     if (code < 0)
-	return code;
+        return code;
     push(2);
     make_real(op - 1, pt.x);
     make_real(op, pt.y);
@@ -81,16 +83,16 @@ zrlineto(i_ctx_t *i_ctx_p)
 /* Common code for [r](move/line)to */
 static int
 common_to(i_ctx_t *i_ctx_p,
-	  int (*add_proc)(gs_state *, floatp, floatp))
+          int (*add_proc)(gs_state *, floatp, floatp))
 {
     os_ptr op = osp;
     double opxy[2];
     int code;
 
     if ((code = num_params(op, 2, opxy)) < 0 ||
-	(code = (*add_proc)(igs, opxy[0], opxy[1])) < 0
-	)
-	return code;
+        (code = (*add_proc)(igs, opxy[0], opxy[1])) < 0
+        )
+        return code;
     pop(2);
     return 0;
 }
@@ -112,17 +114,17 @@ zrcurveto(i_ctx_t *i_ctx_p)
 /* Common code for [r]curveto */
 static int
 common_curve(i_ctx_t *i_ctx_p,
-	     int (*add_proc)(gs_state *, floatp, floatp, floatp, floatp, floatp, floatp))
+             int (*add_proc)(gs_state *, floatp, floatp, floatp, floatp, floatp, floatp))
 {
     os_ptr op = osp;
     double opxy[6];
     int code;
 
     if ((code = num_params(op, 6, opxy)) < 0)
-	return code;
+        return code;
     code = (*add_proc)(igs, opxy[0], opxy[1], opxy[2], opxy[3], opxy[4], opxy[5]);
     if (code >= 0)
-	pop(6);
+        pop(6);
     return code;
 }
 

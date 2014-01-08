@@ -10,7 +10,6 @@
 #  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
 #  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
 #
-# $Id: os2.mak 10284 2009-11-05 22:24:30Z ray $
 # makefile for MS-DOS or OS/2 GCC/EMX platform.
 # Uses Borland (MSDOS) MAKER or 
 # Uses IBM NMAKE.EXE Version 2.000.000 Mar 27 1992
@@ -31,6 +30,7 @@ BINDIR=bin
 GLSRCDIR=base
 GLGENDIR=obj
 GLOBJDIR=obj
+AUXDIR=$(GLGENDIR)/aux_
 PSSRCDIR=psi
 PSLIBDIR=lib
 PSRESDIR=Resource
@@ -54,12 +54,9 @@ GS_LIB_DEFAULT=$(GSROOTDIR)/Resource/Init;$(GSROOTDIR)/lib;$(GSROOTDIR)/Resource
 
 # Define whether or not searching for initialization files should always
 # look in the current directory first.  This leads to well-known security
-# and confusion problems, but users insist on it.
-# NOTE: this also affects searching for files named on the command line:
-# see the "File searching" section of Use.htm for full details.
-# Because of this, setting SEARCH_HERE_FIRST to 0 is not recommended.
+# and confusion problems, but may be convenient sometimes.
 
-SEARCH_HERE_FIRST=1
+SEARCH_HERE_FIRST=0
 
 # Define the name of the interpreter initialization file.
 # (There is no reason to change this.)
@@ -110,9 +107,21 @@ JSRCDIR=jpeg
 # Define the directory where the PNG library sources are stored,
 # and the version of the library that is stored there.
 # You may need to change this if the libpng version changes.
-# See libpng.mak for more information.
+# See png.mak for more information.
 
 PNGSRCDIR=libpng
+
+# Define the directory where the lcms source is stored.
+# See lcms.mak for more information
+LCMSSRCDIR=lcms
+
+# Define the directory where the lcms2 source is stored.
+# See lcms2.mak for more information
+LCMS2SRCDIR=lcms2
+
+# Which CMS are we using?
+# Options are currently lcms or lcms2
+WHICH_CMS=lcms2
 
 # Define the directory where the zlib sources are stored.
 # See zlib.mak for more information.
@@ -125,14 +134,9 @@ ZSRCDIR=zlib
 JBIG2_LIB=jbig2dec
 JBIG2SRCDIR=jbig2dec
 
-# Define the directory where the icclib source are stored.
-# See icclib.mak for more information
-
-ICCSRCDIR=icclib
-
 # IJS has not been ported to OS/2. If you do the port,
 # you'll need to set these values. You'll also need to
-# include the ijs.mak makefile (right after icclib.mak).
+# include the ijs.mak makefile
 #
 # Define the directory where the ijs source is stored,
 # and the process forking method to use for the server.
@@ -140,11 +144,6 @@ ICCSRCDIR=icclib
 
 #IJSSRCDIR=ijs
 #IJSEXECTYPE=win
-
-# Define the directory where the imdi library source is stored.
-# See devs.mak for more information
-
-IMDISRCDIR=imdi
 
 # 1 --> Use 64 bits for gx_color_index.  This is required only for
 # non standard devices or DeviceN process color model devices.
@@ -231,7 +230,7 @@ SHARE_JBIG2=0
 
 # Define the platform name.
 
-PLATFORM=os2_
+GSPLATFORM=os2_
 
 # Define the name of the makefile -- used in dependencies.
 
@@ -377,10 +376,11 @@ GENOPT=$(CD) $(CGDB) $(CDLL) $(CO) $(CPNG)
 CCFLAGS0=$(GENOPT) $(PLATOPT) -D__OS2__ $(GCIFLAGS)
 CCFLAGS=$(CCFLAGS0) 
 CC=$(COMPDIR)\$(COMP) $(CCFLAGS0)
+CCAUX=$(CC)
 CC_=$(CC)
-CC_D=$(CC) $(CO)
-CC_INT=$(CC)
+CCAUX_=$(CCAUX)
 CC_NO_WARN=$(CC_)
+CCAUX_NO_WARN=$(CCAUX_)
 CC_SHARED=$(CC_)
 
 # ------ Devices and features ------ #
@@ -436,10 +436,10 @@ DEVICE_DEVS8=$(DD)pcxmono.dev $(DD)pcxgray.dev $(DD)pcx16.dev $(DD)pcx256.dev $(
 DEVICE_DEVS9=$(DD)pbm.dev $(DD)pbmraw.dev $(DD)pgm.dev $(DD)pgmraw.dev $(DD)pgnm.dev $(DD)pgnmraw.dev $(DD)pkmraw.dev
 DEVICE_DEVS10=$(DD)tiffcrle.dev $(DD)tiffg3.dev $(DD)tiffg32d.dev $(DD)tiffg4.dev $(DD)tifflzw.dev $(DD)tiffpack.dev
 DEVICE_DEVS11=$(DD)bmpmono.dev $(DD)bmpgray.dev $(DD)bmp16.dev $(DD)bmp256.dev $(DD)bmp16m.dev $(DD)tiff12nc.dev $(DD)tiff24nc.dev $(DD)tiffgray.dev $(DD)tiff32nc.dev $(DD)tiffsep.dev $(DD)tiffsep1.dev
-DEVICE_DEVS12=$(DD)psmono.dev $(DD)bit.dev $(DD)bitrgb.dev $(DD)bitcmyk.dev
-DEVICE_DEVS13=$(DD)pngmono.dev $(DD)pnggray.dev $(DD)png16.dev $(DD)png256.dev $(DD)png16m.dev $(DD)pngalpha.dev
+DEVICE_DEVS12=$(DD)bit.dev $(DD)bitrgb.dev $(DD)bitcmyk.dev
+DEVICE_DEVS13=$(DD)pngmono.dev $(DD)pngmonod.dev $(DD)pnggray.dev $(DD)png16.dev $(DD)png256.dev $(DD)png16m.dev $(DD)pngalpha.dev
 DEVICE_DEVS14=$(DD)jpeg.dev $(DD)jpeggray.dev $(DD)jpegcmyk.dev
-DEVICE_DEVS15=$(DD)pdfwrite.dev $(DD)pswrite.dev $(DD)ps2write.dev $(DD)epswrite.dev $(DD)txtwrite.dev $(DD)pxlmono.dev $(DD)pxlcolor.dev
+DEVICE_DEVS15=$(DD)pdfwrite.dev $(DD)ps2write.dev $(DD)epswrite.dev $(DD)txtwrite.dev $(DD)pxlmono.dev $(DD)pxlcolor.dev
 DEVICE_DEVS16=$(DD)bbox.dev
 # Overflow for DEVS3,4,5,6,9
 DEVICE_DEVS17=$(DD)ljet3.dev $(DD)ljet3d.dev $(DD)ljet4.dev $(DD)ljet4d.dev 
@@ -455,11 +455,11 @@ DEVICE_DEVS21= $(DD)spotcmyk.dev $(DD)devicen.dev $(DD)bmpsep1.dev $(DD)bmpsep8.
 !include "$(PSSRCDIR)\psromfs.mak"
 !include "$(GLSRCDIR)\lib.mak"
 !include "$(GLSRCDIR)\jpeg.mak"
-# zlib.mak must precede libpng.mak
+# zlib.mak must precede png.mak
 !include "$(GLSRCDIR)\zlib.mak"
-!include "$(GLSRCDIR)\libpng.mak"
+!include "$(GLSRCDIR)\png.mak"
 !include "$(GLSRCDIR)\jbig2.mak"
-!include "$(GLSRCDIR)\icclib.mak"
+!include "$(GLSRCDIR)\$(WHICH_CMS).mak"
 !include "$(GLSRCDIR)\devs.mak"
 !include "$(GLSRCDIR)\pcwin.mak"
 !include "$(GLSRCDIR)\contrib.mak"
@@ -499,7 +499,7 @@ $(GLD)os2print.dev: $(ECHOGS_XE) $(os2print_)
 
 $(GLOBJ)gp_os2pr.$(OBJ): $(GLSRC)gp_os2pr.c $(GLSRC)gp_os2.h $(AK)\
  $(ctype__h) $(errno__h) $(stdio__h) $(string__h)\
- $(gserror_h) $(gsmemory_h) $(gstypes_h) $(gxiodev_h)
+ $(gsmemory_h) $(gstypes_h) $(gxiodev_h)
 	$(GLCC) $(GLO_)gp_os2pr.$(OBJ) $(C_) $(GLSRC)gp_os2pr.c
 
 
@@ -522,6 +522,7 @@ $(ECHOGS_XE): $(GLSRCDIR)\echogs.c
 $(GENARCH_XE): $(GLSRCDIR)\genarch.c $(GENARCH_DEPS)
 	-mkdir $(GLGENDIR)
 	-mkdir $(BINDIR)
+	-mkdir $(AUXDIR)
 !if $(EMX)
 	$(CCAUX) -DHAVE_LONG_LONG -o $(AUXGEN)genarch $(GLSRCDIR)\genarch.c
 	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)genarch $(GENARCH_XE)
@@ -559,16 +560,6 @@ $(GENHT_XE): $(PSSRC)genht.c $(GENHT_DEPS)
 !endif
 !if $(IBMCPP)
 	$(CCAUX) /Fe$(GENHT_XE) genht.c
-!endif
-
-$(GENINIT_XE): $(PSSRC)geninit.c $(GENINIT_DEPS)
-!if $(EMX)
-	$(CCAUX) -o $(AUXGEN)geninit $(PSSRC)geninit.c
-	$(COMPDIR)\emxbind $(EMXPATH)/bin/emxl.exe $(AUXGEN)geninit $(GENINIT_XE)
-	del $(AUXGEN)geninit
-!endif
-!if $(IBMCPP)
-	$(CCAUX) /Fe$(GENINIT_XE) geninit.c
 !endif
 
 MKROMFS_OBJS=$(MKROMFS_ZLIB_OBJS) $(GLOBJ)gscdefs.$(OBJ) $(GLOBJ)gpmisc.$(OBJ) $(GLOBJ)gp_getnv.obj $(GLOBJ)gp_os2fs.obj

@@ -1,5 +1,4 @@
 /* This is the default Ghostscript stylesheet */
-/* $Id: gs.css 10095 2009-09-28 17:16:24Z giles $ */
 
 body
 {
@@ -51,7 +50,7 @@ tt
 code
 {
   color: rgb(40%,24%,24%);
-  text-weight: bold;
+  font-weight: bold;
 }
 
 a > tt, a > b > tt

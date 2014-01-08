@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxfcid.h 9212 2008-11-09 19:09:30Z leonardo $ */
+
 /* Definitions for CID-keyed fonts */
 
 #ifndef gxfcid_INCLUDED
@@ -32,6 +34,7 @@
 typedef struct gs_font_cid_data_s {
     gs_cid_system_info_t CIDSystemInfo;
     int CIDCount;
+    int MaxCID;                 /* For font with GlyphDirectory highest CID != CIDCount. */
     int GDBytes;		/* optional, for standard glyph_data */
     /*int PaintType;*/
     /*float StrokeWidth;*/
@@ -140,9 +143,9 @@ typedef struct gs_font_cid2_data_s {
      * handle MetricsCount.  Save the original ones here.
      */
     struct o_ {
-	int (*get_outline)(gs_font_type42 *, uint, gs_glyph_data_t *);
-	int (*get_metrics)(gs_font_type42 *, uint, gs_type42_metrics_options_t, 
-		float * /* See comment for gs_type42_default_get_metrics. */);
+        int (*get_outline)(gs_font_type42 *, uint, gs_glyph_data_t *);
+        int (*get_metrics)(gs_font_type42 *, uint, gs_type42_metrics_options_t,
+                float * /* See comment for gs_type42_default_get_metrics. */);
     } orig_procs;
 } gs_font_cid2_data;
 struct gs_font_cid2_s {
@@ -177,8 +180,8 @@ font_proc_enumerate_glyph(gs_font_cid0_enumerate_glyph);
 /*
  * Check CIDSystemInfo compatibility.
  */
-bool gs_is_CIDSystemInfo_compatible(const gs_cid_system_info_t *info0, 
-				    const gs_cid_system_info_t *info1);
+bool gs_is_CIDSystemInfo_compatible(const gs_cid_system_info_t *info0,
+                                    const gs_cid_system_info_t *info1);
 
 /* Return the font from the FDArray at the given index */
 const gs_font *gs_cid0_indexed_font(const gs_font *, int);

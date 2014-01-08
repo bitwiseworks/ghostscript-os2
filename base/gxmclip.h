@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxmclip.h 8137 2007-07-24 21:18:53Z ray $ */
+
 /* Mask clipping device and interface */
 /* Requires gxdevice.h, gxdevmem.h */
 
@@ -40,11 +42,11 @@ typedef struct gx_device_mask_clip_s {
     gx_strip_bitmap tiles;
     gx_device_memory mdev;	/* for tile buffer for copy_mono */
     gs_int_point phase;		/* device space origin relative */
-				/* to tile (backwards from gstate phase) */
+                                /* to tile (backwards from gstate phase) */
     /* Ensure that the buffer is long-aligned. */
     union _b {
-	byte bytes[tile_clip_buffer_size];
-	ulong longs[tile_clip_buffer_size / arch_sizeof_long];
+        byte bytes[tile_clip_buffer_size];
+        ulong longs[tile_clip_buffer_size / arch_sizeof_long];
     } buffer;
 } gx_device_mask_clip;
 
@@ -58,11 +60,14 @@ extern_st(st_device_mask_clip);
  * Internal routine to initialize a mask clipping device.
  * We supply an explicit device space origin or phase.
  * Note that this procedure does not set cdev->tiles.
+ * If mem is sent as NULL, then the initialised device structure will not be
+ * freed when the refcount reaches 0 (suitable for devices on stack, or within
+ * other structures).
  */
 int gx_mask_clip_initialize(gx_device_mask_clip * cdev,
-			    const gx_device_mask_clip * proto,
-			    const gx_bitmap * bits, gx_device * tdev,
-			    int tx, int ty, gs_memory_t *mem);
+                            const gx_device_mask_clip * proto,
+                            const gx_bitmap * bits, gx_device * tdev,
+                            int tx, int ty, gs_memory_t *mem);
 
 /*
  * Prepare colors for a copy_mono operation.
@@ -70,31 +75,31 @@ int gx_mask_clip_initialize(gx_device_mask_clip * cdev,
  *   dev, data, sourcex, raster, id, x, y, w, y, color0, color1.
  */
 #define setup_mask_copy_mono(cdev, color, mcolor0, mcolor1)\
-	BEGIN\
-	  if ( cdev->mdev.base == 0 ) {\
-	    /*\
-	     * The tile was too large for us to buffer even one scan line.\
-	     * Punt to the very, very slow default implementation of\
-	     * copy_mono.\
-	     */\
-	    return gx_default_copy_mono(dev, data, sourcex, raster, id,\
-					x, y, w, h, color0, color1);\
-	  }\
-	  if ( color1 != gx_no_color_index ) {\
-	    if ( color0 != gx_no_color_index ) {\
-	      /* Pre-fill with color0. */\
-	      code =\
-		(*dev_proc(dev, fill_rectangle))(dev, x, y, w, h, color0);\
-	      if ( code < 0 )\
-		return code;\
-	    }\
-	    color = color1;\
-	    mcolor0 = 0, mcolor1 = gx_no_color_index;\
-	  } else if ( color0 != gx_no_color_index ) {\
-	    color = color0;\
-	    mcolor0 = gx_no_color_index, mcolor1 = 0;\
-	  } else\
-	    return 0;\
-	END
+        BEGIN\
+          if ( cdev->mdev.base == 0 ) {\
+            /*\
+             * The tile was too large for us to buffer even one scan line.\
+             * Punt to the very, very slow default implementation of\
+             * copy_mono.\
+             */\
+            return gx_default_copy_mono(dev, data, sourcex, raster, id,\
+                                        x, y, w, h, color0, color1);\
+          }\
+          if ( color1 != gx_no_color_index ) {\
+            if ( color0 != gx_no_color_index ) {\
+              /* Pre-fill with color0. */\
+              code =\
+                (*dev_proc(dev, fill_rectangle))(dev, x, y, w, h, color0);\
+              if ( code < 0 )\
+                return code;\
+            }\
+            color = color1;\
+            mcolor0 = 0, mcolor1 = gx_no_color_index;\
+          } else if ( color0 != gx_no_color_index ) {\
+            color = color0;\
+            mcolor0 = gx_no_color_index, mcolor1 = 0;\
+          } else\
+            return 0;\
+        END
 
 #endif /* gxmclip_INCLUDED */

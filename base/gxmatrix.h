@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxmatrix.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Internal matrix routines for Ghostscript library */
 
 #ifndef gxmatrix_INCLUDED
@@ -19,7 +21,7 @@
 
 #include "gsmatrix.h"
 
-/* The following switch is for developmenty purpose only. 
+/* The following switch is for developmenty purpose only.
    PRECISE_CURRENTPOINT 0 must not go to production due to no clamping. */
 #define PRECISE_CURRENTPOINT 1 /* Old code compatible with dropped clamping = 0, new code = 1 */
 
@@ -46,12 +48,12 @@ int gs_matrix_fixed_from_matrix(gs_matrix_fixed *, const gs_matrix *);
 
 /* Coordinate transformations to fixed point. */
 int gs_point_transform2fixed(const gs_matrix_fixed *, floatp, floatp,
-			     gs_fixed_point *);
+                             gs_fixed_point *);
 int gs_distance_transform2fixed(const gs_matrix_fixed *, floatp, floatp,
-				gs_fixed_point *);
+                                gs_fixed_point *);
 #if PRECISE_CURRENTPOINT
 int gs_point_transform2fixed_rounding(const gs_matrix_fixed * pmat,
-			 floatp x, floatp y, gs_fixed_point * ppt);
+                         floatp x, floatp y, gs_fixed_point * ppt);
 #endif
 
 /*

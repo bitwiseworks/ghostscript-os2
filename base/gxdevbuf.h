@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxdevbuf.h 8528 2008-02-17 22:32:15Z leonardo $ */
+
 /* Definitions for device buffer management */
 
 #ifndef gxdevbuf_INCLUDED
@@ -41,21 +43,6 @@ typedef struct gx_device_buf_space_s {
     uint raster;
 } gx_device_buf_space_t;
 
-/* clist contents analysis per band */
-typedef struct gx_band_complexity_s {
-    /* use null or contents to denote non banding case: */
-
-    bool uses_color;
-    bool nontrivial_rops;
-
-#if 0
-    /* halftone phase */
-    int x0;
-    int y0;
-#endif
-} gx_band_complexity_t;
-
-
 typedef struct gx_device_buf_procs_s {
 
     /*
@@ -72,8 +59,8 @@ typedef struct gx_device_buf_procs_s {
 
 #define dev_proc_create_buf_device(proc)\
   int proc(gx_device **pbdev, gx_device *target, int y,\
-	   const gx_render_plane_t *render_plane, gs_memory_t *mem,\
-	   gx_band_complexity_t *band_complexity)
+           const gx_render_plane_t *render_plane, gs_memory_t *mem,\
+           gx_color_usage_t *color_usage)
 
     dev_proc_create_buf_device((*create_buf_device));
 
@@ -83,8 +70,8 @@ typedef struct gx_device_buf_procs_s {
 
 #define dev_proc_size_buf_device(proc)\
   int proc(gx_device_buf_space_t *space, gx_device *target,\
-	   const gx_render_plane_t *render_plane,\
-	   int height, bool for_band)
+           const gx_render_plane_t *render_plane,\
+           int height, bool for_band)
 
     dev_proc_size_buf_device((*size_buf_device));
 
@@ -103,8 +90,8 @@ typedef struct gx_device_buf_procs_s {
 
 #define dev_proc_setup_buf_device(proc)\
   int proc(gx_device *bdev, byte *buffer, int bytes_per_line,\
-	   byte **line_ptrs /*[height]*/, int y, int setup_height,\
-	   int full_height)
+           byte **line_ptrs /*[height]*/, int y, int setup_height,\
+           int full_height)
 
     dev_proc_setup_buf_device((*setup_buf_device));
 

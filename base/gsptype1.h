@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsptype1.h 9880 2009-07-22 21:09:42Z mvrhel $ */
+
 /* Client interface to PatternType 1 Patterns */
 
 #ifndef gsptype1_INCLUDED
@@ -65,10 +67,10 @@ typedef gs_pattern1_template_t gs_client_pattern;
  * NULL, the color space can only be used with colored patterns.
  */
 extern int gs_cspace_build_Pattern1(
-				    gs_color_space ** ppcspace,
-				    gs_color_space * pbase_cspace,
-				    gs_memory_t * pmem
-				    );
+                                    gs_color_space ** ppcspace,
+                                    gs_color_space * pbase_cspace,
+                                    gs_memory_t * pmem
+                                    );
 
 /* Initialize a PatternType 1 pattern. */
 void gs_pattern1_init(gs_pattern1_template_t *);
@@ -85,14 +87,25 @@ void gs_pattern1_init(gs_pattern1_template_t *);
  * uses rc_alloc_struct_1 to allocate pattern instances.
  */
 int gs_makepattern(gs_client_color *, const gs_client_pattern *,
-		   const gs_matrix *, gs_state *, gs_memory_t *);
+                   const gs_matrix *, gs_state *, gs_memory_t *);
 const gs_client_pattern *gs_getpattern(const gs_client_color *);
 
 /* Check device color for Pattern Type 1. */
 bool gx_dc_is_pattern1_color(const gx_device_color *pdevc);
 
+/* Check device color for Pattern Type 1 with transparency involved */
+bool gx_dc_is_pattern1_color_with_trans(const gx_device_color *pdevc);
+
 /* Get transparency pointer */
 void * gx_pattern1_get_transptr(const gx_device_color *pdevc);
+/* pattern is clist with transparency */
+int gx_pattern1_clist_has_trans(const gx_device_color *pdevc);
+
+/* For changing the device color procs when we have a transparency situation */
+
+void gx_set_pattern_procs_trans(gx_device_color *pdevc);
+void gx_set_pattern_procs_standard(gx_device_color *pdevc);
+bool gx_pattern_procs_istrans(gx_device_color *pdevc);
 
 /* Check device color for clist-based Pattern Type 1. */
 bool gx_dc_is_pattern1_color_clist_based(const gx_device_color *pdevc);
@@ -133,30 +146,35 @@ gs_id gs_dc_get_pattern_id(const gx_device_color *pdevc);
  *     index.
  */
 extern int gs_makepixmappattern(
-				gs_client_color * pcc,
-				const gs_depth_bitmap * pbitmap,
-				bool mask,
-				const gs_matrix * pmat,
-				long id,
-				gs_color_space * pcspace,
-				uint white_index,
-				gs_state * pgs,
-				gs_memory_t * mem
-				);
+                                gs_client_color * pcc,
+                                const gs_depth_bitmap * pbitmap,
+                                bool mask,
+                                const gs_matrix * pmat,
+                                long id,
+                                gs_color_space * pcspace,
+                                uint white_index,
+                                gs_state * pgs,
+                                gs_memory_t * mem
+                                );
 
 /*
  *  Backwards compatibility feature, to allow the existing
  *  gs_makebitmappattern operation to still function.
  */
 extern int gs_makebitmappattern_xform(
-				      gs_client_color * pcc,
-				      const gx_tile_bitmap * ptile,
-				      bool mask,
-				      const gs_matrix * pmat,
-				      long id,
-				      gs_state * pgs,
-				      gs_memory_t * mem
-				      );
+                                      gs_client_color * pcc,
+                                      const gx_tile_bitmap * ptile,
+                                      bool mask,
+                                      const gs_matrix * pmat,
+                                      long id,
+                                      gs_state * pgs,
+                                      gs_memory_t * mem
+                                      );
+
+/*
+ * High level pattern support for pixmap patterns, if the interpreter supports them.
+ */
+extern int pixmap_high_level_pattern(gs_state * pgs);
 
 #define gs_makebitmappattern(pcc, tile, mask, pgs, mem)                 \
     gs_makebitmappattern_xform(pcc, tile, mask, 0, no_UniqueID, pgs, mem)

@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: vms_x_fix.h 8022 2007-06-05 22:23:38Z giles $ */
+
 
 /* Repair definitions of Xlib when compileing with /name=(as_is) on VMS */
 /* contributed by Jouk Jansen (joukj@hrem.stm.tudelft.nl) */
@@ -692,7 +694,7 @@
 #define XwcTextExtents XWCTEXTEXTENTS
 #define XwcTextListToTextProperty XWCTEXTLISTTOTEXTPROPERTY
 #define XwcTextPropertyToTextList XWCTEXTPROPERTYTOTEXTLIST
-#define _XRegisterFilterByType _XREGISTERFILTERBYTYPE 
+#define _XRegisterFilterByType _XREGISTERFILTERBYTYPE
 #define _XUnregisterFilter _XUNREGISTERFILTER
 #define _XmBottomShadowColorDefault _XMBOTTOMSHADOWCOLORDEFAULT
 #define _XmClearBorder _XMCLEARBORDER
@@ -885,7 +887,6 @@
 #define xmTextWidgetClass XMTEXTWIDGETCLASS
 #define xmToggleButtonGadgetClass XMTOGGLEBUTTONGADGETCLASS
 #define xmToggleButtonWidgetClass XMTOGGLEBUTTONWIDGETCLASS
-
 
 #ifdef __cplusplus
 extern "C" {

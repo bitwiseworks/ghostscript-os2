@@ -1,7 +1,6 @@
 1 gs
  gs - GPL Ghostscript interpreter/previewer
-! $Id: gs-vms.hlp 10732 2010-02-10 18:17:48Z giles $
-! Ghostscript version 8.71, 10 February 2010
+! Ghostscript version 9.10, 30 August 2013
   Usage:
    $ gs [options] [file ...]
 

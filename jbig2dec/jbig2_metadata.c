@@ -1,17 +1,22 @@
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
+   All Rights Reserved.
+
+   This software is provided AS-IS with no warranty, either express or
+   implied.
+
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
+*/
+
 /*
     jbig2dec
-
-    Copyright (C) 2003 Artifex Software, Inc.
-
-    This software is distributed under license and may not
-    be copied, modified or distributed except as expressly
-    authorized under the terms of the license contained in
-    the file LICENSE in this distribution.
-
-    For further licensing information refer to http://artifex.com/ or
-    contact Artifex Software, Inc., 7 Mt. Lassen Drive - Suite A-134,
-    San Rafael, CA  94903, U.S.A., +1(415)492-9861.
 */
+
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -28,18 +33,23 @@
 /* metadata key,value list object */
 Jbig2Metadata *jbig2_metadata_new(Jbig2Ctx *ctx, Jbig2Encoding encoding)
 {
-    Jbig2Metadata *md = jbig2_alloc(ctx->allocator, sizeof(Jbig2Metadata));
+    Jbig2Metadata *md = jbig2_new(ctx, Jbig2Metadata, 1);
 
     if (md != NULL) {
         md->encoding = encoding;
         md->entries = 0;
         md->max_entries = 4;
-        md->keys = jbig2_alloc(ctx->allocator, md->max_entries*sizeof(char*));
-        md->values = jbig2_alloc(ctx->allocator, md->max_entries*sizeof(char*));
+        md->keys = jbig2_new(ctx, char*, md->max_entries);
+        md->values = jbig2_new(ctx, char*, md->max_entries);
         if (md->keys == NULL || md->values == NULL) {
+            jbig2_error(ctx, JBIG2_SEVERITY_FATAL, -1,
+                "failed to allocate storage for metadata keys/values");
             jbig2_metadata_free(ctx, md);
             md = NULL;
         }
+    } else {
+        jbig2_error(ctx, JBIG2_SEVERITY_FATAL, -1,
+            "failed to allocate storage for metadata");
     }
     return md;
 }
@@ -64,7 +74,7 @@ void jbig2_metadata_free(Jbig2Ctx *ctx, Jbig2Metadata *md)
 
 static char *jbig2_strndup(Jbig2Ctx *ctx, const char *c, const int len)
 {
-    char *s = jbig2_alloc(ctx->allocator, len*sizeof(char));
+    char *s = jbig2_new(ctx, char, len);
     if (s == NULL) {
         jbig2_error(ctx, JBIG2_SEVERITY_FATAL, -1,
             "unable to duplicate comment string");
@@ -82,9 +92,9 @@ int jbig2_metadata_add(Jbig2Ctx *ctx, Jbig2Metadata *md,
 
     /* grow the array if necessary */
     if (md->entries == md->max_entries) {
-        md->max_entries >>= 2;
-        keys = jbig2_realloc(ctx->allocator, md->keys, md->max_entries);
-        values = jbig2_realloc(ctx->allocator, md->values, md->max_entries);
+        md->max_entries <<= 1;
+        keys = jbig2_renew(ctx, md->keys, char*, md->max_entries);
+        values = jbig2_renew(ctx, md->values, char*, md->max_entries);
         if (keys == NULL || values == NULL) {
             jbig2_error(ctx, JBIG2_SEVERITY_FATAL, -1,
                 "unable to resize metadata structure");

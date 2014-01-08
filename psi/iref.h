@@ -1,21 +1,25 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: iref.h 9778 2009-06-05 05:55:54Z alexcher $ */
+
 /* Object structure and type definitions for Ghostscript */
 
 #ifndef iref_INCLUDED
 #  define iref_INCLUDED
+
+#include "stdint_.h"
 
 /*
  * Note: this file defines a large number of macros.  Many of these are
@@ -39,6 +43,53 @@ typedef ushort ref_packed;
 
 #define log2_sizeof_ref_packed arch_log2_sizeof_short
 #define sizeof_ref_packed (1 << log2_sizeof_ref_packed)
+
+/* PS integer objects default to 64 bit, and the relevant operator
+ * C functions have code to allow the QL tests to pass when
+ * CPSI mode is "true".
+ * 32 bit PS integer objects can be configured at build time.
+ */
+#if !defined(PSINT32BIT) || PSINT32BIT == 0
+#define PSINT32BIT 0
+#else
+#define PSINT32BIT 1
+#endif
+
+#if PSINT32BIT==1
+typedef int ps_int;
+typedef uint ps_uint;
+typedef int ps_int32;
+typedef uint ps_uint32;
+#define MAX_PS_INT max_int
+#define MIN_PS_INT min_int
+#define MAX_PS_UINT max_uint
+#define MAX_PS_INT32 max_int
+#define MIN_PS_INT32 min_int
+#define MAX_PS_UINT32 max_uint
+
+#define PRIpsint PRId32
+#define PRIpsint32 PRId32
+#define PRIpsuint PRIu32
+#define PRIpsuint32 PRIu32
+
+#else
+typedef int64_t ps_int;
+typedef uint64_t ps_uint;
+typedef int ps_int32;
+typedef uint ps_uint32;
+#define MAX_PS_INT max_int64_t
+#define MIN_PS_INT min_int64_t
+#define MAX_PS_UINT max_uint64_t
+#define MAX_PS_INT32 max_int
+#define MIN_PS_INT32 min_int
+#define MAX_PS_UINT32 max_uint
+
+#define PRIpsint PRId64
+#define PRIpsint32 PRId32
+#define PRIpsuint PRIu64
+#define PRIpsuint32 PRIu32
+
+#endif
 
 /*
  * Define the object types.
@@ -126,7 +177,7 @@ typedef enum {
  */
     t_name,			/* @! # value.pname, uses size for index */
     t_null,			/*  ! # (value.opproc, uses size for mark */
-				/*        type, on e-stack only) */
+                                /*        type, on e-stack only) */
 /*
  * Operator objects use the a_space field because they may actually be
  * disguised procedures.  (Real operators always have a_space = 0.)
@@ -134,7 +185,7 @@ typedef enum {
     t_operator,			/* @! # value.opproc, uses size for index */
     t_real,			/*      value.realval */
     t_save,			/*      value.saveid, see isave.h for why */
-				/*        this isn't a t_struct */
+                                /*        this isn't a t_struct */
     t_string,			/* @!+# value.bytes */
 /*
  * The following are extensions to the PostScript type set.
@@ -148,7 +199,7 @@ typedef enum {
  */
     t_device,			/* @ +   value.pdevice */
     t_oparray,			/* @! #  value.const_refs, uses size */
-				/*         for index */
+                                /*         for index */
     t_next_index		/*** first available index ***/
 } ref_type;
 
@@ -373,36 +424,37 @@ typedef int (*op_proc_t)(i_ctx_t *i_ctx_p);
 struct tas_s {
 /* type_attrs is a single element for fast dispatching in the interpreter */
     ushort type_attrs;
-    ushort rsize;
+    uint32_t rsize;
 };
 struct ref_s {
 
     struct tas_s tas;
 
     union v {			/* name the union to keep gdb happy */
-	int intval;
-	ushort boolval;
-	float realval;
-	ulong saveid;
-	byte *bytes;
-	const byte *const_bytes;
-	ref *refs;
-	const ref *const_refs;
-	name *pname;
-	const name *const_pname;
-	dict *pdict;
-	const dict *const_pdict;
-	/*
-	 * packed is the normal variant for referring to packed arrays,
-	 * but we need a writable variant for memory management and for
-	 * storing into packed dictionary key arrays.
-	 */
-	const ref_packed *packed;
-	ref_packed *writable_packed;
-	op_proc_t opproc;
-	struct stream_s *pfile;
-	struct gx_device_s *pdevice;
-	obj_header_t *pstruct;
+        ps_int intval;
+        ushort boolval;
+        float realval;
+        ulong saveid;
+        byte *bytes;
+        const byte *const_bytes;
+        ref *refs;
+        const ref *const_refs;
+        name *pname;
+        const name *const_pname;
+        dict *pdict;
+        const dict *const_pdict;
+        /*
+         * packed is the normal variant for referring to packed arrays,
+         * but we need a writable variant for memory management and for
+         * storing into packed dictionary key arrays.
+         */
+        const ref_packed *packed;
+        ref_packed *writable_packed;
+        op_proc_t opproc;
+        struct stream_s *pfile;
+        struct gx_device_s *pdevice;
+        obj_header_t *pstruct;
+        uint64_t dummy; /* force 16-byte ref on 32-bit platforms */
     } value;
 };
 
@@ -546,7 +598,7 @@ struct ref_s {
 /* Define data for initializing an empty array or string. */
 #define empty_ref_data(type, attrs)\
   { /*tas*/ { /*type_attrs*/ ((type) << r_type_shift) | (attrs),\
-	      /*rsize*/ 0 } }
+              /*rsize*/ 0 } }
 
 /* Define the size of a ref. */
 #define arch_sizeof_ref sizeof(ref)
@@ -556,10 +608,10 @@ struct ref_s {
  (((ARCH_ALIGN_LONG_MOD - 1) | (ARCH_ALIGN_FLOAT_MOD - 1) |\
    (ARCH_ALIGN_PTR_MOD - 1)) + 1)
 
-/* Define the maximum size of an array or a string. */
-/* The maximum array size is determined by the fact that */
-/* the allocator cannot allocate a block larger than max_uint. */
-#define max_array_size (max_ushort & (max_uint / (uint)arch_sizeof_ref))
-#define max_string_size max_ushort
+/* Select reasonable values for PDF interpreter */
+/* The maximum array size cannot exceed max_uint/arch_sizeof_ref */
+/* because the allocator cannot allocate a block larger than max_uint. */
+#define max_array_size  (16*1024*1024)
+#define max_string_size (16*1024*1024)
 
 #endif /* iref_INCLUDED */

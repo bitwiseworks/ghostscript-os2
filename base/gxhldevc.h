@@ -1,16 +1,18 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
-/* $Id: gxhldevc.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* High level device color save/compare procedures */
 
 #ifndef gxhldevc_INCLUDED
@@ -48,7 +50,6 @@
  * The functions below are desiged to assist the high level device in the
  * saving, comparing, and getting high level color information.
  */
- 
 
 #ifndef gs_imager_state_DEFINED
 #  define gs_imager_state_DEFINED
@@ -92,11 +93,11 @@ const gs_state * gx_hld_get_gstate_ptr(const gs_imager_state * pis);
  * color.  Otherwise 'false' is returned.  Thus the return does both
  * a save and test on the given color.
  *
- * If the device can't handle high level colors, it must pass NULL to 
+ * If the device can't handle high level colors, it must pass NULL to
  * the 'pis' argument.
  */
 bool gx_hld_save_color(const gs_imager_state * pis,
-	const gx_device_color * pdevc, gx_hl_saved_color * psc);
+        const gx_device_color * pdevc, gx_hl_saved_color * psc);
 
 /*
  * Compare two saved colors to check if match.  Note this routine assumes
@@ -104,20 +105,20 @@ bool gx_hld_save_color(const gs_imager_state * pis,
  * for what is actually being compared.
  */
 bool gx_hld_saved_color_equal(const gx_hl_saved_color * psc1,
-			   const gx_hl_saved_color * psc2);
+                           const gx_hl_saved_color * psc2);
 
 /*
  * Check whether two saved colors have same color space.
  */
 bool gx_hld_saved_color_same_cspace(const gx_hl_saved_color * psc1,
-			   const gx_hl_saved_color * psc2);
+                           const gx_hl_saved_color * psc2);
 
 /*
  * Check if a high level color is availavble.
  */
 bool
 gx_hld_is_hl_color_available(const gs_imager_state * pis,
-		const gx_device_color * pdevc);
+                const gx_device_color * pdevc);
 
 /*
  * Return status from get_color_space_and_ccolor.  See that routine for
@@ -128,8 +129,8 @@ gx_hld_is_hl_color_available(const gs_imager_state * pis,
  */
 typedef enum {
         non_pattern_color_space,
-        pattern_color_sapce,
-	use_process_color
+        pattern_color_space,
+        use_process_color
 } gx_hld_get_color_space_and_ccolor_status;
 
 /*
@@ -156,8 +157,8 @@ typedef enum {
  * a pattern or non pattern).
  */
 gx_hld_get_color_space_and_ccolor_status gx_hld_get_color_space_and_ccolor(
-		const gs_imager_state * pis, const gx_device_color * pdevc,
-		const gs_color_space ** ppcs, const gs_client_color ** ppcc);
+                const gs_imager_state * pis, const gx_device_color * pdevc,
+                const gs_color_space ** ppcs, const gs_client_color ** ppcc);
 
 /*
  * This routine will return the number of components in the current color
@@ -186,8 +187,7 @@ typedef enum {
  * device fall back to using the process color model.
  */
 gx_hld_get_color_component_status gx_hld_get_color_component(
-		const gs_imager_state * pis, const gx_device_color * pdevc,
-		int comp_numi, float * output);
+                const gs_imager_state * pis, const gx_device_color * pdevc,
+                int comp_numi, float * output);
 
 #endif
-

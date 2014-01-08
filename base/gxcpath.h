@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxcpath.h 8225 2007-08-31 19:09:47Z leonardo $ */
+
 /* Definitions for clipping lists and devices */
 /* Requires gxdevice.h */
 
@@ -69,9 +71,10 @@ struct gx_clip_list_s {
     gx_clip_rect single;	/* (has next = prev = 0) */
     gx_clip_rect *head;
     gx_clip_rect *tail;
+    gx_clip_rect *insert;
     int xmin, xmax;		/* min and max X over all but head/tail */
     int count;			/* # of rectangles not counting */
-				/* head or tail */
+                                /* head or tail */
 };
 
 #define public_st_clip_list()	/* in gxcpath.c */\
@@ -109,12 +112,13 @@ extern_st(st_device_clip);
     "gx_device_clip", device_clip_enum_ptrs, device_clip_reloc_ptrs,\
     gx_device_finalize)
 void gx_make_clip_device_on_stack(gx_device_clip * dev, const gx_clip_path *pcpath, gx_device *target);
+gx_device *gx_make_clip_device_on_stack_if_needed(gx_device_clip * dev, const gx_clip_path *pcpath, gx_device *target, gs_fixed_rect *rect);
 void gx_make_clip_device_in_heap(gx_device_clip * dev, const gx_clip_path *pcpath, gx_device *target,
-			      gs_memory_t *mem);
+                              gs_memory_t *mem);
 
 #define clip_rect_print(ch, str, ar)\
   if_debug7(ch, "[%c]%s 0x%lx: (%d,%d),(%d,%d)\n", ch, str, (ulong)ar,\
-	    (ar)->xmin, (ar)->ymin, (ar)->xmax, (ar)->ymax)
+            (ar)->xmin, (ar)->ymin, (ar)->xmax, (ar)->ymax)
 
 /* Exported by gxcpath.c for gxacpath.c */
 

@@ -20,7 +20,6 @@ dnl ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 dnl CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 dnl SOFTWARE.
 
-dnl $Id: configure.ac 8022 2007-06-05 22:23:38Z giles $
 
 dnl Process this file with autoconf to produce a configure script.
 
@@ -118,7 +117,6 @@ AC_SUBST(LIBTOOL_DEPS)
 dnl Checks for programs
 
 AC_PROG_CC
-AM_PROG_CC_STDC
 AM_PROG_LIBTOOL
 AC_SUBST(LIBTOOL_DEPS)
 AC_ISC_POSIX

@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsfont0.c 8250 2007-09-25 13:31:24Z giles $ */
+
 /* Composite font operations for Ghostscript library */
 #include "memory_.h"
 #include "gx.h"
@@ -30,7 +32,7 @@ static struct_proc_enum_ptrs(font_type0_enum_ptrs);
 static struct_proc_reloc_ptrs(font_type0_reloc_ptrs);
 
 public_st_gs_font_type0();
-static 
+static
 ENUM_PTRS_WITH(font_type0_enum_ptrs, gs_font_type0 *pfont)
 ENUM_PREFIX(st_gs_font, gs_type0_data_max_ptrs);
 ENUM_PTR(0, gs_font_type0, data.Encoding);
@@ -39,12 +41,12 @@ case 2:
 switch (pfont->data.FMapType)
 {
     case fmap_SubsVector:
-	ENUM_RETURN_CONST_STRING_PTR(gs_font_type0,
-				     data.SubsVector);
+        ENUM_RETURN_CONST_STRING_PTR(gs_font_type0,
+                                     data.SubsVector);
     case fmap_CMap:
-	ENUM_RETURN_PTR(gs_font_type0, data.CMap);
+        ENUM_RETURN_PTR(gs_font_type0, data.CMap);
     default:
-	ENUM_RETURN(0);
+        ENUM_RETURN(0);
 }
 ENUM_PTRS_END
 static RELOC_PTRS_WITH(font_type0_reloc_ptrs, gs_font_type0 *pfont)
@@ -68,7 +70,7 @@ RELOC_PTRS_END
 /* to the FontMatrix of all descendant composite fonts. */
 static int
 gs_type0_adjust_matrix(gs_font_dir * pdir, gs_font_type0 * pfont,
-		       const gs_matrix * pmat)
+                       const gs_matrix * pmat)
 {
     gs_font **pdep = pfont->data.FDepVector;
     uint fdep_size = pfont->data.fdep_size;
@@ -77,23 +79,23 @@ gs_type0_adjust_matrix(gs_font_dir * pdir, gs_font_type0 * pfont,
 
     /* Check for any descendant composite fonts. */
     for (i = 0; i < fdep_size; i++)
-	if (pdep[i]->FontType == ft_composite)
-	    break;
+        if (pdep[i]->FontType == ft_composite)
+            break;
     if (i == fdep_size)
-	return 0;
+        return 0;
     ptdep = gs_alloc_struct_array(pfont->memory, fdep_size, gs_font *,
-				  &st_gs_font_ptr_element,
-				  "gs_type0_adjust_font(FDepVector)");
+                                  &st_gs_font_ptr_element,
+                                  "gs_type0_adjust_font(FDepVector)");
     if (ptdep == 0)
-	return_error(gs_error_VMerror);
+        return_error(gs_error_VMerror);
     memcpy(ptdep, pdep, sizeof(gs_font *) * fdep_size);
     for (; i < fdep_size; i++)
-	if (pdep[i]->FontType == ft_composite) {
-	    int code = gs_makefont(pdir, pdep[i], pmat, &ptdep[i]);
+        if (pdep[i]->FontType == ft_composite) {
+            int code = gs_makefont(pdir, pdep[i], pmat, &ptdep[i]);
 
-	    if (code < 0)
-		return code;
-	}
+            if (code < 0)
+                return code;
+        }
     pfont->data.FDepVector = ptdep;
     return 0;
 }
@@ -107,17 +109,17 @@ gs_type0_define_font(gs_font_dir * pdir, gs_font * pfont)
 
     /* Check for the identity matrix, which is common in root fonts. */
     if (pmat->xx == 1.0 && pmat->yy == 1.0 &&
-	pmat->xy == 0.0 && pmat->yx == 0.0 &&
-	pmat->tx == 0.0 && pmat->ty == 0.0
-	)
-	return 0;
+        pmat->xy == 0.0 && pmat->yx == 0.0 &&
+        pmat->tx == 0.0 && pmat->ty == 0.0
+        )
+        return 0;
     return gs_type0_adjust_matrix(pdir, (gs_font_type0 *) pfont, pmat);
 }
 
 /* Finish scaling a composite font similarly. */
 int
 gs_type0_make_font(gs_font_dir * pdir, const gs_font * pfont,
-		   const gs_matrix * pmat, gs_font ** ppfont)
+                   const gs_matrix * pmat, gs_font ** ppfont)
 {
     return gs_type0_adjust_matrix(pdir, (gs_font_type0 *) * ppfont, pmat);
 }

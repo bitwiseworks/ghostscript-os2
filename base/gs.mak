@@ -1,16 +1,18 @@
-#  Copyright (C) 2001-2009 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: gs.mak 10319 2009-11-11 17:42:22Z robin $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
+#
 # Generic makefile, common to all platforms, products, and configurations.
 # The platform-specific makefiles `include' this file.
 
@@ -34,10 +36,15 @@
 #	    look for files in the current directory first).
 #	GS_DOCDIR - the directory where documentation will be available
 #	    at run time.
+#	FTSRCDIR - the directory where there the FreeType library
+#	    source code is stored, relative to the source directory.
 #	JSRCDIR - the directory where the IJG JPEG library source code
 #	    is stored (at compilation time).
 #	PNGSRCDIR - the same for libpng.
 #	ZSRCDIR - the same for zlib.
+#	SHARE_FT - normally 0; if set to 1, asks the linker to use
+#	    and existing compiled freetype library instead of compiling
+#	    in the source code availabel in FTSRCDIR.
 #	SHARE_JPEG - normally 0; if set to 1, asks the linker to use
 #	    an existing compiled libjpeg (-ljpeg) instead of compiling and
 #	    linking libjpeg explicitly.  (We strongly recommend against
@@ -61,18 +68,19 @@
 #	JBIG2SRCDIR - the name of the jbig2dec library source directory
 #	    typically 'jbig2dec' or 'jbig2dec-/version/'
 #	JPX_LIB - choice of which jpeg2k implementation to use
-#	SHARE_JPX - if set to 1, asks the linker to use an existing
-#	    complied jpeg2k library. if set to 0, asks to compile and 
+#	SHARE_JPX - If set to 1, asks the linker to use an existing
+#	    complied jpeg2k library. If set to 0, asks to compile and 
 #	    link from a local copy of the source using our custom 
 #	    makefile.
 #	JPXSRCDIR - the name of the jpeg2k library source directory
-#	    e.g. 'jasper' or 'jasper-/version/'
+#	    e.g. 'openjpeg'
 #	JPX_CFLAGS - any platform-specific flags that are required
 #	    to properly compile in the jpeg2k library source
-#	ICCSRCDIR - the name of the ICC lib source dir, currently
-#	    always icclib (compiled in statically)
-#	IMDISRCDIR - the name of the IMDI lib source directory
-#	    generally 'imdi'
+#	SHARE_LCMS - If set to 1, asks the linker to use a separately
+#	    compiled lcms library. If set to 0, the build will compile
+#	    in the library source found in LCMSSRCDIR
+#	LCMSSRCDIR - the name of the lcms library source directory
+#	    e.g. 'lcms' or 'lcms-<version>'
 #	DEVICE_DEVS - the devices to include in the executable.
 #	    See devs.mak for details.
 #	DEVICE_DEVS1...DEVICE_DEVS21 - additional devices, if the definition
@@ -152,7 +160,7 @@
 #   symbols, but we describe them here for completeness:
 #	GS_INIT - the name of the initialization file for the interpreter,
 #		normally gs_init.ps.
-#	PLATFORM - a "device" name for the platform, so that platforms can
+#	GSPLATFORM - a "device" name for the platform, so that platforms can
 #		add various kinds of resources like devices and features.
 #	CMD - the suffix for shell command files (e.g., null or .bat).
 #		(This is only needed in a few places.)
@@ -204,24 +212,35 @@
 #	    such as paths that must be defined by all top-level makefiles.
 
 #**************** PATCHES
+FTGENDIR=$(GLGENDIR)
+FTOBJDIR=$(GLOBJDIR)
 JGENDIR=$(GLGENDIR)
 JOBJDIR=$(GLOBJDIR)
 PNGGENDIR=$(GLGENDIR)
 PNGOBJDIR=$(GLOBJDIR)
 ZGENDIR=$(GLGENDIR)
 ZOBJDIR=$(GLOBJDIR)
+ZAUXDIR=$(AUXDIR)
 TIFFGENDIR=$(GLGENDIR)
 TIFFOBJDIR=$(GLOBJDIR)
 JBIG2GENDIR=$(GLGENDIR)
 JBIG2OBJDIR=$(GLOBJDIR)
 JPXGENDIR=$(GLGENDIR)
 JPXOBJDIR=$(GLOBJDIR)
-ICCGENDIR=$(GLGENDIR)
-ICCOBJDIR=$(GLOBJDIR)
+LCMSGENDIR=$(GLGENDIR)
+LCMSOBJDIR=$(GLOBJDIR)
+LCMS2GENDIR=$(GLGENDIR)
+LCMS2OBJDIR=$(GLOBJDIR)
 EXPATGENDIR=$(GLGENDIR)
 EXPATOBJDIR=$(GLOBJDIR)
 IJSGENDIR=$(GLGENDIR)
 IJSOBJDIR=$(GLOBJDIR)
+LCUPSGENDIR=$(GLGENDIR)
+LCUPSOBJDIR=$(GLOBJDIR)
+LCUPSIGENDIR=$(GLGENDIR)
+LCUPSIOBJDIR=$(GLOBJDIR)
+
+TRIOOBJDIR=$(GLOBJDIR)
 #**************** END PATCHES
 
 GSGEN=$(GLGENDIR)$(D)
@@ -234,23 +253,22 @@ GS_MAK=$(GLSRCDIR)$(D)gs.mak
 
 # Define the names of the executables.
 GS_XE=$(BINDIR)$(D)$(GS)$(XE)
-AUXGENDIR=$(GLGENDIR)
-AUXGEN=$(AUXGENDIR)$(D)
-ECHOGS_XE=$(AUXGEN)echogs$(XEAUX)
-GENARCH_XE=$(AUXGEN)genarch$(XEAUX)
-GENCONF_XE=$(AUXGEN)genconf$(XEAUX)
-GENDEV_XE=$(AUXGEN)gendev$(XEAUX)
-GENHT_XE=$(AUXGEN)genht$(XEAUX)
-GENINIT_XE=$(AUXGEN)geninit$(XEAUX)
-MKROMFS_XE=$(AUXGEN)mkromfs$(XEAUX)
+AUX=$(AUXDIR)$(D)
+ECHOGS_XE=$(AUX)echogs$(XEAUX)
+GENARCH_XE=$(AUX)genarch$(XEAUX)
+GENCONF_XE=$(AUX)genconf$(XEAUX)
+GENDEV_XE=$(AUX)gendev$(XEAUX)
+GENHT_XE=$(AUX)genht$(XEAUX)
+MKROMFS_XE=$(AUX)mkromfs$(XEAUX)
 
 # Define the names of the generated header files.
 # gconfig*.h and gconfx*.h are generated dynamically.
-gconfig_h=$(GLGENDIR)$(D)gconfxx.h
+gconfig_h=$(GLGENDIR)$(D)gconfig.h
+gconfxx_h=$(GLGENDIR)$(D)gconfxx.h
 gconfigf_h=$(GLGENDIR)$(D)gconfxc.h
 gconfigd_h=$(GLGENDIR)$(D)gconfigd.h
 
-all default : $(GS_XE) $(GS_SHARED_OBJS)
+all default : $(GS_XE) $(GS_SHARED_OBJS) $(MAKEDIRSTOP) $(MAKEDIRS)
 	$(NO_OP)
 
 # the distclean and maintainer-clean targets (if any)
@@ -264,6 +282,7 @@ clean : mostlyclean
 	$(RM_) $(GSGEN)arch.h
 	$(RM_) $(GS_XE)
 	$(RM_) $(GS_SHARED_OBJS)
+	$(RMN_) -r $(BINDIR) $(GLGENDIR) $(GLOBJDIR) $(PSGENDIR) $(PSOBJDIR)
 
 #****** FOLLOWING IS WRONG, NEEDS TO BE PER-SUBSYSTEM ******
 mostlyclean : config-clean
@@ -271,18 +290,20 @@ mostlyclean : config-clean
 	$(RMN_) $(GSGEN)deflate.h $(GSGEN)zutil.h
 	$(RMN_) $(GSGEN)gconfig*.c $(GSGEN)gscdefs*.c $(GSGEN)iconfig*.c
 	$(RMN_) $(GSGEN)_temp_* $(GSGEN)_temp_*.* $(GSOBJ)*.map $(GSOBJ)*.sym
-	$(RMN_) $(GENARCH_XE) $(GENCONF_XE) $(GENDEV_XE) $(GENHT_XE) $(GENINIT_XE)
+	$(RMN_) $(GENARCH_XE) $(GENCONF_XE) $(GENDEV_XE) $(GENHT_XE)
 	$(RMN_) $(ECHOGS_XE)
 	$(RMN_) $(GSGEN)gs_init.ps $(BEGINFILES)
 	$(RMN_) $(MKROMFS_XE)
-	$(RMN_) $(PSGEN)$(GS_INIT)
-	$(RMN_) $(GSGEN)gsromfs1.c
+	$(RMN_) $(MKROMFS_XE)_0
+	$(RMN_) $(MKROMFS_XE)_1
+	$(RMN_) $(GSGEN)gsromfs1.c $(GSGEN)gsromfs1_.c $(GSGEN)gsromfs1_1.c
+	$(RMN_) $(AUX)*.$(OBJ) $(AUX)gscdefs*.c
 
 # Remove only configuration-dependent information.
 #****** FOLLOWING IS WRONG, NEEDS TO BE PER-SUBSYSTEM ******
 config-clean :
 	$(RMN_) $(GSGEN)*.dev $(GSGEN)devs*.tr $(GSGEN)gconfig*.h
-	$(RMN_) $(GSGEN)gconfx*.h $(GSGEN)j*.h
+	$(RMN_) $(GSGEN)gconfx*.h $(GSGEN)j*.h $(GSGEN)tif*.h
 	$(RMN_) $(GSGEN)c*.tr $(GSGEN)o*.tr $(GSGEN)l*.tr
 
 # Macros for constructing the *.dev files that describe features and
@@ -296,15 +317,6 @@ ADDMOD=$(EXP)$(ECHOGS_XE) -e .dev -a- $(NULL)
 SETCOMP=$(EXP)$(ECHOGS_XE) -e .dev -w- -l-comp
 ADDCOMP=$(EXP)$(ECHOGS_XE) -e .dev -a- -l-comp
 
-# Define the search lists and compilation switches for the third-party
-# libraries, and the compilation switches for their clients.
-# The search lists must be enclosed in $(I_) and $(_I).
-# Note that we can't define the entire compilation command,
-# because this must include $(GLSRCDIR), which isn't defined yet.
-ICCI_=$(ICCSRCDIR)
-ICCF_=
-# Currently there is no option for sharing icclib.
-ICCCF_=
 IJSI_=$(IJSSRCDIR)
 IJSF_=
 # Currently there is no option for sharing ijs.
@@ -315,7 +327,7 @@ JCF_=$(D_)SHARE_JPEG=$(SHARE_JPEG)$(_D)
 PI_=$(PNGSRCDIR) $(II)$(ZSRCDIR)
 # PF_ should include PNG_USE_CONST, but this doesn't work.
 #PF_=-DPNG_USE_CONST
-TI_=$(TIFFSRCDIR)$(D)libtiff $(II)$(JGENDIR)  $(II)$(ZSRCDIR)
+TI_=$(TIFFSRCDIR)$(D)libtiff $(II)$(TIFFCONFDIR)$(D)libtiff $(II)$(JGENDIR)  $(II)$(ZSRCDIR)
 PF_=
 PCF_=$(D_)SHARE_LIBPNG=$(SHARE_LIBPNG)$(_D)
 ZI_=$(ZSRCDIR)
@@ -324,9 +336,9 @@ ZCF_=$(D_)SHARE_ZLIB=$(SHARE_ZLIB)$(_D)
 JB2I_=$(JBIG2SRCDIR)
 JB2CF_=$(JBIG2_CFLAGS)
 LDF_JB2I_=$(JBIG2SRCDIR)$(D)source$(D)libraries
-JPXI_=$(JPXSRCDIR)$(D)src$(D)libjasper$(D)include
 LWF_JPXI_=$(JPXSRCDIR)$(D)library$(D)source
 JPXCF_=$(JPX_CFLAGS)
+JPX_OPENJPEG_I_=$(JPXSRCDIR)$(D)libopenjpeg
 
 ######################## How to define new 'features' #######################
 #
@@ -363,10 +375,8 @@ JPXCF_=$(JPX_CFLAGS)
 
 # FEATURE_DEVS_EXTRA and DEVICE_DEVS_EXTRA are explicitly reserved
 # to be set from the command line.
-FEATURE_DEVS_EXTRA=
-DEVICE_DEVS_EXTRA=
 
-DEVS_ALL=$(GLGENDIR)$(D)$(PLATFORM).dev\
+DEVS_ALL=$(GLGENDIR)$(D)$(GSPLATFORM).dev\
  $(FEATURE_DEVS) $(FEATURE_DEVS_EXTRA) \
  $(DEVICE_DEVS) $(DEVICE_DEVS1) \
  $(DEVICE_DEVS2) $(DEVICE_DEVS3) $(DEVICE_DEVS4) $(DEVICE_DEVS5) \
@@ -378,7 +388,7 @@ DEVS_ALL=$(GLGENDIR)$(D)$(PLATFORM).dev\
 
 devs_tr=$(GLGENDIR)$(D)devs.tr
 $(devs_tr) : $(GS_MAK) $(TOP_MAKEFILES) $(ECHOGS_XE)
-	$(EXP)$(ECHOGS_XE) -w $(devs_tr) - -include $(GLGENDIR)$(D)$(PLATFORM)
+	$(EXP)$(ECHOGS_XE) -w $(devs_tr) - -include $(GLGENDIR)$(D)$(GSPLATFORM)
 	$(EXP)$(ECHOGS_XE) -a $(devs_tr) -+ $(FEATURE_DEVS)
 	$(EXP)$(ECHOGS_XE) -a $(devs_tr) -+ $(FEATURE_DEVS_EXTRA)
 	$(EXP)$(ECHOGS_XE) -a $(devs_tr) -+ $(DEVICE_DEVS)
@@ -415,11 +425,15 @@ GCONFIG_EXTRAS=
 ld_tr=$(GLGENDIR)$(D)ld.tr
 $(ld_tr) : \
   $(GS_MAK) $(TOP_MAKEFILES) $(GLSRCDIR)$(D)version.mak $(GENCONF_XE) $(ECHOGS_XE) $(devs_tr) $(DEVS_ALL) $(GLGENDIR)$(D)libcore.dev
-	$(EXP)$(GENCONF_XE) $(devs_tr) -h $(gconfig_h) $(CONFILES) $(CONFLDTR) $(ld_tr)
-	$(EXP)$(ECHOGS_XE) -a $(gconfig_h) $(GCONFIG_EXTRAS)
+	$(EXP)$(GENCONF_XE) $(devs_tr) -h $(gconfxx_h) $(CONFILES) $(CONFLDTR) $(ld_tr)
+	$(EXP)$(ECHOGS_XE) -a $(gconfxx_h) $(GCONFIG_EXTRAS)
 
-$(gconfig_h) : $(ld_tr)
+$(gconfxx_h) : $(ld_tr)
 	$(NO_OP)
+
+$(gconfig_h) : $(gconfxx_h)
+	$(RM_) $(gconfig_h)
+	$(CP_) $(gconfxx_h) $(gconfig_h)
 	
 # The line above is an empty command; don't delete.
 

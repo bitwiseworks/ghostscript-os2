@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: imain.h 9043 2008-08-28 22:48:19Z giles $ */
+
 /* Interface to imain.c */
 /* Requires <stdio.h>, stdpre.h, gsmemory.h, gstypes.h, iref.h */
 
@@ -42,7 +44,7 @@ typedef struct gs_main_instance_s gs_main_instance;
 
 /* ================ Exported procedures from imain.c ================ */
 
-/* get minst from memory is a hack to allow parts of the system 
+/* get minst from memory is a hack to allow parts of the system
  * to reach minst, slightly better than a global
  */
 gs_main_instance* get_minst_from_memory(const gs_memory_t *mem);
@@ -51,10 +53,10 @@ gs_main_instance* get_minst_from_memory(const gs_memory_t *mem);
 
 /*
  * NB: multiple instances are not supported yet
- * 
+ *
  * // add usage documentation
  */
-gs_main_instance *gs_main_alloc_instance(gs_memory_t *); 
+gs_main_instance *gs_main_alloc_instance(gs_memory_t *);
 
 /* ---------------- Initialization ---------------- */
 
@@ -69,7 +71,7 @@ gs_main_instance *gs_main_alloc_instance(gs_memory_t *);
  * graphics library, the file search paths, and other instance data.
  */
 int gs_main_init0(gs_main_instance *minst, FILE *in, FILE *out, FILE *err,
-		  int max_lib_paths);
+                  int max_lib_paths);
 
 /*
  * init1 initializes the memory manager and other internal data
@@ -107,7 +109,7 @@ int gs_main_set_lib_paths(gs_main_instance * minst);
  * file itself, and eventually the procedure may be removed.
  */
 int gs_main_lib_open(gs_main_instance * minst, const char *fname,
-		     ref * pfile);
+                     ref * pfile);
 
 /*
  * Here we summarize the C API calls that correspond to some of the
@@ -157,22 +159,22 @@ int gs_main_lib_open(gs_main_instance * minst, const char *fname,
  * or statically).
  */
 int gs_main_run_file(gs_main_instance * minst, const char *fname,
-		     int user_errors, int *pexit_code,
-		     ref * perror_object);
+                     int user_errors, int *pexit_code,
+                     ref * perror_object);
 int gs_main_run_string(gs_main_instance * minst, const char *str,
-		       int user_errors, int *pexit_code,
-		       ref * perror_object);
+                       int user_errors, int *pexit_code,
+                       ref * perror_object);
 int gs_main_run_string_with_length(gs_main_instance * minst,
-				   const char *str, uint length,
-				   int user_errors, int *pexit_code,
-				   ref * perror_object);
+                                   const char *str, uint length,
+                                   int user_errors, int *pexit_code,
+                                   ref * perror_object);
 
 /*
  * Open the file for gs_main_run_file.  This is an internal routine
  * that is only exported for some special clients.
  */
 int gs_main_run_file_open(gs_main_instance * minst,
-			  const char *file_name, ref * pfref);
+                          const char *file_name, ref * pfref);
 
 /*
  * The next 3 procedures provide for feeding input to the interpreter
@@ -188,13 +190,13 @@ int gs_main_run_file_open(gs_main_instance * minst,
  * run_string_with_length.
  */
 int gs_main_run_string_begin(gs_main_instance * minst, int user_errors,
-			     int *pexit_code, ref * perror_object);
+                             int *pexit_code, ref * perror_object);
 int gs_main_run_string_continue(gs_main_instance * minst,
-				const char *str, uint length,
-				int user_errors, int *pexit_code,
-				ref * perror_object);
+                                const char *str, uint length,
+                                int user_errors, int *pexit_code,
+                                ref * perror_object);
 int gs_main_run_string_end(gs_main_instance * minst, int user_errors,
-			   int *pexit_code, ref * perror_object);
+                           int *pexit_code, ref * perror_object);
 
 /* ---------------- Operand stack access ---------------- */
 
@@ -211,7 +213,7 @@ int gs_push_boolean(gs_main_instance * minst, bool value);
 int gs_push_integer(gs_main_instance * minst, long value);
 int gs_push_real(gs_main_instance * minst, floatp value);
 int gs_push_string(gs_main_instance * minst, byte * chars, uint length,
-		   bool read_only);
+                   bool read_only);
 
 /*
  * Procedures to pop values from the operand stack:
@@ -231,12 +233,9 @@ int gs_pop_string(gs_main_instance * minst, gs_string * result);
  * never call this.
  */
 void gs_main_dump_stack(gs_main_instance *minst, int code,
-			ref * perror_object);
+                        ref * perror_object);
 
 /* ---------------- Console output ---------------- */
-
-
-
 
 /* ---------------- Termination ---------------- */
 
