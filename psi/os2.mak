@@ -100,7 +100,7 @@ MT_OPT=-Zmtd
 # Define the name of the executable file.
 
 GS=gsos2
-GSDLL=gsdll23
+GSDLL=gsdll2
 
 # Define the directory where the IJG JPEG library sources are stored,
 # and the major version of the library that is stored there.

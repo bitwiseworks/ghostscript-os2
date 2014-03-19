@@ -42,7 +42,7 @@
 
 #define MAXSTR 256
 #define BITMAPINFO2_SIZE 40
-const char *szDllName = "GSDLL23.DLL";
+const char *szDllName = "GSDLL2.DLL";
 char start_string[] = "systemdict /start get exec\n";
 int debug = TRUE /* FALSE */;
 
