@@ -1,19 +1,18 @@
-%    Copyright (C) 1993 Aladdin Enterprises.  All rights reserved.
-% 
+% Copyright (C) 2001-2012 Artifex Software, Inc.
+% All Rights Reserved.
+%
 % This software is provided AS-IS with no warranty, either express or
 % implied.
-% 
+%
 % This software is distributed under license and may not be copied,
 % modified or distributed except as expressly authorized under the terms
 % of the license contained in the file LICENSE in this distribution.
-% 
-% For more information about licensing, please refer to
-% http://www.ghostscript.com/licensing/. For information on
-% commercial licensing, go to http://www.artifex.com/licensing/ or
-% contact Artifex Software, Inc., 101 Lucas Valley Road #110,
-% San Rafael, CA  94903, U.S.A., +1(415)492-9861.
+%
+% Refer to licensing information at http://www.artifex.com or contact
+% Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+% CA  94903, U.S.A., +1(415)492-9861, for further information.
+%
 
-% $Id: winmaps.ps 6855 2006-06-14 21:03:34Z giles $
 % winmaps.ps - make maps between PostScript encodings and Windows
 % character sets.
 
@@ -73,7 +72,7 @@ def
 
 /decodeStd StandardEncoding invertencoding def
 /decodeISO ISOLatin1Encoding
-	% Remove the redundant characters
+        % Remove the redundant characters
   dup length array copy
   [8#222 8#225 8#230 8#233 8#240] { 2 copy /.notdef put pop } forall
 invertencoding def

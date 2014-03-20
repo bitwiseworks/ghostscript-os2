@@ -1,22 +1,20 @@
 #!/usr/bin/tclsh
 
-#    Copyright (C) 1999-2007 Artifex Software, Inc.
-#    All rights reserved.
-# 
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
+#
 # This software is provided AS-IS with no warranty, either express or
 # implied.
-# 
+#
 # This software is distributed under license and may not be copied,
 # modified or distributed except as expressly authorized under the terms
 # of the license contained in the file LICENSE in this distribution.
-# 
-# For more information about licensing, please refer to
-# http://www.ghostscript.com/licensing/. For information on
-# commercial licensing, go to http://www.artifex.com/licensing/ or
-# contact Artifex Software, Inc., 101 Lucas Valley Road #110,
-# San Rafael, CA  94903, U.S.A., +1(415)492-9861.
+#
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 
-# $Id: makehist.tcl 8323 2007-10-26 01:49:56Z giles $
 
 # Make various Ghostscript filesets.  Assumes the current directory is gs.
 #   makehist
@@ -273,7 +271,7 @@ proc mergehist {news changes histn tmph details detailn tmpd} {
 	puts $tmph $l
     }
     
-    puts $tmph "<small>Ghostscript version $nver, $nday $nmonthname $nyear"
+    puts $tmph "<small>Ghostscript version $nver, $nday $nmonthname $nyear</small>"
     while {[gets $histn l] >= 0} {
 	puts $tmph $l
     }
@@ -289,7 +287,7 @@ proc mergehist {news changes histn tmph details detailn tmpd} {
 	puts $tmpd $l
     }
     
-    puts $tmpd "<small>Ghostscript version $nver, $nday $nmonthname $nyear"
+    puts $tmpd "<small>Ghostscript version $nver, $nday $nmonthname $nyear</small>"
     while {[gets $detailn l] >= 0} {
 	puts $tmpd $l
     }

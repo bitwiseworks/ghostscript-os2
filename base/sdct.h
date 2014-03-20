@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: sdct.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Definitions for DCT filters */
 /* Requires stream.h, strimpl.h, jpeg/jpeglib.h */
 
@@ -19,6 +21,7 @@
 #  define sdct_INCLUDED
 
 #include "setjmp_.h"		/* for jmp_buf */
+#include "gscms.h"		
 
 /* ------ DCT filters ------ */
 
@@ -43,16 +46,16 @@ struct jpeg_block_s {
  * to simplify use of the IJG library.
  */
 #define jpeg_stream_data_common\
-		/* We put a copy of the stream template here, because */\
-		/* the minimum buffer sizes depend on the image parameters. */\
-	stream_template template;\
-	struct jpeg_error_mgr err;\
-	gsfix_jmp_buf exit_jmpbuf;\
-	gs_memory_t *memory;	/* heap for library allocations */\
+                /* We put a copy of the stream template here, because */\
+                /* the minimum buffer sizes depend on the image parameters. */\
+        stream_template templat;\
+        struct jpeg_error_mgr err;\
+        gsfix_jmp_buf exit_jmpbuf;\
+        gs_memory_t *memory;	/* heap for library allocations */\
         jpeg_block_t *blocks;   /* ptr to allocated data block list */\
-		/* The following are documented in Adobe TN 5116. */\
-	int Picky;		/* 0 or 1 */\
-	int Relax		/* 0 or 1 */
+                /* The following are documented in Adobe TN 5116. */\
+        int Picky;		/* 0 or 1 */\
+        int Relax		/* 0 or 1 */
 
 typedef struct jpeg_stream_data_s {
     jpeg_stream_data_common;
@@ -111,10 +114,14 @@ typedef struct stream_DCT_state_s {
     gs_memory_t *jpeg_memory;	/* heap for library allocations */
     /* This is a pointer to immovable storage. */
     union _jd {
-	jpeg_stream_data *common;
-	jpeg_compress_data *compress;
-	jpeg_decompress_data *decompress;
+        jpeg_stream_data *common;
+        jpeg_compress_data *compress;
+        jpeg_decompress_data *decompress;
     } data;
+    /* ICC Profile information */
+    cmm_profile_t *icc_profile;  /* This pointer is NOT in GC memory */
+    byte icc_marker;
+    ulong icc_position;
     /* DCTEncode sets this before initialization;
      * DCTDecode cannot set it until the JPEG headers are read.
      */

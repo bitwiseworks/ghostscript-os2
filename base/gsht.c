@@ -1,47 +1,53 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/*$Id: gsht.c 10006 2009-08-19 06:00:39Z ray $ */
+
 /* setscreen operator for Ghostscript library */
 #include "memory_.h"
 #include "string_.h"
-#include <stdlib.h>		/* for qsort */
+#include <stdlib.h>             /* for qsort */
 #include "gx.h"
 #include "gserrors.h"
 #include "gsstruct.h"
-#include "gsutil.h"		/* for gs_next_ids */
-#include "gxarith.h"		/* for igcd */
+#include "gsutil.h"             /* for gs_next_ids */
+#include "gxarith.h"            /* for igcd */
 #include "gzstate.h"
-#include "gxdevice.h"		/* for gzht.h */
+#include "gxdevice.h"           /* for gzht.h */
 #include "gzht.h"
-#include "gswts.h"
+#include "gxfmap.h"             /* For effective transfer usage in threshold */
+
+#define TRANSFER_INVERSE_SIZE 1024
+#define TRANSFER_IN_THRESHOLDS 0
+
+/* Used in threshold from tiles construction */
+static const uint32_t bit_order[32]={
+#if arch_is_big_endian
+        0x80000000, 0x40000000, 0x20000000, 0x10000000, 0x08000000, 0x04000000, 0x02000000, 0x01000000,
+        0x00800000, 0x00400000, 0x00200000, 0x00100000, 0x00080000, 0x00040000, 0x00020000, 0x00010000,
+        0x00008000, 0x00004000, 0x00002000, 0x00001000, 0x00000800, 0x00000400, 0x00000200, 0x00000100,
+        0x00000080, 0x00000040, 0x00000020, 0x00000010, 0x00000008, 0x00000004, 0x00000002, 0x00000001
+#else
+        0x00000080, 0x00000040, 0x00000020, 0x00000010, 0x00000008, 0x00000004, 0x00000002, 0x00000001,
+        0x00008000, 0x00004000, 0x00002000, 0x00001000, 0x00000800, 0x00000400, 0x00000200, 0x00000100,
+        0x00800000, 0x00400000, 0x00200000, 0x00100000, 0x00080000, 0x00040000, 0x00020000, 0x00010000,
+        0x80000000, 0x40000000, 0x20000000, 0x10000000, 0x08000000, 0x04000000, 0x02000000, 0x01000000
+#endif
+    };
 
 /* Forward declarations */
 void gx_set_effective_transfer(gs_state *);
-
-/*
- * *HACK ALERT*
- *
- * Value stored in the width field of a well-tempered screen halftone
- * order, to indicate that the wts field of this order points to the
- * same structure as an earlier order. This is used to suppress
- * multiple realeases of shared wts_screen_t orders.
- * 
- * The width field is available for this purpose at it is nominally
- * unused in a well-tempered screening halftone.
- */
-static const ushort    ht_wts_suppress_release = (ushort)(-1);
-
 
 /* Structure types */
 public_st_ht_order();
@@ -63,80 +69,80 @@ static
 RELOC_PTRS_WITH(ht_order_reloc_ptrs, gx_ht_order *porder)
 {
     if (porder->data_memory) {
-	RELOC_VAR(porder->levels);
-	RELOC_VAR(porder->bit_data);
+        RELOC_VAR(porder->levels);
+        RELOC_VAR(porder->bit_data);
     }
     RELOC_VAR(porder->cache);
     RELOC_VAR(porder->transfer);
 }
 RELOC_PTRS_END
 
-static 
+static
 ENUM_PTRS_WITH(halftone_enum_ptrs, gs_halftone *hptr) return 0;
 case 0:
 switch (hptr->type)
 {
     case ht_type_spot:
-	ENUM_RETURN((hptr->params.spot.transfer == 0 ?
-		     hptr->params.spot.transfer_closure.data :
-		     0));
+        ENUM_RETURN((hptr->params.spot.transfer == 0 ?
+                     hptr->params.spot.transfer_closure.data :
+                     0));
     case ht_type_threshold:
-	ENUM_RETURN_CONST_STRING_PTR(gs_halftone, params.threshold.thresholds);
+        ENUM_RETURN_CONST_STRING_PTR(gs_halftone, params.threshold.thresholds);
     case ht_type_threshold2:
-	return ENUM_CONST_BYTESTRING(&hptr->params.threshold2.thresholds);
+        return ENUM_CONST_BYTESTRING(&hptr->params.threshold2.thresholds);
     case ht_type_client_order:
-	ENUM_RETURN(hptr->params.client_order.client_data);
+        ENUM_RETURN(hptr->params.client_order.client_data);
     case ht_type_multiple:
     case ht_type_multiple_colorscreen:
-	ENUM_RETURN(hptr->params.multiple.components);
+        ENUM_RETURN(hptr->params.multiple.components);
     case ht_type_none:
     case ht_type_screen:
     case ht_type_colorscreen:
-	return 0;
+        return 0;
 }
 case 1:
 switch (hptr->type) {
     case ht_type_threshold:
-	ENUM_RETURN((hptr->params.threshold.transfer == 0 ?
-		     hptr->params.threshold.transfer_closure.data :
-		     0));
+        ENUM_RETURN((hptr->params.threshold.transfer == 0 ?
+                     hptr->params.threshold.transfer_closure.data :
+                     0));
     case ht_type_threshold2:
-	ENUM_RETURN(hptr->params.threshold2.transfer_closure.data);
+        ENUM_RETURN(hptr->params.threshold2.transfer_closure.data);
     case ht_type_client_order:
-	ENUM_RETURN(hptr->params.client_order.transfer_closure.data);
+        ENUM_RETURN(hptr->params.client_order.transfer_closure.data);
     default:
-	return 0;
+        return 0;
 }
 ENUM_PTRS_END
 
 static RELOC_PTRS_WITH(halftone_reloc_ptrs, gs_halftone *hptr)
 {
     switch (hptr->type) {
-	case ht_type_spot:
-	    if (hptr->params.spot.transfer == 0)
-		RELOC_PTR(gs_halftone, params.spot.transfer_closure.data);
-	    break;
-	case ht_type_threshold:
-	    RELOC_CONST_STRING_PTR(gs_halftone, params.threshold.thresholds);
-	    if (hptr->params.threshold.transfer == 0)
-		RELOC_PTR(gs_halftone, params.threshold.transfer_closure.data);
-	    break;
-	case ht_type_threshold2:
-	    RELOC_CONST_BYTESTRING_VAR(hptr->params.threshold2.thresholds);
-	    RELOC_OBJ_VAR(hptr->params.threshold2.transfer_closure.data);
-	    break;
-	case ht_type_client_order:
-	    RELOC_PTR(gs_halftone, params.client_order.client_data);
-	    RELOC_PTR(gs_halftone, params.client_order.transfer_closure.data);
-	    break;
-	case ht_type_multiple:
-	case ht_type_multiple_colorscreen:
-	    RELOC_PTR(gs_halftone, params.multiple.components);
-	    break;
-	case ht_type_none:
-	case ht_type_screen:
-	case ht_type_colorscreen:
-	    break;
+        case ht_type_spot:
+            if (hptr->params.spot.transfer == 0)
+                RELOC_PTR(gs_halftone, params.spot.transfer_closure.data);
+            break;
+        case ht_type_threshold:
+            RELOC_CONST_STRING_PTR(gs_halftone, params.threshold.thresholds);
+            if (hptr->params.threshold.transfer == 0)
+                RELOC_PTR(gs_halftone, params.threshold.transfer_closure.data);
+            break;
+        case ht_type_threshold2:
+            RELOC_CONST_BYTESTRING_VAR(hptr->params.threshold2.thresholds);
+            RELOC_OBJ_VAR(hptr->params.threshold2.transfer_closure.data);
+            break;
+        case ht_type_client_order:
+            RELOC_PTR(gs_halftone, params.client_order.client_data);
+            RELOC_PTR(gs_halftone, params.client_order.transfer_closure.data);
+            break;
+        case ht_type_multiple:
+        case ht_type_multiple_colorscreen:
+            RELOC_PTR(gs_halftone, params.multiple.components);
+            break;
+        case ht_type_none:
+        case ht_type_screen:
+        case ht_type_colorscreen:
+            break;
     }
 }
 RELOC_PTRS_END
@@ -147,10 +153,10 @@ gs_setscreen(gs_state * pgs, gs_screen_halftone * phsp)
 {
     gs_screen_enum senum;
     int code = gx_ht_process_screen(&senum, pgs, phsp,
-				    gs_currentaccuratescreens());
+                                    gs_currentaccuratescreens(pgs->memory));
 
     if (code < 0)
-	return code;
+        return code;
     return gs_screen_install(&senum);
 }
 
@@ -159,14 +165,14 @@ int
 gs_currentscreen(const gs_state * pgs, gs_screen_halftone * phsp)
 {
     switch (pgs->halftone->type) {
-	case ht_type_screen:
-	    *phsp = pgs->halftone->params.screen;
-	    return 0;
-	case ht_type_colorscreen:
-	    *phsp = pgs->halftone->params.colorscreen.screens.colored.gray;
-	    return 0;
-	default:
-	    return_error(gs_error_undefined);
+        case ht_type_screen:
+            *phsp = pgs->halftone->params.screen;
+            return 0;
+        case ht_type_colorscreen:
+            *phsp = pgs->halftone->params.colorscreen.screens.colored.gray;
+            return 0;
+        default:
+            return_error(gs_error_undefined);
     }
 }
 
@@ -187,16 +193,16 @@ gs_currentscreenlevels(const gs_state * pgs)
 /* .setscreenphase */
 int
 gx_imager_setscreenphase(gs_imager_state * pis, int x, int y,
-			 gs_color_select_t select)
+                         gs_color_select_t select)
 {
     if (select == gs_color_select_all) {
-	int i;
+        int i;
 
-	for (i = 0; i < gs_color_select_count; ++i)
-	    gx_imager_setscreenphase(pis, x, y, (gs_color_select_t) i);
-	return 0;
+        for (i = 0; i < gs_color_select_count; ++i)
+            gx_imager_setscreenphase(pis, x, y, (gs_color_select_t) i);
+        return 0;
     } else if (select < 0 || select >= gs_color_select_count)
-	return_error(gs_error_rangecheck);
+        return_error(gs_error_rangecheck);
     pis->screen_phase[select].x = x;
     pis->screen_phase[select].y = y;
     return 0;
@@ -205,7 +211,7 @@ int
 gs_setscreenphase(gs_state * pgs, int x, int y, gs_color_select_t select)
 {
     int code = gx_imager_setscreenphase((gs_imager_state *) pgs, x, y,
-					select);
+                                        select);
 
     /*
      * If we're only setting the source phase, we don't need to do
@@ -213,18 +219,18 @@ gs_setscreenphase(gs_state * pgs, int x, int y, gs_color_select_t select)
      * with the current color.
      */
     if (code >= 0 && (select == gs_color_select_texture ||
-		      select == gs_color_select_all)
-	)
-	gx_unset_dev_color(pgs);
+                      select == gs_color_select_all)
+        )
+        gx_unset_dev_color(pgs);
     return code;
 }
 
 int
 gs_currentscreenphase_pis(const gs_imager_state * pis, gs_int_point * pphase,
-		      gs_color_select_t select)
+                      gs_color_select_t select)
 {
     if (select < 0 || select >= gs_color_select_count)
-	return_error(gs_error_rangecheck);
+        return_error(gs_error_rangecheck);
     *pphase = pis->screen_phase[select];
     return 0;
 }
@@ -232,7 +238,7 @@ gs_currentscreenphase_pis(const gs_imager_state * pis, gs_int_point * pphase,
 /* .currentscreenphase */
 int
 gs_currentscreenphase(const gs_state * pgs, gs_int_point * pphase,
-		      gs_color_select_t select)
+                      gs_color_select_t select)
 {
     return gs_currentscreenphase_pis((const gs_imager_state *)pgs, pphase, select);
 }
@@ -250,16 +256,16 @@ gs_currenthalftone(gs_state * pgs, gs_halftone * pht)
 /* Process one screen plane. */
 int
 gx_ht_process_screen_memory(gs_screen_enum * penum, gs_state * pgs,
-		gs_screen_halftone * phsp, bool accurate, gs_memory_t * mem)
+                gs_screen_halftone * phsp, bool accurate, gs_memory_t * mem)
 {
     gs_point pt;
     int code = gs_screen_init_memory(penum, pgs, phsp, accurate, mem);
 
     if (code < 0)
-	return code;
+        return code;
     while ((code = gs_screen_currentpoint(penum, &pt)) == 0)
-	if ((code = gs_screen_next(penum, (*phsp->spot_function) (pt.x, pt.y))) < 0)
-	    return code;
+        if ((code = gs_screen_next(penum, (*phsp->spot_function) (pt.x, pt.y))) < 0)
+            return code;
     return 0;
 }
 
@@ -267,17 +273,13 @@ gx_ht_process_screen_memory(gs_screen_enum * penum, gs_state * pgs,
  * Internal procedure to allocate and initialize either an internally
  * generated or a client-defined halftone order.  For spot halftones,
  * the client is responsible for calling gx_compute_cell_values.
- *
- * Note: this function is used for old-style halftones only. WTS
- * halftones are allocated in gs_sethalftone_try_wts().
  */
 int
 gx_ht_alloc_ht_order(gx_ht_order * porder, uint width, uint height,
-		     uint num_levels, uint num_bits, uint strip_shift,
-		     const gx_ht_order_procs_t *procs, gs_memory_t * mem)
+                     uint num_levels, uint num_bits, uint strip_shift,
+                     const gx_ht_order_procs_t *procs, gs_memory_t * mem)
 {
-    porder->wse = NULL;
-    porder->wts = NULL;
+    porder->threshold = NULL;
     porder->width = width;
     porder->height = height;
     porder->raster = bitmap_raster(width);
@@ -292,25 +294,25 @@ gx_ht_alloc_ht_order(gx_ht_order * porder, uint width, uint height,
 
     if (num_levels > 0) {
         porder->levels =
-	    (uint *)gs_alloc_byte_array(mem, porder->num_levels, sizeof(uint),
-				        "alloc_ht_order_data(levels)");
-	if (porder->levels == 0)
-	    return_error(gs_error_VMerror);
+            (uint *)gs_alloc_byte_array(mem, porder->num_levels, sizeof(uint),
+                                        "alloc_ht_order_data(levels)");
+        if (porder->levels == 0)
+            return_error(gs_error_VMerror);
     } else
-	porder->levels = 0;
+        porder->levels = 0;
 
     if (num_bits > 0) {
-	porder->bit_data =
-	    gs_alloc_byte_array(mem, porder->num_bits,
-			        porder->procs->bit_data_elt_size,
-			        "alloc_ht_order_data(bit_data)");
-	if (porder->bit_data == 0) {
-	    gs_free_object(mem, porder->levels, "alloc_ht_order_data(levels)");
-	    porder->levels = 0;
-	    return_error(gs_error_VMerror);
-	}
+        porder->bit_data =
+            gs_alloc_byte_array(mem, porder->num_bits,
+                                porder->procs->bit_data_elt_size,
+                                "alloc_ht_order_data(bit_data)");
+        if (porder->bit_data == 0) {
+            gs_free_object(mem, porder->levels, "alloc_ht_order_data(levels)");
+            porder->levels = 0;
+            return_error(gs_error_VMerror);
+        }
     } else
-	porder->bit_data = 0;
+        porder->bit_data = 0;
 
     porder->cache = 0;
     porder->transfer = 0;
@@ -328,17 +330,15 @@ gx_ht_copy_ht_order(gx_ht_order * pdest, gx_ht_order * psrc, gs_memory_t * mem)
     *pdest = *psrc;
 
     code = gx_ht_alloc_ht_order(pdest, psrc->width, psrc->height,
-		     psrc->num_levels, psrc->num_bits, psrc->shift,
-		     psrc->procs, mem);
+                     psrc->num_levels, psrc->num_bits, psrc->shift,
+                     psrc->procs, mem);
     if (code < 0)
-	return code;
+        return code;
     if (pdest->levels != 0)
         memcpy(pdest->levels, psrc->levels, psrc->num_levels * sizeof(uint));
     if (pdest->bit_data != 0)
         memcpy(pdest->bit_data, psrc->bit_data,
-		psrc->num_bits * psrc->procs->bit_data_elt_size);
-    pdest->wse = psrc->wse;
-    pdest->wts = psrc->wts;
+                psrc->num_bits * psrc->procs->bit_data_elt_size);
     pdest->transfer = psrc->transfer;
     rc_increment(pdest->transfer);
     return 0;
@@ -354,8 +354,6 @@ gx_ht_move_ht_order(gx_ht_order * pdest, gx_ht_order * psrc)
     uint    width = psrc->width, height = psrc->height, shift = psrc->shift;
 
     pdest->params = psrc->params;
-    pdest->wse = psrc->wse;
-    pdest->wts = 0;
     pdest->width = width;
     pdest->height = height;
     pdest->raster = bitmap_raster(width);
@@ -373,12 +371,11 @@ gx_ht_move_ht_order(gx_ht_order * pdest, gx_ht_order * psrc)
     pdest->transfer = psrc->transfer;
 }
 
-
 /* Allocate and initialize the contents of a halftone order. */
 /* The client must have set the defining values in porder->params. */
 int
 gx_ht_alloc_order(gx_ht_order * porder, uint width, uint height,
-		  uint strip_shift, uint num_levels, gs_memory_t * mem)
+                  uint strip_shift, uint num_levels, gs_memory_t * mem)
 {
     gx_ht_order order;
     int code;
@@ -386,10 +383,10 @@ gx_ht_alloc_order(gx_ht_order * porder, uint width, uint height,
     order = *porder;
     gx_compute_cell_values(&order.params);
     code = gx_ht_alloc_ht_order(&order, width, height, num_levels,
-				width * height, strip_shift,
-				&ht_order_procs_default, mem);
+                                width * height, strip_shift,
+                                &ht_order_procs_default, mem);
     if (code < 0)
-	return code;
+        return code;
     *porder = order;
     return 0;
 }
@@ -400,21 +397,21 @@ gx_ht_alloc_order(gx_ht_order * porder, uint width, uint height,
  */
 int
 gx_ht_alloc_threshold_order(gx_ht_order * porder, uint width, uint height,
-			    uint num_levels, gs_memory_t * mem)
+                            uint num_levels, gs_memory_t * mem)
 {
     gx_ht_order order;
     uint num_bits = width * height;
     const gx_ht_order_procs_t *procs =
-	(num_bits > 2000 && num_bits <= max_ushort ?
-	 &ht_order_procs_short : &ht_order_procs_default);
+        (num_bits > 2000 && num_bits <= max_ushort ?
+         &ht_order_procs_short : &ht_order_procs_default);
     int code;
 
     order = *porder;
     gx_compute_cell_values(&order.params);
     code = gx_ht_alloc_ht_order(&order, width, height, num_levels,
-				width * height, 0, procs, mem);
+                                width * height, 0, procs, mem);
     if (code < 0)
-	return code;
+        return code;
     *porder = order;
     return 0;
 }
@@ -422,7 +419,7 @@ gx_ht_alloc_threshold_order(gx_ht_order * porder, uint width, uint height,
 /* Allocate and initialize the contents of a client-defined halftone order. */
 int
 gx_ht_alloc_client_order(gx_ht_order * porder, uint width, uint height,
-			 uint num_levels, uint num_bits, gs_memory_t * mem)
+                         uint num_levels, uint num_bits, gs_memory_t * mem)
 {
     gx_ht_order order;
     int code;
@@ -434,9 +431,9 @@ gx_ht_alloc_client_order(gx_ht_order * porder, uint width, uint height,
     order.params.R1 = 1;
     gx_compute_cell_values(&order.params);
     code = gx_ht_alloc_ht_order(&order, width, height, num_levels,
-				num_bits, 0, &ht_order_procs_default, mem);
+                                num_bits, 0, &ht_order_procs_default, mem);
     if (code < 0)
-	return code;
+        return code;
     *porder = order;
     return 0;
 }
@@ -464,17 +461,19 @@ gx_sort_ht_order(gx_ht_bit * recs, uint N)
 
     /* Tag each sample with its index, for sorting. */
     for (i = 0; i < N; i++)
-	recs[i].offset = i;
+        recs[i].offset = i;
     qsort((void *)recs, N, sizeof(*recs), compare_samples);
+#ifndef GS_THREADSAFE
 #ifdef DEBUG
     if (gs_debug_c('H')) {
-	uint i;
+        uint i;
 
-	dlputs("[H]Sorted samples:\n");
-	for (i = 0; i < N; i++)
-	    dlprintf3("%5u: %5u: %u\n",
-		      i, recs[i].offset, recs[i].mask);
+        dlputs("[H]Sorted samples:\n");
+        for (i = 0; i < N; i++)
+            dlprintf3("%5u: %5u: %u\n",
+                      i, recs[i].offset, recs[i].mask);
     }
+#endif
 #endif
 }
 
@@ -488,7 +487,7 @@ void
 gx_ht_construct_spot_order(gx_ht_order * porder)
 {
     uint width = porder->width;
-    uint num_levels = porder->num_levels;	/* = width x strip */
+    uint num_levels = porder->num_levels;       /* = width x strip */
     uint strip = num_levels / width;
     gx_ht_bit *bits = (gx_ht_bit *)porder->bit_data;
     uint *levels = porder->levels;
@@ -501,26 +500,26 @@ gx_ht_construct_spot_order(gx_ht_order * porder)
 
     gx_sort_ht_order(bits, num_levels);
     if_debug5('h',
-	      "[h]spot order: num_levels=%u w=%u h=%u strip=%u shift=%u\n",
-	      num_levels, width, porder->orig_height, strip, shift);
+              "[h]spot order: num_levels=%u w=%u h=%u strip=%u shift=%u\n",
+              num_levels, width, porder->orig_height, strip, shift);
     /* Fill in the levels array, replicating the bits vertically */
     /* if needed. */
     for (i = num_levels; i > 0;) {
-	uint offset = bits[--i].offset;
-	uint x = offset % width;
-	uint hy = offset - x;
-	uint k;
+        uint offset = bits[--i].offset;
+        uint x = offset % width;
+        uint hy = offset - x;
+        uint k;
 
-	levels[i] = i * copies;
-	for (k = 0; k < copies;
-	     k++, bp--, hy += num_levels, x = (x + width - shift) % width
-	    )
-	    bp->offset = hy + x;
+        levels[i] = i * copies;
+        for (k = 0; k < copies;
+             k++, bp--, hy += num_levels, x = (x + width - shift) % width
+            )
+            bp->offset = hy + x;
     }
     /* If we have a complete halftone, restore the invariant. */
     if (num_bits == width * full_height) {
-	porder->height = full_height;
-	porder->shift = 0;
+        porder->height = full_height;
+        porder->shift = 0;
     }
     gx_ht_construct_bits(porder);
 }
@@ -540,14 +539,14 @@ gx_ht_construct_bit(gx_ht_bit * bit, int width, int bit_num)
     /* Replicate the mask bits. */
     pix = ht_mask_bits - width;
     while ((pix -= width) >= 0)
-	mask |= mask >> width;
+        mask |= mask >> width;
     /* Store the mask, reversing bytes if necessary. */
     bit->mask = 0;
     for (pb = (byte *) & bit->mask + (sizeof(mask) - 1);
-	 mask != 0;
-	 mask >>= 8, pb--
-	)
-	*pb = (byte) mask;
+         mask != 0;
+         mask >>= 8, pb--
+        )
+        *pb = (byte) mask;
 }
 
 /* Construct offset/masks from the whitening order. */
@@ -560,17 +559,17 @@ gx_ht_construct_bits(gx_ht_order * porder)
     gx_ht_bit *phb;
 
     for (i = 0, phb = (gx_ht_bit *)porder->bit_data;
-	 i < porder->num_bits;
-	 i++, phb++)
-	gx_ht_construct_bit(phb, porder->width, phb->offset);
+         i < porder->num_bits;
+         i++, phb++)
+        gx_ht_construct_bit(phb, porder->width, phb->offset);
 #ifdef DEBUG
     if (gs_debug_c('H')) {
-	dlprintf1("[H]Halftone order bits 0x%lx:\n", (ulong)porder->bit_data);
-	for (i = 0, phb = (gx_ht_bit *)porder->bit_data;
-	     i < porder->num_bits;
-	     i++, phb++)
-	    dlprintf3("%4d: %u:0x%lx\n", i, phb->offset,
-		      (ulong) phb->mask);
+        dmlprintf1(porder->data_memory, "[H]Halftone order bits 0x%lx:\n", (ulong)porder->bit_data);
+        for (i = 0, phb = (gx_ht_bit *)porder->bit_data;
+             i < porder->num_bits;
+             i++, phb++)
+            dmlprintf3(porder->data_memory, "%4d: %u:0x%lx\n", i, phb->offset,
+                      (ulong) phb->mask);
     }
 #endif
 }
@@ -584,20 +583,19 @@ gx_ht_order_release(gx_ht_order * porder, gs_memory_t * mem, bool free_cache)
     if (free_cache) {
         if (porder->cache != 0)
             gx_ht_free_cache(mem, porder->cache);
-        else if (porder->wse != 0)
-            gs_wts_free_enum(porder->wse);
     }
     porder->cache = 0;
-    if (porder->wts != 0 && porder->width != ht_wts_suppress_release)
-        gs_wts_free_screen(porder->wts);
-    porder->wts = 0;
     rc_decrement(porder->transfer, "gx_ht_order_release(transfer)");
     porder->transfer = 0;
     if (porder->data_memory != 0) {
-	gs_free_object(porder->data_memory, porder->bit_data,
-		       "gx_ht_order_release(bit_data)");
-	gs_free_object(porder->data_memory, porder->levels,
-		       "gx_ht_order_release(levels)");
+        gs_free_object(porder->data_memory, porder->bit_data,
+                       "gx_ht_order_release(bit_data)");
+        gs_free_object(porder->data_memory, porder->levels,
+                       "gx_ht_order_release(levels)");
+    }
+    if (porder->threshold != NULL) {
+        gs_free_object(porder->data_memory->non_gc_memory, porder->threshold,
+                       "gx_ht_order_release(threshold)");
     }
     porder->levels = 0;
     porder->bit_data = 0;
@@ -607,21 +605,21 @@ void
 gx_device_halftone_release(gx_device_halftone * pdht, gs_memory_t * mem)
 {
     if (pdht->components) {
-	int i;
+        int i;
 
-	/* One of the components might be the same as the default */
-	/* order, so check that we don't free it twice. */
-	for (i = 0; i < pdht->num_comp; ++i)
-	    if (pdht->components[i].corder.bit_data !=
-		pdht->order.bit_data
-		) {		/* Currently, all orders except the default one */
-		/* own their caches. */
-		gx_ht_order_release(&pdht->components[i].corder, mem, true);
-	    }
-	gs_free_object(mem, pdht->components,
-		       "gx_dev_ht_release(components)");
-	pdht->components = 0;
-	pdht->num_comp = 0;
+        /* One of the components might be the same as the default */
+        /* order, so check that we don't free it twice. */
+        for (i = 0; i < pdht->num_comp; ++i)
+            if (pdht->components[i].corder.bit_data !=
+                pdht->order.bit_data
+                ) {             /* Currently, all orders except the default one */
+                /* own their caches. */
+                gx_ht_order_release(&pdht->components[i].corder, mem, true);
+            }
+        gs_free_object(mem, pdht->components,
+                       "gx_dev_ht_release(components)");
+        pdht->components = 0;
+        pdht->num_comp = 0;
     }
     gx_ht_order_release(&pdht->order, mem, false);
 }
@@ -648,7 +646,7 @@ gx_device_halftone_release(gx_device_halftone * pdht, gs_memory_t * mem)
  */
 int
 gs_color_name_component_number(gx_device * dev, const char * pname,
-				int name_size, int halftonetype)
+                                int name_size, int halftonetype)
 {
     int num_colorant;
 
@@ -666,46 +664,46 @@ gs_color_name_component_number(gx_device * dev, const char * pname,
      */
     num_colorant = check_colorant_name_length(dev, pname, name_size);
     if (num_colorant >= 0) {
-	/*
-	 * The device will return GX_DEVICE_COLOR_MAX_COMPONENTS if the
-	 * colorant is logically present in the device but not being used
-	 * because a SeparationOrder parameter is specified.  Since we are
-	 * using this value to indicate 'Default', we use -1 to indicate
-	 * that the colorant is not really being used.
-	 */
-	if (num_colorant == GX_DEVICE_COLOR_MAX_COMPONENTS)
-	    num_colorant = -1;
-	return num_colorant;
+        /*
+         * The device will return GX_DEVICE_COLOR_MAX_COMPONENTS if the
+         * colorant is logically present in the device but not being used
+         * because a SeparationOrder parameter is specified.  Since we are
+         * using this value to indicate 'Default', we use -1 to indicate
+         * that the colorant is not really being used.
+         */
+        if (num_colorant == GX_DEVICE_COLOR_MAX_COMPONENTS)
+            num_colorant = -1;
+        return num_colorant;
     }
 
     /*
      * Check if this is the default component
      */
     if (check_name("Default", pname, name_size))
-	return GX_DEVICE_COLOR_MAX_COMPONENTS;
+        return GX_DEVICE_COLOR_MAX_COMPONENTS;
 
     /* Halftones set by setcolorscreen, and (we think) */
     /* Type 2 and Type 4 halftones, are supposed to work */
     /* for both RGB and CMYK, so we need a special check here. */
     if (halftonetype == ht_type_colorscreen ||
-	halftonetype == ht_type_multiple_colorscreen) {
-	if (check_name("Red", pname, name_size))
-	    num_colorant = check_colorant_name(dev, "Cyan");
-	else if (check_name("Green", pname, name_size))
-	    num_colorant = check_colorant_name(dev, "Magenta");
-	else if (check_name("Blue", pname, name_size))
-	    num_colorant = check_colorant_name(dev, "Yellow");
-	else if (check_name("Gray", pname, name_size))
-	    num_colorant = check_colorant_name(dev, "Black");
-	/*
-	 * The device will return GX_DEVICE_COLOR_MAX_COMPONENTS if the
-	 * colorant is logically present in the device but not being used
-	 * because a SeparationOrder parameter is specified.  Since we are
-	 * using this value to indicate 'Default', we use -1 to indicate
-	 * that the colorant is not really being used.
-	 */
-	if (num_colorant == GX_DEVICE_COLOR_MAX_COMPONENTS)
-	    num_colorant = -1;
+        halftonetype == ht_type_multiple_colorscreen) {
+        if (check_name("Red", pname, name_size))
+            num_colorant = check_colorant_name(dev, "Cyan");
+        else if (check_name("Green", pname, name_size))
+            num_colorant = check_colorant_name(dev, "Magenta");
+        else if (check_name("Blue", pname, name_size))
+            num_colorant = check_colorant_name(dev, "Yellow");
+        else if (check_name("Gray", pname, name_size))
+            num_colorant = check_colorant_name(dev, "Black");
+        /*
+         * The device will return GX_DEVICE_COLOR_MAX_COMPONENTS if the
+         * colorant is logically present in the device but not being used
+         * because a SeparationOrder parameter is specified.  Since we are
+         * using this value to indicate 'Default', we use -1 to indicate
+         * that the colorant is not really being used.
+         */
+        if (num_colorant == GX_DEVICE_COLOR_MAX_COMPONENTS)
+            num_colorant = -1;
 
 #undef check_colorant_name
 #undef check_colorant_name_length
@@ -723,20 +721,20 @@ gs_color_name_component_number(gx_device * dev, const char * pname,
  */
 int
 gs_cname_to_colorant_number(gs_state * pgs, byte * pname, uint name_size,
-		int halftonetype)
+                int halftonetype)
 {
     gx_device * dev = pgs->device;
 
     return gs_color_name_component_number(dev, (char *)pname, name_size,
-		    halftonetype);
+                    halftonetype);
 }
 
 /*
  * Install a device halftone into the imager state.
  *
  * To allow halftones to be shared between graphic states, the imager
- * state contains a pointer to a device halftone structure. Thus, when 
- * we say a halftone is "in" the imager state, we are only claiming 
+ * state contains a pointer to a device halftone structure. Thus, when
+ * we say a halftone is "in" the imager state, we are only claiming
  * that the halftone pointer in the imager state points to that halftone.
  *
  * Though the operand halftone uses the same structure as the halftone
@@ -782,10 +780,10 @@ gs_cname_to_colorant_number(gs_state * pgs, byte * pname, uint name_size,
  *              the number of color model components (see num_dev_comp).
  *
  *  num_dev_comp The number of components in the device process color model
- *		when the operand halftone was created.  With some compositor
- *		devices (for example PDF 1.4) we can have differences in the
- *		process color model of the compositor versus the output device.
- *		These compositor devices do not halftone.
+ *              when the operand halftone was created.  With some compositor
+ *              devices (for example PDF 1.4) we can have differences in the
+ *              process color model of the compositor versus the output device.
+ *              These compositor devices do not halftone.
  *
  *  components  For the operand halftone, this field is non-null only if
  *              multiple halftones are provided. In that case, the size
@@ -836,7 +834,7 @@ gs_cname_to_colorant_number(gs_state * pgs, byte * pname, uint name_size,
  * the graphic state extends even to the individual fields of the
  * gx_ht_order structure incorporated in the order field of the halftone
  * and the corder field of the elements of the components array. The
- * fields of this structure that are handled differently in the operand 
+ * fields of this structure that are handled differently in the operand
  * and imager state device halftones are:
  *
  *  params          Provides a set of parameters that are required for
@@ -844,18 +842,6 @@ gs_cname_to_colorant_number(gs_state * pgs, byte * pname, uint name_size,
  *                  component order. This field is used only in the
  *                  operand device halftone; it is not set in the device
  *                  halftone in the imager state.
- *
- *  wse            Points to an "enumerator" instance, used to construct
- *                 a well-tempered screen. This is only required while
- *                 the well-tempered screen is being constructed. This
- *                 field is always a null pointer in the device halftone
- *                 in the imager state.
- *
- *  wts            Points to the "constructed" form of a well-tempered
- *                 screen. The "construction" operation occurs as part
- *                 of the installation process. Hence, this should
- *                 always be a null pointer in the operand device
- *                 halftone.
  *
  *  orig_height,   The height and shift values of the halftone cell,
  *  orig_shift     prior to any replication. These fields are currently
@@ -868,7 +854,7 @@ gs_cname_to_colorant_number(gs_state * pgs, byte * pname, uint name_size,
  *                 installation process; it may be set in the operand
  *                 device halftone, but its value is ignored.
  *
- *  
+ *
  *  data_memory    Points to the memory structure used to allocate the
  *                 levels and bit_data arrays. The handling of this field
  *                 is a bit complicated. For orders that are "taken over"
@@ -974,9 +960,9 @@ gx_imager_dev_ht_install(
     int                     i, code = 0;
     bool                    used_default = false;
     int                     lcm_width = 1, lcm_height = 1;
-    gs_wts_screen_enum_t *  wse0 = pdht->order.wse;
-    wts_screen_t *          wts0 = 0;
     bool                    mem_diff = pdht->rc.memory != pis->memory;
+    uint w, h;
+    int dw, dh;
 
     /* construct the new device halftone structure */
     memset(&dht.order, 0, sizeof(dht.order));
@@ -990,7 +976,7 @@ gx_imager_dev_ht_install(
                           &st_ht_order_component_element,
                           "gx_imager_dev_ht_install(components)" );
     if (dht.components == NULL)
-	return_error(gs_error_VMerror);
+        return_error(gs_error_VMerror);
     dht.num_comp = dht.num_dev_comp = num_comps;
     /* lcm_width, lcm_height are filled in later */
 
@@ -1014,7 +1000,7 @@ gx_imager_dev_ht_install(
             gx_ht_order *           p_s_order = &p_s_comp->corder;
             int                     comp_num = p_s_comp->comp_number;
 
-	    if (comp_num >= 0 && comp_num < GX_DEVICE_COLOR_MAX_COMPONENTS) {
+            if (comp_num >= 0 && comp_num < GX_DEVICE_COLOR_MAX_COMPONENTS) {
                 gx_ht_order *   p_d_order = &dht.components[comp_num].corder;
 
                 /* indicate that this order has been filled in */
@@ -1041,37 +1027,10 @@ gx_imager_dev_ht_install(
 
     /*
      * Copy the default order to any remaining components.
-     *
-     * For well-tempered screens, generate the wts_screen_t structure
-     * for each component that corresponds to the sample information
-     * that has been gathered.
-     *
-     * Some caution is necessary here, as multiple component orders may
-     * have wse fields pointing to the same gs_wts_creeen_enum_t
-     * structure. This structure should only be released once. If
-     * multiple components have such a wse value, it will be the same as
-     * pdht->order.wse pointer, so we can just release that pointer once
-     * when done.
-     *
-     * If serveral component orders have the same wse value, this code
-     * will create just one wts_screen_t structure. In a somewhat ugly
-     * hack, the width field (which is otherwise unused) will be set to
-     * 0xffff for all components other than the first component that
-     * makes use of a give wts_screen_t structure. gx_ht_order_release
-     * will check this field to see if it should release the structure
-     * pointed to by the wts field of a component order.
-     *
-     * Components that are not well-tempered screens require a cache.
-     * In practice, either all or non of the components will be well-
-     * tempered screens, but we ignore that fact here.
-     *
-     * While engaged in all of these other activities, also calculate
-     * the lcm_width and lcm_heigth values (only for non-well-tempered
-     * components).
      */
+
     for (i = 0; i < num_comps && code >= 0; i++) {
-        gx_ht_order *           porder = &dht.components[i].corder;
-        gs_wts_screen_enum_t *  wse;
+        gx_ht_order *porder = &dht.components[i].corder;
 
         if (dht.components[i].comp_number != i) {
             if (used_default || mem_diff)
@@ -1082,61 +1041,44 @@ gx_imager_dev_ht_install(
             }
             dht.components[i].comp_number = i;
         }
-        if ((wse = porder->wse) != 0) {
-            wts_screen_t *  wts = 0;
 
-            porder->width = 0;
-            porder->wse = 0;
-            if (wse != wse0)
-                wts = wts_screen_from_enum(wse);
-            else {
-                if (wts0 == 0)
-                    wts0 = wts_screen_from_enum(wse);
-                else
-                    porder->width = ht_wts_suppress_release;
-                wts = wts0;
-            }
-            if (wts == 0)
+        w = porder->width;
+        h = porder->full_height;
+        dw = igcd(lcm_width, w);
+        dh = igcd(lcm_height, h);
+
+        lcm_width /= dw;
+        lcm_height /= dh;
+        lcm_width = (w > max_int / lcm_width ? max_int : lcm_width * w);
+        lcm_height = (h > max_int / lcm_height ? max_int : lcm_height * h);
+
+        if (porder->cache == 0) {
+            uint            tile_bytes, num_tiles, slots_wanted, rep_raster, rep_count;
+            gx_ht_cache *   pcache;
+
+            tile_bytes = porder->raster
+                          * (porder->num_bits / porder->width);
+            num_tiles = 1 + gx_ht_cache_default_bits_size() / tile_bytes;
+            /*
+             * Limit num_tiles to a reasonable number allowing for width repition.
+             * The most we need is one cache slot per bit.
+             * This prevents allocations of large cache bits that will never
+             * be used. See rep_count limit in gxht.c
+             */
+            slots_wanted = 1 + ( porder->width * porder->height );
+            rep_raster = ((num_tiles*tile_bytes) / porder->height /
+                            slots_wanted) & ~(align_bitmap_mod - 1);
+            rep_count = rep_raster * 8 / porder->width;
+            if (rep_count > sizeof(ulong) * 8 && (num_tiles >
+                    1 + ((num_tiles * 8 * sizeof(ulong)) / rep_count) ))
+                num_tiles = 1 + ((num_tiles * 8 * sizeof(ulong)) / rep_count);
+            pcache = gx_ht_alloc_cache( pis->memory, num_tiles,
+                                        tile_bytes * num_tiles );
+            if (pcache == NULL)
                 code = gs_error_VMerror;
-            else
-                porder->wts = wts;
-        } else if (porder->wts == 0) {
-            uint   w = porder->width, h = porder->full_height;
-            int    dw = igcd(lcm_width, w), dh = igcd(lcm_height, h);
-
-            lcm_width /= dw;
-            lcm_height /= dh;
-            lcm_width = (w > max_int / lcm_width ? max_int : lcm_width * w);
-            lcm_height = (h > max_int / lcm_height ? max_int : lcm_height * h);
-
-            if (porder->cache == 0) {
-                uint            tile_bytes, num_tiles, slots_wanted, rep_raster, rep_count;
-                gx_ht_cache *   pcache;
-
-                tile_bytes = porder->raster
-                              * (porder->num_bits / porder->width);
-                num_tiles = 1 + gx_ht_cache_default_bits_size() / tile_bytes;
-		/*
-		 * Limit num_tiles to a reasonable number allowing for width repition.
-		 * The most we need is one cache slot per bit.
-		 * This prevents allocations of large cache bits that will never
-		 * be used. See rep_count limit in gxht.c
-		 */
-		slots_wanted = 1 + ( porder->width * porder->height ); 
-		rep_raster = ((num_tiles*tile_bytes) / porder->height /
-				slots_wanted) & ~(align_bitmap_mod - 1);
-		rep_count = rep_raster * 8 / porder->width;
-		if (rep_count > sizeof(ulong) * 8 && (num_tiles >
-			1 + ((num_tiles * 8 * sizeof(ulong)) / rep_count) ))
-		    num_tiles = 1 + ((num_tiles * 8 * sizeof(ulong)) / rep_count);
-                pcache = gx_ht_alloc_cache( pis->memory, num_tiles,
-                                            tile_bytes * num_tiles );
-                if (pcache == NULL) 
-                    code = gs_error_VMerror;
-                else {
-                    porder->cache = pcache;
-                    gx_ht_init_cache(pis->memory, pcache, porder);
-                }
+            else {
+                porder->cache = pcache;
+                gx_ht_init_cache(pis->memory, pcache, porder);
             }
         }
     }
@@ -1181,8 +1123,7 @@ gx_imager_dev_ht_install(
         /*
          * Everything worked. "Assume ownership" of the appropriate
          * portions of the source device halftone by clearing the
-         * associated references. This includes explicitly releasing
-         * any gs_wts_screen_enum_t structures. Since we might have
+         * associated references.  Since we might have
          * pdht == pis->dev_ht, this must done before updating pis->dev_ht.
          *
          * If the default order has been used for a device component, and
@@ -1202,8 +1143,6 @@ gx_imager_dev_ht_install(
 
                 if ( comp_num >= 0                            &&
                      comp_num < GX_DEVICE_COLOR_MAX_COMPONENTS  ) {
-                    if (p_s_order->wse != 0)
-                        gs_wts_free_enum(p_s_order->wse);
                     memset(p_s_order, 0, sizeof(*p_s_order));
                 } else if ( comp_num == GX_DEVICE_COLOR_MAX_COMPONENTS &&
                             used_default                                 )
@@ -1211,8 +1150,6 @@ gx_imager_dev_ht_install(
             }
         }
         if (used_default) {
-            if (wse0 != 0)
-                gs_wts_free_enum(wse0);
             memset(&pdht->order, 0, sizeof(pdht->order));
         }
 
@@ -1247,7 +1184,7 @@ gx_imager_dev_ht_install(
  */
 int
 gx_ht_install(gs_state * pgs, const gs_halftone * pht,
-	      gx_device_halftone * pdht)
+              gx_device_halftone * pdht)
 {
     gs_memory_t *mem = pht->rc.memory;
     gs_halftone *old_ht = pgs->halftone;
@@ -1256,38 +1193,39 @@ gx_ht_install(gs_state * pgs, const gs_halftone * pht,
 
     pdht->num_dev_comp = pgs->device->color_info.num_components;
     if (old_ht != 0 && old_ht->rc.memory == mem &&
-	old_ht->rc.ref_count == 1
-	)
-	new_ht = old_ht;
+        old_ht->rc.ref_count == 1
+        )
+        new_ht = old_ht;
     else
-	rc_alloc_struct_1(new_ht, gs_halftone, &st_halftone,
-			  mem, return_error(gs_error_VMerror),
-			  "gx_ht_install(new halftone)");
+        rc_alloc_struct_1(new_ht, gs_halftone, &st_halftone,
+                          mem, return_error(gs_error_VMerror),
+                          "gx_ht_install(new halftone)");
     code = gx_imager_dev_ht_install((gs_imager_state *) pgs,
-			     pdht, pht->type, gs_currentdevice_inline(pgs));
+                             pdht, pht->type, gs_currentdevice_inline(pgs));
     if (code < 0) {
-	if (new_ht != old_ht)
-	    gs_free_object(mem, new_ht, "gx_ht_install(new halftone)");
-	return code;
+        if (new_ht != old_ht)
+            gs_free_object(mem, new_ht, "gx_ht_install(new halftone)");
+        return code;
     }
 
     /*
-     * Discard and unused components and the components array of the
+     * Discard any unused components and the components array of the
      * operand device halftone
      */
     gx_device_halftone_release(pdht, pdht->rc.memory);
 
     if (new_ht != old_ht)
-	rc_decrement(old_ht, "gx_ht_install(old halftone)");
+        rc_decrement(old_ht, "gx_ht_install(old halftone)");
     {
-	rc_header rc;
+        rc_header rc;
 
-	rc = new_ht->rc;
-	*new_ht = *pht;
-	new_ht->rc = rc;
+        rc = new_ht->rc;
+        *new_ht = *pht;
+        new_ht->rc = rc;
     }
     pgs->halftone = new_ht;
     gx_unset_dev_color(pgs);
+    gx_unset_alt_dev_color(pgs);
     return 0;
 }
 
@@ -1308,32 +1246,32 @@ gx_imager_set_effective_xfer(gs_imager_state * pis)
     int i, component_num;
 
     for (i = 0; i < GX_DEVICE_COLOR_MAX_COMPONENTS; i++)
-	pis->effective_transfer[i] = pis->set_transfer.gray;	/* default */
+        pis->effective_transfer[i] = pis->set_transfer.gray;    /* default */
 
     /* Check if we have a transfer functions from setcolortransfer */
     if (pis->set_transfer.red) {
-	component_num = pis->set_transfer.red_component_num;
-	if (component_num >= 0)
-	    pis->effective_transfer[component_num] = pis->set_transfer.red;;
+        component_num = pis->set_transfer.red_component_num;
+        if (component_num >= 0)
+            pis->effective_transfer[component_num] = pis->set_transfer.red;;
     }
     if (pis->set_transfer.green) {
-	component_num = pis->set_transfer.green_component_num;
-	if (component_num >= 0)
-	    pis->effective_transfer[component_num] = pis->set_transfer.green;
+        component_num = pis->set_transfer.green_component_num;
+        if (component_num >= 0)
+            pis->effective_transfer[component_num] = pis->set_transfer.green;
     }
     if (pis->set_transfer.blue) {
-	component_num = pis->set_transfer.blue_component_num;
-	if (component_num >= 0)
-	    pis->effective_transfer[component_num] = pis->set_transfer.blue;
+        component_num = pis->set_transfer.blue_component_num;
+        if (component_num >= 0)
+            pis->effective_transfer[component_num] = pis->set_transfer.blue;
     }
 
     if (pdht == NULL)
-	return;			/* not initialized yet */
+        return;                 /* not initialized yet */
 
     for (i = 0; i < pdht->num_comp; i++) {
-	pmap = pdht->components[i].corder.transfer;
-	if (pmap != NULL)
-	    pis->effective_transfer[i] = pmap;
+        pmap = pdht->components[i].corder.transfer;
+        if (pmap != NULL)
+            pis->effective_transfer[i] = pmap;
     }
 }
 
@@ -1341,4 +1279,297 @@ void
 gx_set_effective_transfer(gs_state * pgs)
 {
     gx_imager_set_effective_xfer((gs_imager_state *) pgs);
+}
+#if TRANSFER_IN_THRESHOLDS
+#define round(x)    (((x) < 0.0) ? (ceil ((x) - 0.5)) : (floor ((x) + 0.5)))
+/* This creates a 256 entry LUT to invert the effective transfer function so
+   that it is built into the threshold values.  This only works correctly
+   for monotonic curves. */
+static int
+gx_ht_construct_transfer_inverse(gs_memory_t *memory, byte *transfer_inverse,
+                                 gs_imager_state * pis, int  plane_index,
+                                 bool *is_inverting)
+{
+    frac frac_val;
+    float float_val;
+    frac *transfer_sampled;
+    int k, min_pos, max_pos, mid_pos, max_pos_start, min_pos_start;
+    bool done, hit;
+    frac min_val, max_val;
+    frac zero_val, one_val;
+    int offset;
+    frac prev_value;
+    bool is_monotonic = true;
+
+    is_monotonic = true;
+    /* First construct a representation of the forward curve */
+    transfer_sampled = (frac *)gs_malloc(memory, TRANSFER_INVERSE_SIZE,
+                                         sizeof(frac),
+                                         "gx_ht_construct_transfer_inverse");
+    if (transfer_sampled == NULL) {
+        return -1 ;         /* error if allocation failed   */
+    }
+    zero_val = gx_map_color_frac(pis, 0, effective_transfer[plane_index]);
+    one_val = gx_map_color_frac(pis, frac_1, effective_transfer[plane_index]);
+    if (zero_val > one_val) {
+        *is_inverting = true;
+    } else {
+        *is_inverting = false;
+    }
+    if (*is_inverting) {
+        min_pos_start = 0;
+        max_pos_start = TRANSFER_INVERSE_SIZE - 1;
+        offset = TRANSFER_INVERSE_SIZE - 1;
+        prev_value  = gx_map_color_frac(pis, frac_1, effective_transfer[plane_index]);
+        for (k = 0; k < TRANSFER_INVERSE_SIZE; k++) {
+            float_val = (float) (offset - k)/(float) (TRANSFER_INVERSE_SIZE - 1);
+            frac_val = float2frac(float_val);
+            transfer_sampled[k] = gx_map_color_frac(pis, frac_val,
+                                            effective_transfer[plane_index]);
+            if (prev_value > transfer_sampled[k]) {
+                is_monotonic = false;
+            }
+            prev_value = transfer_sampled[k];
+            /* Take note of any leading zeros and ending ones for the inversion */
+            if (transfer_sampled[k] == 0) min_pos_start = k;
+            if (transfer_sampled[k] == frac_1 && k < max_pos_start) max_pos_start = k;
+        }
+    } else {
+        min_pos_start = 0;
+        max_pos_start = TRANSFER_INVERSE_SIZE - 1;
+        prev_value  = gx_map_color_frac(pis, 0, effective_transfer[plane_index]);
+        for (k = 0; k < TRANSFER_INVERSE_SIZE; k++) {
+            float_val = (float) k / (float) (TRANSFER_INVERSE_SIZE - 1);
+            frac_val = float2frac(float_val);
+            transfer_sampled[k] = gx_map_color_frac(pis, frac_val,
+                                            effective_transfer[plane_index]);
+            if (prev_value > transfer_sampled[k]) {
+                is_monotonic = false;
+            }
+            prev_value = transfer_sampled[k];
+            /* Take note of any leading zeros and ending ones for the inversion */
+            if (transfer_sampled[k] == 0) min_pos_start = k;
+            if (transfer_sampled[k] == frac_1 && k < max_pos_start) max_pos_start = k;
+        }
+    }
+    if (!is_monotonic) {
+        gs_free_object(memory, transfer_sampled, "gx_ht_construct_transfer_inverse");
+        return -1;
+    }
+    /* Now run over our invertible range from min_pos to max_pos doing
+       a binary search with interpolation for the inversion */
+    for (k = 0; k < 256; k++) {
+        float_val = (float) k / 256.0;
+        frac_val = float2frac(float_val);
+        /* Find where this value occurs */
+        done = false;
+        hit = false;
+        max_pos = max_pos_start;
+        min_pos = min_pos_start;
+        while (!done) {
+            mid_pos = min_pos + (max_pos - min_pos) / 2;
+            if (frac_val > transfer_sampled[mid_pos]) {
+                min_pos = mid_pos;
+            } else if (frac_val < transfer_sampled[mid_pos]) {
+                max_pos = mid_pos;
+            } else {
+                done = true;
+                hit = true;
+            }
+            if (max_pos - min_pos == 1) {
+                done = true;
+            }
+        }
+        /* OK found the point go ahead and interpolate if needed */
+        if (*is_inverting) {
+            if (hit) {
+                transfer_inverse[255 - k] =
+                    round((float) mid_pos * 255.0 / (float) (TRANSFER_INVERSE_SIZE - 1));
+            } else {
+                /* Interpolate */
+                min_val = transfer_sampled[min_pos];
+                max_val = transfer_sampled[max_pos];
+                float_val = (float) min_pos +
+                    (float) (max_pos - min_pos) * (float) (frac_val - min_val) /
+                    (float) (max_val - min_val);
+                transfer_inverse[255 - k] =
+                    round(float_val * 255.0 / (float) (TRANSFER_INVERSE_SIZE - 1));
+            }
+        } else {
+            if (hit) {
+                transfer_inverse[k] =
+                    round((float) mid_pos * 255.0 / (float) (TRANSFER_INVERSE_SIZE - 1));
+            } else {
+                /* Interpolate */
+                min_val = transfer_sampled[min_pos];
+                max_val = transfer_sampled[max_pos];
+                float_val = (float) min_pos +
+                    (float) (max_pos - min_pos) * (float) (frac_val - min_val) /
+                    (float) (max_val - min_val);
+                transfer_inverse[k] =
+                    round(float_val * 255.0 / (float) (TRANSFER_INVERSE_SIZE - 1));
+            }
+        }
+    }
+    /* Make sure the end points are set */
+    if (*is_inverting) {
+        transfer_inverse[255] = 0;
+        transfer_inverse[0] = 255;
+    } else {
+        transfer_inverse[255] = 255;
+        transfer_inverse[0] = 0;
+    }
+    gs_free_object(memory, transfer_sampled, "gx_ht_construct_transfer_inverse");
+    return 0;
+}
+#undef round
+#endif
+
+/* Lifted from threshold_from_order in gdevtsep.c.  This creates a threshold
+   array from the tiles.  Threshold is allocated in non-gc memory and is
+   not known to the gc */
+int
+gx_ht_construct_threshold( gx_ht_order *d_order, gx_device *dev,
+                           const gs_imager_state * pis, int plane_index)
+{
+    int i, j, l, prev_l;
+    unsigned char *thresh;
+    gs_memory_t *memory = d_order->data_memory->non_gc_memory;
+    uint max_value;
+    unsigned long hsize, nshades;
+    int t_level, t_level_adjust;
+    int row, col;
+    int delta, delta_sum = 0;
+    bool have_transfer = false;
+    byte *transfer_inverse = NULL;
+    int code;
+    byte init_value = 255;
+    bool is_inverting = false;
+    int num_repeat, shift;
+    int row_kk, col_kk, kk;
+
+    /* We can have simple or complete orders.  Simple ones tile the threshold
+       with shifts.   To handle those we simply loop over the number of 
+       repeats making sure to shift columns when we set our threshold values */
+    num_repeat = d_order->full_height / d_order->height;
+    shift = d_order->shift;
+
+    if (d_order == NULL) return -1;
+    if (d_order->threshold != NULL) return 0;
+    d_order->threshold_inverts = is_inverting;
+    thresh = (byte *)gs_malloc(memory, d_order->width * d_order->full_height, 1,
+                              "gx_ht_construct_threshold");
+    if (thresh == NULL) {
+        return -1 ;         /* error if allocation failed   */
+    }
+    d_order->threshold_inverts = false;
+#if TRANSFER_IN_THRESHOLDS
+    /* Check if we need to apply a transfer function to the values */
+    if (pis->effective_transfer[plane_index]->proc != gs_identity_transfer) {
+        transfer_inverse = (byte *)gs_malloc(memory, 256, 1,
+                                    "gx_ht_construct_threshold");
+        if (transfer_inverse == NULL) {
+            return -1 ;         /* error if allocation failed   */
+        }
+        /* Create an inverse of the transfer.  Hopefully it is invertible.  If
+           not, we will get some strange results... */
+        code = gx_ht_construct_transfer_inverse(memory, transfer_inverse, pis,
+                                        plane_index, &is_inverting);
+        d_order->threshold_inverts = is_inverting;
+        if (code < 0) {
+            /* If this failed then we will go and use the non-threshold code */
+#ifdef DEBUG
+            gs_warn("Transfer function inversion for threshold matrix failed!");
+#endif
+            if (transfer_inverse != NULL) {
+               gs_free_object(memory, transfer_inverse, "gx_ht_construct_threshold");
+            }
+            return -1;
+        } else {
+            have_transfer = true;
+            init_value = transfer_inverse[255];
+        }
+    } else {
+        d_order->threshold_inverts = false;
+    }
+#endif
+    /* Adjustments to ensure that we properly map our 256 levels into
+      the number of shades that we have in our halftone screen.  For example
+      if we have a 16x16 screen, we have 257 shadings that we can represent
+      if we have a  2x2  screen, we have 5 shadings that we can represent.
+      Calculations are performed to match what happens in the tile filling
+      code */
+    max_value = (dev->color_info.gray_index == plane_index) ?
+         dev->color_info.dither_grays - 1 :
+         dev->color_info.dither_colors - 1;
+    hsize = d_order->num_levels;
+    nshades = hsize * max_value + 1;
+
+    for( i = 0; i < d_order->num_bits; i++ ) {
+        thresh[i] = init_value;
+    }
+    prev_l = 0;
+    l = 1;
+    while (l < d_order->num_levels) {
+        /* If we have some dots to turn on then proceed */
+        if (d_order->levels[l] > d_order->levels[prev_l]) {
+            t_level = (256 * l) / d_order->num_levels;
+            t_level_adjust = byte2frac(t_level) * nshades / (frac_1_long + 1);
+            delta = t_level_adjust - t_level;
+            if (delta > delta_sum) {
+                /* We had a change in our value.  We need to do some adjustments.
+                   This particular level stays were it is and subsequent ones
+                   will be offset by delta_sum. */
+                t_level -= delta_sum;
+                delta_sum += delta;
+            } else {
+                t_level -= delta_sum;
+            }
+            /* If needed, map through the inverse of the transfer function */
+            if (have_transfer) {
+                t_level = transfer_inverse[t_level];
+            }
+            /* Loop over the number of dots that we have to set in going
+               to this new level from the old level */
+            for (j = d_order->levels[prev_l]; j < d_order->levels[l]; j++) {
+                gs_int_point ppt;
+                code = d_order->procs->bit_index(d_order, j, &ppt);
+                if (code < 0)
+                    return code;
+                row = ppt.y;
+                col = ppt.x;
+                if( col < (int)d_order->width ) {
+                    for (kk = 0; kk < num_repeat; kk++) {
+                        row_kk = row + kk * d_order->height;
+                        col_kk = col + kk * shift;
+                        col_kk = col_kk % d_order->width;
+                        *(thresh + col_kk + (row_kk * d_order->width)) = t_level;
+                    }
+                }
+            }
+            prev_l = l;
+        }
+        l++;
+    }
+    d_order->threshold = thresh;
+    if (dev->color_info.polarity == GX_CINFO_POLARITY_SUBTRACTIVE) {
+      for(i = 0; i < (int)d_order->height; i++ ) {
+         for( j=(int)d_order->width-1; j>=0; j-- )
+            *(thresh+j+(i*d_order->width)) = 255 - *(thresh+j+(i*d_order->width));
+      }
+    } 
+#ifdef DEBUG
+   if ( gs_debug_c('h') ) {
+      for( i=0; i<(int)d_order->height; i++ ) {
+         dmprintf1(memory, "threshold array row %3d= ", i);
+         for( j=(int)d_order->width-1; j>=0; j-- )
+            dmprintf1(memory, "%3d ", *(thresh+j+(i*d_order->width)) );
+         dmprintf(memory, "\n");
+      }
+   }
+#endif
+   if (transfer_inverse != NULL) {
+       gs_free_object(memory, transfer_inverse, "gx_ht_construct_threshold");
+   }
+    return 0;
 }

@@ -1,8 +1,8 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
 <html>
 <head>
+<meta http-equiv="content-type" content="text/html; charset=us-ascii">
 <title>Ghostscript Open Issues.</title>
-<!-- $Id: Issues.htm 10732 2010-02-10 18:17:48Z giles $ -->
 <link rel="stylesheet" type="text/css" href="gs.css" title="Ghostscript Style">
 </head>
 
@@ -56,7 +56,7 @@ Additional comments on implementation approaches or project goals are in
 
 <h2><a name="Known_Limitations"></a>Known Limitations.</h2>
 
-<h3>bbox device doesn't allow min coords < 0.</h3>
+<h3>bbox device doesn't allow min coords &lt; 0.</h3>
 Adobe eps specification doesn't say that bbox values must be positive,
 and, for example Adobe Illustrator, can create EPS files with negative bboxes.
 In such case, Ghostscipt returns zero instead of proper negative number. 
@@ -87,10 +87,10 @@ fails with:
 <blockquote><pre>/undefinedresource in --findresource--</pre></blockquote>
 
 
-<h3>pswrite device generates low level PostScript.</h3>
+<h3>epswrite device generates low level PostScript.</h3>
 
 <p>
-pswrite and epswrite devices reduce everything to path, fill, stroke, clip 
+epswrite devices reduce everything to path, fill, stroke, clip
 image, and imagemask operations. Although the resulting file 
 prints OK it produces unsatisfactory results when scaled,
 distilled or imported into graphic editors. 
@@ -377,7 +377,7 @@ code can be also be used with CIDFontType 2 and TrueType fonts.
 
 <h2><a name="Differences_from_Adobe"></a>Differences from Adobe Implementation.</h2>
 
-<h3>pdfwrite + TT font => Acrobat 3.x for Windows gives error</h3>
+<h3>pdfwrite + TT font =&gt; Acrobat 3.x for Windows gives error</h3>
 
 Running ps2pdf12 on the file test1.ps produces a PDF on which Acrobat
 3.x for Windows complains about not being able to find or create a
@@ -487,13 +487,13 @@ class="offsite">#226943</a>, December 27, 2000.
 This should be implemented using the (disk) file system rather than
 actual RAM, at least initially, since that will be easy.
 <br>
-On Unix, it should be implemented with a directory /tmp/$$/ (where
-$$ is the process id), which Ghostscript should delete when it exits.
+On Unix, it should be implemented with a directory /tmp/&#36;&#36;/ (where
+&#36;&#36; is the process id), which Ghostscript should delete when it exits.
 </I>
 
 <h3> pdfwrite doesn't recognise the image type by content</h3>
 Currently pdfwrite uses JPEG compression for any 8 bit per component
-images >= 64 pixels in both dimensions.
+images &gt;= 64 pixels in both dimensions.
 <p>
 <I>
 pdfwrite needs to be changed to use a reasonable algorithm for deciding
@@ -588,9 +588,9 @@ or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
 San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
 
 <p>
-<small>Ghostscript version 8.71, 10 February 2010
+<small>Ghostscript version 9.10, 30 August 2013
 
 <!-- [3.0 end visible trailer] ============================================= -->
 
-</small></body>
+</body>
 </html>

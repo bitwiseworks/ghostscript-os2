@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: math_.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Generic substitute for math.h */
 
 #ifndef math__INCLUDED
@@ -56,15 +58,9 @@
      ((0x1000000 - 1.0) * 0x1000000 * 0x1000000 * 0x10000000 * 0x10000000)
 #endif
 
-/* Define the hypot procedure on those few systems that don't provide it. */
-#if defined(_IBMR2)
-/* The RS/6000 has hypot, but math.h doesn't declare it! */
-extern double hypot(double, double);
-#elif defined(_MSC_VER)
-#  define hypot(x,y) _hypot(x,y)
-#elif !defined(__TURBOC__) && !defined(BSD4_2) && !defined(VMS) && !defined(__MWERKS__) && !defined(HAVE_HYPOT)
-#  define hypot(x,y) sqrt((double)(x)*(x)+(double)(y)*(y))
-#endif
+/* we use our own hypot() since the system one is not consistent between Linux and Mac OS X, also ours is faster */
+#undef  hypot
+#define hypot(x,y) sqrt((double)(x)*(x)+(double)(y)*(y))
 
 #ifdef OSK
 /* OSK has atan2 and ldexp, but math.h doesn't declare them! */

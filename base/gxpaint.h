@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxpaint.h 10291 2009-11-06 20:40:48Z robin $ */
+
 /* Internal interface to fill/stroke */
 /* Requires gsropt.h, gxfixed.h, gxpath.h */
 
@@ -46,7 +48,7 @@ typedef struct gx_device_color_s gx_device_color;
  */
 
 int gx_fill_path(gx_path * ppath, gx_device_color * pdevc, gs_state * pgs,
-		 int rule, fixed adjust_x, fixed adjust_y);
+                 int rule, fixed adjust_x, fixed adjust_y);
 int gx_stroke_fill(gx_path * ppath, gs_state * pgs);
 int gx_stroke_add(gx_path *ppath, gx_path *to_path, const gs_state * pgs, bool traditional);
 /*
@@ -54,7 +56,7 @@ int gx_stroke_add(gx_path *ppath, gx_path *to_path, const gs_state * pgs, bool t
  * dots (and for no other reason).
  */
 int gx_imager_stroke_add(gx_path *ppath, gx_path *to_path,
-			 gx_device *dev, const gs_imager_state *pis);
+                         gx_device *dev, const gs_imager_state *pis);
 
 /* ------ Imager procedures ------ */
 
@@ -75,7 +77,7 @@ void gx_adjust_if_empty(const gs_fixed_rect *, gs_fixed_point *);
  * pathbbox.
  */
 int gx_stroke_path_expansion(const gs_imager_state *pis,
-			     const gx_path *ppath, gs_fixed_point *ppt);
+                             const gx_path *ppath, gs_fixed_point *ppt);
 
 /* Backward compatibility */
 #define gx_stroke_expansion(pis, ppt)\
@@ -111,9 +113,9 @@ struct gx_stroke_params_s {
 };
 
 int gx_stroke_path_only(gx_path * ppath, gx_path * to_path, gx_device * dev,
-			const gs_imager_state * pis,
-			const gx_stroke_params * params,
-			const gx_device_color * pdevc,
-			const gx_clip_path * pcpath);
+                        const gs_imager_state * pis,
+                        const gx_stroke_params * params,
+                        const gx_device_color * pdevc,
+                        const gx_clip_path * pcpath);
 
 #endif /* gxpaint_INCLUDED */

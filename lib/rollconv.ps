@@ -1,7 +1,19 @@
 %!
-% Copyright (C) 1995, 1996 Aladdin Enterprises.  All rights reserved.
+% Copyright (C) 2001-2012 Artifex Software, Inc.
+% All Rights Reserved.
+%
+% This software is provided AS-IS with no warranty, either express or
+% implied.
+%
+% This software is distributed under license and may not be copied,
+% modified or distributed except as expressly authorized under the terms
+% of the license contained in the file LICENSE in this distribution.
+%
+% Refer to licensing information at http://www.artifex.com or contact
+% Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+% CA  94903, U.S.A., +1(415)492-9861, for further information.
+%
 
-% $Id: rollconv.ps 6300 2005-12-28 19:56:24Z giles $
 % Utility program for converting Japanese fonts produced by Macromedia's
 % Rollup program to Type 0 fonts suitable for use with Ghostscript.
 %
@@ -57,13 +69,12 @@
 % or
 %	/HGGothicBPRO-83pv-RKSJ-H 36 selectfont
 
-
 /macrfile		% <filename> macrfile <file>
  { (r) file
    fromMac
     {		% Get rid of the initial Mac garbage (128 characters).
-		% The garbage at the end is unpredictable,
-		% so we'll just have to hope that it's all nulls.
+                % The garbage at the end is unpredictable,
+                % so we'll just have to hope that it's all nulls.
       dup =string 0 128 getinterval readstring pop pop
     }
    if
@@ -79,7 +90,7 @@
    /inprefix InDir (/) concatstrings FName concatstrings (-) concatstrings def
    /inh inprefix (H) concatstrings def
 
-		% Open the output file.
+                % Open the output file.
 
 /OutDot OutDir (/) concatstrings OutBase concatstrings (.) concatstrings def
 /outname OutDot (ps) concatstrings def
@@ -89,7 +100,7 @@ QUIET not { (Writing ) print outname = flush } if
 /out outname (w) file def
 /buffer 65000 string def
 
-		% Copy the initial comments from the input file.
+                % Copy the initial comments from the input file.
 
 inh macrfile
  { dup =string readline pop
@@ -98,7 +109,7 @@ inh macrfile
  }
 loop
 
-		% Write out our preamble.
+                % Write out our preamble.
 
 out (
 currentpacking true setpacking
@@ -142,13 +153,13 @@ userdict /AltsysCFD3 25 dict dup begin
     { privates exch get 3 1 roll pop pop
     }
     { 7 dict begin
-	/MinFeature{16 16}executeonly def
-	/BlueValues BlueValues def
-	/StdVW 3 -1 roll 1 array astore def
-	/StdHW 3 -1 roll 1 array astore def
-	/password 5839 def
-	/LanguageGroup 1 def
-	/Subrs Subrs def
+        /MinFeature{16 16}executeonly def
+        /BlueValues BlueValues def
+        /StdVW 3 -1 roll 1 array astore def
+        /StdHW 3 -1 roll 1 array astore def
+        /password 5839 def
+        /LanguageGroup 1 def
+        /Subrs Subrs def
       currentdict readonly end
       privates 2 index 2 index put exch pop
     }
@@ -178,7 +189,7 @@ end put
 %END
 ) writestring
 
-		% Locate and copy the definition of NotDefFont.
+                % Locate and copy the definition of NotDefFont.
 
 out (
 FontDirectory /NotDefFont known { (%END) .skipeof } if
@@ -195,9 +206,9 @@ loop out (definefont pop
 %END
 ) writestring
 
-		% Copy the definitions of the subfonts, moving the
-		% CharStrings of the Roman supplement to an external file.
-		% Stack for pattern procedures: infile line
+                % Copy the definitions of the subfonts, moving the
+                % CharStrings of the Roman supplement to an external file.
+                % Stack for pattern procedures: infile line
 
 /CSRName OutDot (CSR) concatstrings def
 /csr CSRName (w) file def
@@ -206,8 +217,8 @@ QUIET not { (Writing ) print CSRName = flush } if
 /encoding 256 array def
 
 /patterns [
-		% Patterns specific to the Roman supplement, in which
-		% the outlines are in an eexec section.
+                % Patterns specific to the Roman supplement, in which
+                % the outlines are in an eexec section.
  { (/Encoding 256 array) {
    pop out (/Encoding ) writestring
     { dup buffer readline pop
@@ -216,8 +227,8 @@ QUIET not { (Writing ) print CSRName = flush } if
    loop
     {	% Stack: infile dupline postdup (dup) predup
       pop pop exch pop
-	% The top element of the stack is a string beginning with
-	% an index and value to put into the Encoding.
+        % The top element of the stack is a string beginning with
+        % an index and value to put into the Encoding.
       token pop exch token pop exch pop encoding 3 1 roll put
       dup buffer readline pop
       dup (dup) search not { pop exit } if
@@ -238,8 +249,8 @@ QUIET not { (Writing ) print CSRName = flush } if
    dup //.eexec_param_dict /eexecDecode filter
  } }
  { (dup/CharStrings ) {
-	% Copy the individual CharStrings to the CSR file,
-	% recording the lengths and offsets.
+        % Copy the individual CharStrings to the CSR file,
+        % recording the lengths and offsets.
    pop out (dup/CharStrings AltsysCFD3 /CharStrings get put\n) writestring
    /offsets 256 dict def
     { dup token pop		% char name
@@ -252,7 +263,7 @@ QUIET not { (Writing ) print CSRName = flush } if
       dup buffer readline pop pop	% skip ND
     }
    loop
-	% We skipped the 'end'; skip the 'readonly put' as well.
+        % We skipped the 'end'; skip the 'readonly put' as well.
    2 { dup token pop pop } repeat
    out (dup/PGOffsets ) writestring
      out csr fileposition write=only
@@ -279,7 +290,7 @@ QUIET not { (Writing ) print CSRName = flush } if
    pop out (end % systemdict\n) writestring
    closefile
  } }
-		% Patterns for other supplements.
+                % Patterns for other supplements.
  { (pgfonts/) {
     { cdfromstr search not { exit } if
       out exch writestring pop out cdstr writestring
@@ -305,7 +316,7 @@ QUIET not { (Writing ) print CSRName = flush } if
       (end def) search { pop pop pop exit } if
       (/Std) search
        { pop pop dup length 3 sub 3 exch getinterval
-	 (]) search pop out ( ) writestring out exch writestring pop
+         (]) search pop out ( ) writestring out exch writestring pop
        }
       if pop
     }
@@ -329,7 +340,7 @@ QUIET not { (Writing ) print CSRName = flush } if
 forall
 csr closefile
 
-		% Copy the definition of the root font.
+                % Copy the definition of the root font.
 
 dup buffer readstring pop out exch writestring closefile
 out (
@@ -337,7 +348,7 @@ setpacking
 ) writestring
 out closefile
 
-		% Remove the Mac garbage from the outline files.
+                % Remove the Mac garbage from the outline files.
 
 [ (COD) (CSA) ]
  { CDir (/) concatstrings (JIS83-1_) concatstrings
@@ -345,9 +356,9 @@ out closefile
    exch OutDot exch concatstrings
      QUIET not { (Writing ) print dup = flush } if
      (w) file
-		% Stack: infile outfile
+                % Stack: infile outfile
     { 1 index buffer readstring exch
-		% Stack: infile outfile noteof substring
+                % Stack: infile outfile noteof substring
       2 index exch writestring not { exit } if
     }
    loop closefile closefile

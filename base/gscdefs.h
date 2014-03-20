@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/*$Id: gscdefs.h 8479 2008-01-07 20:58:40Z giles $ */
+
 /* Prototypes for configuration definitions in gconfig.c. */
 
 #ifndef gscdefs_INCLUDED
@@ -68,10 +70,13 @@ extern const unsigned gx_io_device_table_count;
 /* descriptors (no longer used), and (as the value) the length of the lists. */
 #define extern_gs_lib_device_list()\
   int gs_lib_device_list(const gx_device * const **plist,\
-			 gs_memory_struct_type_t **pst)
+                         gs_memory_struct_type_t **pst)
 
 /* find a compositor by name */
 #define extern_gs_find_compositor() \
   const gs_composite_type_t * gs_find_compositor(int comp_id)
+
+#define extern_gs_get_fapi_server_inits() \
+  const gs_fapi_server_init_func * gs_get_fapi_server_inits(void)
 
 #endif /* gscdefs_INCLUDED */

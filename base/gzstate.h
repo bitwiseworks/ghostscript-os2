@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gzstate.h 10648 2010-01-27 14:55:55Z robin $ */
+
 /* Private graphics state definition for Ghostscript library */
 
 #ifndef gzstate_INCLUDED
@@ -50,10 +52,6 @@ typedef struct gs_client_color_s gs_client_color;
 #  define gs_font_DEFINED
 typedef struct gs_font_s gs_font;
 #endif
-#ifndef gs_transparency_group_DEFINED
-#  define gs_transparency_group_DEFINED
-typedef struct gs_transparency_group_s gs_transparency_group_t;
-#endif
 #ifndef gs_device_filter_stack_DEFINED
 #  define gs_device_filter_stack_DEFINED
 typedef struct gs_device_filter_stack_s gs_device_filter_stack_t;
@@ -89,7 +87,7 @@ struct gs_state_s {
     bool ctm_inverse_valid;	/* true if ctm_inverse = ctm^-1 */
     gs_matrix ctm_default;
     bool ctm_default_set;	/* if true, use ctm_default; */
-				/* if false, ask device */
+                                /* if false, ask device */
     /* Paths: */
 
     gx_path *path;
@@ -101,19 +99,24 @@ struct gs_state_s {
     gs_id effective_clip_id;	/* (key) clip path id */
     gs_id effective_view_clip_id;	/* (key) view clip path id */
     gx_clip_path *effective_clip_path;	/* (value) effective clip path, */
-				/* possibly = clip_path or view_clip */
+                                /* possibly = clip_path or view_clip */
     bool effective_clip_shared;	/* true iff e.c.p. = c.p. or v.c. */
 
-    /* Color (device-independent): */
+#define gs_currentdevicecolor_inline(pgs) \
+    ((pgs)->color[0].dev_color)
+#define gs_currentcolor_inline(pgs) \
+    ((pgs)->color[0].ccolor)
+#define gs_currentcolorspace_inline(pgs) \
+    ((pgs)->color[0].color_space)
+#define gs_altdevicecolor_inline(pgs) \
+    ((pgs)->color[1].dev_color)
 
-    gs_color_space *color_space; /* after substitution */
-    gs_client_color *ccolor;
-
-    /* Color caches: */
-
-#define gs_currentdevicecolor_inline(pgs) ((pgs)->dev_color)
-
-    gx_device_color *dev_color;
+    /* Current colors (non-stroking, and stroking) */
+    struct {
+        gs_color_space *color_space; /* after substitution */
+        gs_client_color *ccolor;
+        gx_device_color *dev_color;
+    } color[2];
 
     /* Font: */
 
@@ -125,7 +128,7 @@ struct gs_state_s {
     gs_in_cache_device_t in_cachedevice;    /* (see gscpm.h) */
     gs_char_path_mode in_charpath;	/* (see gscpm.h) */
     gs_state *show_gstate;	/* gstate when show was invoked */
-				/* (so charpath can append to path) */
+                                /* (so charpath can append to path) */
 
     /* Other stuff: */
 
@@ -134,8 +137,6 @@ struct gs_state_s {
 #undef gs_currentdevice_inline
 #define gs_currentdevice_inline(pgs) ((pgs)->device)
     gs_device_filter_stack_t *dfilter_stack;
-
-    gs_transparency_group_t *transparency_group_stack; /* (PDF 1.4 only) */
 
     /* Client data: */
 
@@ -155,15 +156,18 @@ struct gs_state_s {
 #define gs_state_do_ptrs(m)\
   m(0,saved) m(1,path) m(2,clip_path) m(3,clip_stack)\
   m(4,view_clip) m(5,effective_clip_path)\
-  m(6,color_space) m(7,ccolor) m(8,dev_color)\
-  m(9,font) m(10,root_font) m(11,show_gstate) /*m(---,device)*/\
-  m(12,transparency_group_stack)
-#define gs_state_num_ptrs 13
+  m(6,color[0].color_space) m(7,color[0].ccolor) m(8,color[0].dev_color)\
+  m(9,color[1].color_space) m(10,color[1].ccolor) m(11,color[1].dev_color)\
+  m(12,font) m(13,root_font) m(14,show_gstate)
+#define gs_state_num_ptrs 15
 
-/* The following macro is used for development purpose for designating places 
+/* The following macro is used for development purpose for designating places
    where current point is changed. Clients must not use it. */
 #define gx_setcurrentpoint(pgs, xx, yy)\
     (pgs)->current_point.x = xx;\
     (pgs)->current_point.y = yy;
+
+int gs_swapcolors(gs_state *);
+void gs_swapcolors_quick(gs_state *);
 
 #endif /* gzstate_INCLUDED */

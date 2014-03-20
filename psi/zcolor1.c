@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: zcolor1.c 9043 2008-08-28 22:48:19Z giles $ */
+
 /* Level 1 extended color operators */
 #include "ghost.h"
 #include "oper.h"
@@ -78,13 +80,13 @@ zsetblackgeneration(i_ctx_t *i_ctx_p)
     check_estack(1 + zcolor_remap_one_estack);
     code = gs_setblackgeneration_remap(igs, gs_mapped_transfer, false);
     if (code < 0)
-	return code;
+        return code;
     istate->black_generation = *op;
     pop(1);
     push_op_estack(zcolor_remap_color);
     return zcolor_remap_one(i_ctx_p, &istate->black_generation,
-			    igs->black_generation, igs,
-			    zcolor_remap_one_finish);
+                            igs->black_generation, igs,
+                            zcolor_remap_one_finish);
 }
 
 /* <redproc> <greenproc> <blueproc> <grayproc> setcolortransfer - */
@@ -105,31 +107,31 @@ zsetcolortransfer(i_ctx_t *i_ctx_p)
     istate->transfer_procs.blue = op[-1];
     istate->transfer_procs.gray = *op;
     if ((code = gs_setcolortransfer_remap(igs,
-				     gs_mapped_transfer, gs_mapped_transfer,
-				     gs_mapped_transfer, gs_mapped_transfer,
-					  false)) < 0
-	)
-	return code;
+                                     gs_mapped_transfer, gs_mapped_transfer,
+                                     gs_mapped_transfer, gs_mapped_transfer,
+                                          false)) < 0
+        )
+        return code;
     /* Use osp rather than op here, because zcolor_remap_one pushes. */
     pop(4);
     push_op_estack(zcolor_reset_transfer);
     if ((code = zcolor_remap_one(i_ctx_p,
-				 &istate->transfer_procs.red,
-				 igs->set_transfer.red, igs,
-				 zcolor_remap_one_finish)) < 0 ||
-	(code = zcolor_remap_one(i_ctx_p,
-				 &istate->transfer_procs.green,
-				 igs->set_transfer.green, igs,
-				 zcolor_remap_one_finish)) < 0 ||
-	(code = zcolor_remap_one(i_ctx_p,
-				 &istate->transfer_procs.blue,
-				 igs->set_transfer.blue, igs,
-				 zcolor_remap_one_finish)) < 0 ||
-	(code = zcolor_remap_one(i_ctx_p, &istate->transfer_procs.gray,
-				 igs->set_transfer.gray, igs,
-				 zcolor_remap_one_finish)) < 0
-	)
-	return code;
+                                 &istate->transfer_procs.red,
+                                 igs->set_transfer.red, igs,
+                                 zcolor_remap_one_finish)) < 0 ||
+        (code = zcolor_remap_one(i_ctx_p,
+                                 &istate->transfer_procs.green,
+                                 igs->set_transfer.green, igs,
+                                 zcolor_remap_one_finish)) < 0 ||
+        (code = zcolor_remap_one(i_ctx_p,
+                                 &istate->transfer_procs.blue,
+                                 igs->set_transfer.blue, igs,
+                                 zcolor_remap_one_finish)) < 0 ||
+        (code = zcolor_remap_one(i_ctx_p, &istate->transfer_procs.gray,
+                                 igs->set_transfer.gray, igs,
+                                 zcolor_remap_one_finish)) < 0
+        )
+        return code;
     return o_push_estack;
 }
 
@@ -145,15 +147,14 @@ zsetundercolorremoval(i_ctx_t *i_ctx_p)
     check_estack(1 + zcolor_remap_one_estack);
     code = gs_setundercolorremoval_remap(igs, gs_mapped_transfer, false);
     if (code < 0)
-	return code;
+        return code;
     istate->undercolor_removal = *op;
     pop(1);
     push_op_estack(zcolor_remap_color);
     return zcolor_remap_one(i_ctx_p, &istate->undercolor_removal,
-			    igs->undercolor_removal, igs,
-			    zcolor_remap_one_signed_finish);
+                            igs->undercolor_removal, igs,
+                            zcolor_remap_one_signed_finish);
 }
-
 
 /* ------ Initialization procedure ------ */
 

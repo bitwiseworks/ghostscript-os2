@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsnotify.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Notification machinery */
 
 #ifndef gsnotify_INCLUDED
@@ -61,7 +63,7 @@ void gs_notify_init(gs_notify_list_t *nlist, gs_memory_t *mem);
 
 /* Register a client. */
 int gs_notify_register(gs_notify_list_t *nlist, gs_notify_proc_t proc,
-		       void *proc_data);
+                       void *proc_data);
 
 /*
  * Unregister a client.  Return 1 if the client was registered, 0 if not.
@@ -69,12 +71,12 @@ int gs_notify_register(gs_notify_list_t *nlist, gs_notify_proc_t proc,
  * unregister only the registration of that procedure with that proc_data.
  */
 int gs_notify_unregister(gs_notify_list_t *nlist, gs_notify_proc_t proc,
-			 void *proc_data);
+                         void *proc_data);
 
 /* Unregister a client, calling a procedure for each unregistration. */
 int gs_notify_unregister_calling(gs_notify_list_t *nlist,
-				 gs_notify_proc_t proc, void *proc_data,
-				 void (*unreg_proc)(void *pdata));
+                                 gs_notify_proc_t proc, void *proc_data,
+                                 void (*unreg_proc)(void *pdata));
 
 /*
  * Notify the clients on a list.  If an error occurs, return the first

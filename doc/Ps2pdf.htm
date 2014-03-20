@@ -1,8 +1,8 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
 <html>
 <head>
+<meta http-equiv="content-type" content="text/html; charset=us-ascii">
 <title>ps2pdf: PostScript-to-PDF converter</title>
-<!-- $Id: Ps2pdf.htm 10732 2010-02-10 18:17:48Z giles $ -->
 <!-- Originally: ps2pdf.txt -->
 <link rel="stylesheet" type="text/css" href="gs.css" title="Ghostscript Style">
 </head>
@@ -38,8 +38,7 @@
 
 <!-- [1.3 begin hint] ====================================================== -->
 
-<p>For other information, see the <a href="Readme.htm">Ghostscript
-overview</a>.
+<p>For other information, see the <a href="Readme.htm">Ghostscript overview</a>.
 
 <!-- [1.3 end hint] ======================================================== -->
 
@@ -106,7 +105,7 @@ However, this may change in the future.  If you care about compatibility
 with a specific output level,use the
 <code>-dCompatibilityLevel=</code><em>1.x</em> switch in the command
 line, or one of the specific version aliases <code>ps2pdf12</code>, 
-<code>ps2pdf13</code>, or <b><tt>ps2pdf14</tt></b>.
+<code>ps2pdf13</code>, or <code>ps2pdf14</code>.
 
 </ul>
 
@@ -120,7 +119,7 @@ the script name.  You can still specify the output format by using
 
 <p>
 All of these scripts actually call a script named <code>ps2pdfwr</code>
-or <code>ps2pdfxx</code>.  The Unix <b><tt>ps2pdfwr</tt></b> script
+or <code>ps2pdfxx</code>.  The Unix <code>ps2pdfwr</code> script
 assumes that the Ghostscript executable is named <code>gs</code>; it is
 unlikely that you will need to change this.  The DOS and MS Windows
 <code>ps2pdfxx.bat</code> script uses the value of the
@@ -129,6 +128,19 @@ executable; otherwise the script assumes the executable is named
 <code>gswin32c</code>.  So in these environments, if the executable has a
 different name, you must set <code>GSC</code> to the name of the
 executable.
+
+<p>
+Ordinarily a single PDF file will be written that includes all input files
+ (concatenated), but if the OutputFile is changed then the current pages
+will be written and a new PDF file will be started.
+<p><b>
+Note that the OutputFile will always be written, and if there is no (further)
+input the file will be a single blank page.
+<p>
+Also, if the OutputFile (or -o outputfile specification) contains a
+<a href="Use.htm#One_page_per_file">format specifier</a> then there will be
+one extra (blank page) file created as a result.
+</b>
 
 <hr>
 
@@ -158,9 +170,9 @@ See <a href="#Limitations">Limitations</a> below.
 
 <p>
 Ghostscript passes the orientation values from DSC comments to
-<code>pdfwrite</code> driver
-but they are effectively ignored there. This appears to be consistent with
-Distiller 5 behavior.
+<code>pdfwrite</code> driver, and these are compared with the
+auto-rotate heuristic. If they are different then the auto-rotate
+value will be used. To use the DSC comment instead select AutoRotatePages=/None
 
 <hr>
 
@@ -177,12 +189,12 @@ be useful:
 
 <dt><code>-r</code><em>resolution</em>
 <dd>Sets the resolution for pattern fills and for fonts that must be
-converted to bitmaps.
+converted to bitmaps. The default internal resolution for pdfwrite is 720dpi.
 
 <dt><code>-dProcessColorModel=</code><em>device_color_space</em> <dd>Sets
 the color space to be used for device-dependent colors in the
 output. <em>device_color_space</em> may be <code>/DeviceGray</code>,
-<code>/DeviceRGB</code>, or <b><tt>/DeviceCMYK</tt></b>; the default
+<code>/DeviceRGB</code>, or <code>/DeviceCMYK</code>; the default
 value is <code>/DeviceRGB</code>.  Note that this does not affect images:
 see <a href="#Limitations">Limitations</a> below.
 
@@ -256,15 +268,26 @@ original colour space will be used instead.
 <dt><code>-dPreserveDeviceN</code>
 <dd>Behaves as per PreserveSeparation above except that it deals with DeviceN colour
 spaces.
+
+<dt><code>-dDetectDuplicateImages</code>
+<dd> Takes a Boolean argument, when set to true (the default) pdfwrite will compare all new images with all the images encountered to date (NOT small images which are stored in-line) to see if the new image is a duplicate of an earlier one. If it is a duplicate then instead of writing a new image into the PDF file, the PDF will reuse the reference to the earlier image. This can considerably reduce the size of the output PDF file, but increases the time taken to process the file. This time grows exponentially as more images are added, and on large input files with numerous images can be prohibitively slow. Setting this to false will improve performance at the cost of final file size.
+
+<dt><code>-dFastWebView</code>
+<dd> Takes a Boolean argument, default is false. When set to true pdfwrite will
+reorder the output PDF file to conform to the Adobe 'linearised' PDF specification.
+The Acrobat user interface refers to this as 'Optimised for Fast Web Viewing'.
+Note that this will cause the conversion to PDF to be slightly slower and will
+usually result in a slightly larger PDF file.</dd>
+</dt>
 </dl>
 
 <p>
-The following option controls a conversion into PDF/X-3:
+The following option specifies a conversion into PDF/X-3:
 <p>
 
 <dl>
 <dt><code>-dPDFX=</code><em>boolean</em>
-<dd>Specifies the generated document to follow the PDF/X-3 standard.
+<dd>Specifies the generated document is to follow the PDF/X-3 standard.
 When true, a <code>DefaultRGB</code> <code>ColorSpace</code> resource 
 must be defined, and options <code>NOSUBSTDEVICECOLORS</code>, 
 <code>NOCIE</code> must not be specified.
@@ -276,16 +299,16 @@ Default value is <code>false</code>.
 When generating a PDF/X-3 document, Ghostscript performs the following 
 special actions to satisfy the PDF/X-3 standard :
 <ul>
-<li> All fonts are being embedded.
-<li> <code>DeviceRGB</code> color space is being substituted with 
-<code>DefaultRGB</code> color space,
+<li> All fonts are embedded.
+<li> <code>DeviceRGB</code> color space is substituted with 
+<code>the DefaultRGB</code> color space,
 which must be defined in the <code>ColorSpace</code> category.
 The easiest way is to provide it in the <code>DefaultRGB</code> file in the resource directory. 
-<li> <code>DeviceRGB</code> color values are being passed unchanged.
-If an user needs an untrivial color adjustment, an untrivial 
-<code>DefaultRGB</code> color space to be defined.
-<li> Transfer functions and halftone phases are being skipped.
-<li> <code>/PS pdfmark</code> interpretes the <code>DataSource</code> 
+<li> <code>DeviceRGB</code> color values are passed unchanged.
+If a user needs an non trivial color adjustment, a non trivial 
+<code>DefaultRGB</code> color space must be defined.
+<li> Transfer functions and halftone phases are skipped.
+<li> <code>/PS pdfmark</code> interprets the <code>DataSource</code> 
 stream or file.
 <li><code>TrimBox</code> and <code>BleedBox</code> entries
 are generated in page descriptions.
@@ -309,8 +332,7 @@ the target viewer handles <code>ImageMask</code> with a pattern color.
 Some old viewers, such as Ghostscript 3.30 fail with such constructs.
 Seting this option to false, one can get more compatibility,
 but the mask interpolation is lost.
-With <code>CompatibilityLevel &ge; 1.3 </code> this option is being 
-ignored.
+With <code>CompatibilityLevel &ge; 1.3 </code> this option is ignored.
 Default value is <code>false</code>.
 
 <dt><code>-dMaxClipPathSize=<em>integer</em></code>
@@ -320,7 +342,7 @@ that the target viewer can handle. This option is used only with
 <code>PatternImagemask=false</code>,
 and only when converting a mask into a clipping path.
 If the clipping path exceeds the specified size,
-the masked image and the clipping path is being decomposed into smaller images.
+the masked image and the clipping path is decomposed into smaller images.
 The value of the option counts straight path segments
 (curved segments are not used for representing a mask).
 Default value is <code>12000</code>.
@@ -329,14 +351,13 @@ Default value is <code>12000</code>.
 <dd>With <code>CompatibilityLevel &lt; 1.3</code> it specifies 
 the maximum number of bytes allowed for representing a shading as a bitmap.
 If a shading exceeds this value, the resolution of the output bitmap
-is being reduces to fit into the specified frame.
+is reduced to fit into the specified frame.
 Note that the number of bytes depends on the number of color components
 in <code>ProcessColorModel</code>, assumes 8 bits per sample,
 and doesn't account an image compression or filtering.
 Also note that reducing the resolution results unsmooth shading boundaries.
 
-With <code>CompatibilityLevel &ge; 1.3</code> this option is being 
-ignored. Default value is <code>256000</code>.
+With <code>CompatibilityLevel &ge; 1.3</code> this option is ignored. Default value is <code>256000</code>.
 For the best quality one can set the maximal integer value,
 but the output file size may dramatically increase.
 Therefore the user should choose a compromise value.
@@ -344,10 +365,9 @@ Therefore the user should choose a compromise value.
 <dt><code>-dHaveTrueTypes=<em>boolean</em></code>
 <dd>With <code>CompatibilityLevel &lt; 1.3</code> it specifies 
 whether the target viewer can handle TrueType fonts.
-If not, TrueType fonts are being converted into raster fonts
+If not, TrueType fonts are converted into raster fonts
 with resolution specified in <code>HWResolution</code>.
-With <code>CompatibilityLevel &ge; 1.3</code> this option is being 
-ignored. Default value is <code>true</code>.
+With <code>CompatibilityLevel &ge; 1.3</code> this option is ignored. Default value is <code>true</code>.
 
 </dl>
 
@@ -360,7 +380,7 @@ The following option controls a conversion into PDF 1.3:
 <dt><code>-dHaveTransparency=<em>boolean</em></code>
 <dd>With <code>CompatibilityLevel &ge; 1.4</code> it specifies 
 whether the target viewer can handle PDF 1.4 transparency objects.
-If not, transparency objects are being converted into plain images.
+If not, transparency objects are converted into plain images.
 Default value is <code>true</code>.
 
 </dl>
@@ -378,7 +398,7 @@ owner password.
 <dt><code>-sUserPassword=</code><em>string</em>
 <dd>Defines the user password for opening the document.
 If empty, the document can be opened with no password,
-but the owner password is required to eÂdit it.
+but the owner password is required to edit it.
 </dl>
 
 <dl>
@@ -408,7 +428,7 @@ The following switches are used for generating metadata according to Adobe XMP s
 <dt><code>-sDocumentUUID=</code><em>string</em>
 <dd>Defines a DocumentID to be included into the document Metadata.
 If not specified, Ghostscript generates an UUID automatically.
-Otherwise the specified string is being copyed into the document without 
+Otherwise the specified string is copied into the document without 
 checking its syntax or consistence.
 <p>
 Note that Adobe XMP specification requires DocumentID must be same
@@ -425,7 +445,7 @@ Therefore it uses an MD5 hash of the document contents for generating UUIDs.
 <dt><code>-sInstanceUUID=</code><em>string</em>
 <dd>Defines a instance ID to be included into the document Metadata.
 If not specified, Ghostscript generates an UUID automatically.
-Otherwise the specified string is being copyed into the document without
+Otherwise the specified string is copied into the document without
 checking its syntax or consistence.
 <p>
 Note that Adobe XMP specification requires instance ID must be inique
@@ -445,7 +465,7 @@ UUIDs, when several invokations of Ghostscript create
 several PDF documents within same clock quantum (tick).
 Mainly reserved for very fast computers and/or multhithreading applications,
 which may appear in future. If both <code>DocumentUUID</code>
-and <code>InstanceUUID</code> are specified, <b><tt>DocumentTimeSeq</tt></b> is being ignored.
+and <code>InstanceUUID</code> are specified, <code>DocumentTimeSeq</code> is ignored.
 </dl>
 
 <dl>
@@ -597,12 +617,6 @@ parameter is set to <code>/Preserve</code>, the function setting is also
 copied into the PDF file.
 
 <p>
-<a name="note_5">(note 5)</a>
-Optimization (linearization) is implemented with a separate program,
-<code>pdfopt</code> <em>input.pdf</em> <em>output.pdf</em>; the
-<code>Optimize</code> parameter has no effect.
-
-<p>
 <a name="note_6">(note 6)</a>
 
 Ghostscript specifics : The value <code>UseDeviceIndependentColor</code>
@@ -654,6 +668,10 @@ The screen and ebook ACS image parameter dictionary is
 <a name="note_11">(note 11)</a>
 The default, screen, and ebook settings never embed the 14 standard fonts
 (Courier, Helvetica, and Times families, Symbol, and ZapfDingbats).
+This behavior is intentional but can be overrided by:
+<blockquote><code>
+&lt;&lt; /NeverEmbed [ ] &gt;&gt; setdistillerparams
+</code></blockquote>
 
 <p>
 <a name="note_12">(note 12)</a>
@@ -666,11 +684,11 @@ name.
 
 <p>
 <a name="note_13">(note 13)</A>
-The arrays <code>AlwaysEmbed</code> and <b><tt>NeverEmbed</tt></b> and
+The arrays <code>AlwaysEmbed</code> and <code>NeverEmbed</code> and
 image parameter dictionaries <code>ColorACSImageDict</code>,
-<code>ColorACSImageDict</code>, <b><tt>ColorImageDict</tt></b>,
+<code>ColorACSImageDict</code>, <code>ColorImageDict</code>,
 
-<code>GrayACSImageDict</code>, <b><tt>GrayImageDict</tt></b>,
+<code>GrayACSImageDict</code>, <code>GrayImageDict</code>,
 <code>MonoImageDict</code> cannot be specified on the ps2pdf command line.
 To specify these, you must use PostScript, either by including it in the PostScript source
 or by passing the <code>-c</code> command-line parameter to ghostscript as described in <a href="#Limitations">Limitations</A> below.
@@ -738,7 +756,8 @@ To create a PDF/X-3 document from a Postscript or a PDF file, you should :
 <li> Specify the <code>-dPDFX</code> option. It provides the document conformity 
      and forces <code>-dCompatibilityLevel=1.3</code>.
 <li> Specify <code>-sProcessColorModel=DeviceGray</code> or <code>-sProcessColorModel=DeviceCMYK</code>
-     (<code>DeviceRGB</code> is not allowed).
+     (<code>DeviceRGB</code> is not allowed). You must specify a ProcessColorModel, even if you plan
+     to create a device-independent colour PDF file using -dUseCIEColor.
 <li> Specify the <code>-dUseCIEColor</code> option if necessary (see below).
 <li> Specify a PDF/X definition file before running the input document.
      It provides additional information to be included into the output document.
@@ -749,17 +768,17 @@ To create a PDF/X-3 document from a Postscript or a PDF file, you should :
 <li> Provide a <code>DefaultRGB</code> resource file in the ColorSpace resource category.
      Either define it in the PDF/X definition file, or provide
      a definition of <code>gs/Resource/ColorSpace/DefaultRGB</code> .
-     Rather <code>gs/Resource/ColorSpace/DefaultRGB</code> is usually 
-     distributed with Ghostscript, its contents is not necessarily satisfy your needs, see below.
+     <code>gs/Resource/ColorSpace/DefaultRGB</code> is usually 
+     distributed with Ghostscript, its content may not necessarily satisfy your needs, see below.
 </ul>
 
 <p>
-As mentioned above, the PDF/X definition file provides a special information,
+As mentioned above, the PDF/X definition file provides special information,
 which the PDF/X-3 standard requires. You can find a sample file in
 <code>gs/lib/PDFX_def.ps</code>, and edit it according to your needs.
 The file follows Postscript syntax and uses the operator <code>pdfmark</code>
 to pass the special information. For your comfort 
-we marked editable lines in the sample file with the comment <code>% Customize</code>.
+we marked the lines likely to need editing in the sample file with the comment <code>% Customize</code>.
 They are explained below.
 
 <dl>
@@ -795,7 +814,7 @@ define a title with DSC comments. Otherwise remove entire line from definition f
 </dl>
 
 <p>
-Rather the PDF/X-3 standard requires colors to be adjusted at the
+The PDF/X-3 standard requires colors to be adjusted at the
 document generation time, Ghostscript <em>does not</em> perform any
 special color conversion. Either colors to be adjusted in advance,
 or a proper color conversion to be specified in <code>DefaultGray</code>,
@@ -806,10 +825,10 @@ or a proper color conversion to be specified in <code>DefaultGray</code>,
 If you want any color to be converted into CIE color,
 the <code>-dUseCIEColor</code> option to be specified
 in the command line. If it is not specified, 
-only RGB colors are being converted into CIE colors
+only RGB colors are converted into CIE colors
 with using the <code>DefaultRGB</code> color space resource,
 but <code>DeviceGray</code> and <code>DeviceCMYK</code>
-colors are being passed identically.
+colors are passed identically.
 
 <p>Please note that if a graphic object can't embed into the output format,
 Ghostscript converts it into low level objects, using a device color space
@@ -867,36 +886,51 @@ gs -dPDFX -dBATCH -dNOPAUSE -dNOOUTERSAVE -dUseCIEColor -sDEVICE=pdfwrite -sOutp
 </code></blockquote>
 
 <p>
+Please also see the <code>PDFACompatibilityPolicy</code> control described under "Creating a PDF/A document" below. The same control is now used to specify the desired behaviour when an input file cannot be converted 'as is' into a PDF/X file.
+<p>
 <hr>
 <h2><a name="PDFA"></a>Creating a PDF/A document</h2>
 
 <p>
-To create a PDF/A document, please follow instructions about <a href="#PDFX">creating a PDF/X-3 document</a>,
+To create a PDF/A document, please follow the instructions for <a href="#PDFX">creating a PDF/X-3 document</a>,
 with the following exceptions :
 
 <ul>
-<li> Specify the <code>-dPDFA</code> option.
-<li> A sample PDF/A definition file may be found in <code>gs/lib/PDFA_def.ps</code>.
-<li> <code>Info</code>, <b><tt>OutputCondition</tt></b>, <b><tt>OutputConditionIdentifier</tt></b> 
-are not required in the PDF/A definition file.
+<li> Specify the <code>pdfwrite</code> device or use the <code>ps2pdf</code> script.
+<li> Specify the <code>-dPDFA</code> option to specify PDF/A-1 or PDF/A-2.
+<li> Specify <code>-sProcessColorModel=DeviceGray</code>,  <code>-sProcessColorModel=DeviceRGB</code> or <code>-sProcessColorModel=DeviceCMYK</code>
+     You must specify a ProcessColorModel, even if you plan
+     to create a device-independent colour PDF file using -dUseCIEColor.
+<li> Specify the <code>-dUseCIEColor</code> option if necessary (see PDF/X above).
+<li> Specify a PDF/A definition file before running the input document.
+     It provides additional information to be included in the output document.
+     A sample PDF/A definition file may be found in <code>gs/lib/PDFA_def.ps</code>.
+     You will need to modify the content of this file; in particular you must alter the
+     /ICCProfile so that it points to a valid ICC profile for your OutputIntent. The 
+     string '(...)' defining the ICCProfile must be a fully qualified device and path
+     specification appropriate for your Operating System.
 </ul>
 
 There is one additional control for PDF/A output:
 
 <dl>
 <dt><code>PDFACompatibilityPolicy</code> <em>integer</em>
-<dd>When an operation (eg pdfmark) is encountered which cannot be emitted in a PDF/A compliant file, this policy is consulted, there are currently two possible values:
+<dd>When an operation (eg pdfmark) is encountered which cannot be emitted in a PDF/A compliant file, this policy is consulted, there are currently three possible values:
 
 <blockquote>0 - (default) Include the feature or operation in the output file, the file will not be PDF/A compliant. Because the document Catalog is emitted before this is encountered, the file will still contain PDF/A metadata but will not be compliant. A warning will be emitted in this case.
 </blockquote>
 <dd>
 <blockquote>1 - The feature or operation is ignored, the resulting PDF file will be PDF/A compliant. A warning wil be emitted for every elided feature.
 </blockquote>
+<dd>
+<blockquote>2 - Processing of the file is aborted with an error, the exact error may vary
+depending on the nature of the PDF/A incompatibility.
+</blockquote>
 </dl>
 
 Here is a sample command line to invoke Ghostscript for generating a PDF/A document :
 <blockquote><code>
-gs -dPDFA -dBATCH -dNOPAUSE -dNOOUTERSAVE -dUseCIEColor -sDEVICE=pdfwrite -sOutputFile=out-a.pdf PDFA_def.ps input.ps
+gs -dPDFA=1 -dBATCH -dNOPAUSE -dNOOUTERSAVE -dUseCIEColor -sProcessColorModel=DeviceCMYK -sDEVICE=pdfwrite -sOutputFile=out-a.pdf PDFA_def.ps input.ps
 </code></blockquote>
 
 <p>
@@ -923,12 +957,12 @@ switch, e.g., <code>ps2pdf&nbsp;-r300&nbsp;somefile.ps</code>.
 <p>
 <code>ps2pdf</code> ignores the PDF 1.3 (Acrobat 4.x) pdfmarks related to
 document content structure: <code>StRoleMap</code>,
-<code>StClassMap</code>, <b><tt>StPNE</tt></b>,
-<code>StBookmarkRoot</code>, <b><tt>StPush</tt></b>,
-<code>StPop</code>, <b><tt>StPopAll</tt></b>, <b><tt>StBMC</tt></b>,
-<code>StBDC</code>, <b><tt>EMC</tt></b>, <b><tt>StOBJ</tt></b>,
-<code>StAttr</code>, <b><tt>StStore</tt></b>, <b><tt>StRetrieve</tt></b>,
-<code>NamespacePush</code>, <b><tt>NamespacePop</tt></b>, and
+<code>StClassMap</code>, <code>StPNE</code>,
+<code>StBookmarkRoot</code>, <code>StPush</code>,
+<code>StPop</code>, <code>StPopAll</code>, <code>StBMC</code>,
+<code>StBDC</code>, <code>EMC</code>, <code>StOBJ</code>,
+<code>StAttr</code>, <code>StStore</code>, <code>StRetrieve</code>,
+<code>NamespacePush</code>, <code>NamespacePop</code>, and
 <code>NI</code>.  While this causes some structural information to be
 omitted from the output file, the displayed and printed output are normally
 not affected.
@@ -973,7 +1007,7 @@ of the <tt>.setpdfwrite</tt> operator.
 <p>
 Distiller parameters should only be saved by <code>save</code> and
 restored by <code>restore</code>, but they are also saved by
-<code>gsave</code> and restored by <b><tt>grestore</tt></b>.
+<code>gsave</code> and restored by <code>grestore</code>.
 
 <p>
 Changing the value of the <code>CompressPages</code> parameter after any
@@ -1022,7 +1056,7 @@ output, especially if the input file involves pattern fills.
 <p>
 Many users report that the combination of <code>ps2pdf</code> with
 Acrobat Reader is superior to using a generic PostScript viewer
-(<code>psview</code> or <b><tt>ghostview</tt></b>), particularly for
+(<code>psview</code> or <code>ghostview</code>), particularly for
 documents with many pages where the navigational support in PDF files
 reduces the overhead involved in navigating conventional PostScript
 documents.
@@ -1061,7 +1095,7 @@ or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
 San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
 
 <p>
-<small>Ghostscript version 8.71, 10 February 2010
+<small>Ghostscript version 9.10, 30 August 2013
 
 <!-- [3.0 end visible trailer] ============================================= -->
 

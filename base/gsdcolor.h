@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/*$Id: gsdcolor.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Device color representation for drivers */
 
 #ifndef gsdcolor_INCLUDED
@@ -22,7 +24,6 @@
 #include "gxbitmap.h"
 #include "gxhttile.h"
 #include "gxcindex.h"
-#include "gxwts.h"
 
 #ifndef gx_device_color_DEFINED
 #  define gx_device_color_DEFINED
@@ -47,9 +48,9 @@ typedef struct gx_device_halftone_s gx_device_halftone;
 
 /*
  * A device color consists of a base color and an optional (tiled) mask.
- * The base color may be a pure color, a binary halftone, or a colored
- * bitmap (color halftone or colored Pattern).  The mask is used for
- * both colored and uncolored Patterns.
+ * The base color may be a pure color, a devn color, a binary halftone,
+ * or a colored bitmap (color halftone or colored Pattern).  The mask is
+ * used for both colored and uncolored Patterns.
  */
 
 /* Accessing a pure color. */
@@ -59,6 +60,10 @@ typedef struct gx_device_halftone_s gx_device_halftone;
   (gx_dc_is_pure(pdc) && lop_no_S_is_T(lop))
 #define gx_dc_pure_color(pdc)\
   ((pdc)->colors.pure)
+
+/* Accessing a devn color. */
+#define gx_dc_is_devn(pdc)\
+  ((pdc)->type == gx_dc_type_devn)
 
 /* Accessing the phase of a halftone. */
 #define gx_dc_phase(pdc)\
@@ -85,7 +90,7 @@ typedef struct gx_device_halftone_s gx_device_halftone;
  * about the equality of the two device colors.
  */
 bool gx_device_color_equal(const gx_device_color *pdevc1,
-			   const gx_device_color *pdevc2);
+                           const gx_device_color *pdevc2);
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * The definitions in the following section of the file, plus the ones
@@ -106,6 +111,8 @@ bool gx_device_color_equal(const gx_device_color *pdevc1,
 
 #define color_is_pure(pdc) gx_dc_is_pure(pdc)
 #define color_writes_pure(pdc, lop) gx_dc_writes_pure(pdc, lop)
+
+#define color_is_devn(pdc) gx_dc_is_devn(pdc)
 /*
  * Used to define 'pure' (solid - without halftoning or patterns) colors.
  * This macro assumes the colorspace and client color information is already
@@ -266,41 +273,36 @@ struct gx_device_color_s {
      * members even when it's unambiguous.
      */
     union _c {
-	gx_color_index pure;
-	struct _bin {
-	    const gx_device_halftone *b_ht;
-	    gx_color_index color[2];
-	    uint b_level;
-	    int b_index;
-	    gx_ht_tile *b_tile;
-	} binary;
-	struct _col {
-	    gx_device_halftone *c_ht; /* non-const for setting cache ptr */
-	    ushort num_components;
-	    byte c_base[GX_DEVICE_COLOR_MAX_COMPONENTS];
-	    uint c_level[GX_DEVICE_COLOR_MAX_COMPONENTS];
-	    ushort /*gx_color_value */ alpha;
+        gx_color_index pure;
+        struct _bin {
+            const gx_device_halftone *b_ht;
+            gx_color_index color[2];
+            uint b_level;
+            int b_index;
+            gx_ht_tile *b_tile;
+        } binary;
+        struct _col {
+            gx_device_halftone *c_ht; /* non-const for setting cache ptr */
+            ushort num_components;
+            byte c_base[GX_DEVICE_COLOR_MAX_COMPONENTS];
+            uint c_level[GX_DEVICE_COLOR_MAX_COMPONENTS];
+            ushort /*gx_color_value */ alpha;
 #if GX_DEVICE_COLOR_MAX_COMPONENTS <= ARCH_SIZEOF_SHORT * 8
-	    ushort plane_mask;
+            ushort plane_mask;
 #else
 #if GX_DEVICE_COLOR_MAX_COMPONENTS <= ARCH_SIZEOF_INT * 8
-	    uint plane_mask;
+            uint plane_mask;
 #else
-	    gx_color_index plane_mask;
+            gx_color_index plane_mask;
 #endif
 #endif
-	} colored;
-	struct _wts {
-	    const gx_device_halftone *w_ht;
-	    wts_screen_sample_t levels[GX_DEVICE_COLOR_MAX_COMPONENTS];
-	    ushort num_components;
-
-	    /* plane_mask and base_color would be an optimization */
-	    gx_color_index plane_vector[GX_DEVICE_COLOR_MAX_COMPONENTS];
-	} wts;
-	struct _pat {
-	    gx_color_tile *p_tile;
-	} /*(colored) */ pattern;
+        } colored;
+        struct _pat {
+            gx_color_tile *p_tile;
+        } /*(colored) */ pattern;
+        struct _devn {
+            ushort values[GS_CLIENT_COLOR_MAX_COMPONENTS];
+        } devn;
     } colors;
     gs_int_point phase;
     /*
@@ -320,11 +322,11 @@ struct gx_device_color_s {
     gs_client_color ccolor;
 
     struct _mask {
-	struct mp_ {
-	    short x, y;
-	} m_phase;
-	gx_bitmap_id id;
-	gx_color_tile *m_tile;
+        struct mp_ {
+            int x, y;
+        } m_phase;
+        gx_bitmap_id id;
+        gx_color_tile *m_tile;
     } mask;
 };
 
@@ -385,21 +387,20 @@ struct gx_device_color_saved_s {
             uint    c_level[GX_DEVICE_COLOR_MAX_COMPONENTS];
             ushort  alpha;
         }               colored;
-        struct _swts {
-            wts_screen_sample_t levels[GX_DEVICE_COLOR_MAX_COMPONENTS];
-        }               wts;
-	struct _pattern {
-	    gs_id id;
-	    gs_int_point phase;
-	}		pattern;
-	struct _pattern2 {
-	    gs_id id;
-	    bool shfill;
-	}		pattern2;
+        struct _svdevn {
+            ushort values[GX_DEVICE_COLOR_MAX_COMPONENTS];
+        } devn;
+        struct _pattern {
+            gs_id id;
+            gs_int_point phase;
+        }		pattern;
+        struct _pattern2 {
+            gs_id id;
+            bool shfill;
+        }		pattern2;
     }                       colors;
     gs_int_point            phase;
 };
-
 
 /*
  * Define the standard device color types.
@@ -419,10 +420,13 @@ extern const gx_device_color_type_t *const gx_dc_type_null;	/* gxdcolor.c */
 #ifndef gx_dc_type_pure
 extern const gx_device_color_type_t *const gx_dc_type_pure;	/* gxdcolor.c */
 #endif
-		/*
-		 * We don't declare gx_dc_pattern here, so as not to create
-		 * a spurious external reference in Level 1 systems.
-		 */
+#ifndef gx_dc_type_devn
+extern const gx_device_color_type_t *const gx_dc_type_devn;	/* gxdcolor.c */
+#endif
+                /*
+                 * We don't declare gx_dc_pattern here, so as not to create
+                 * a spurious external reference in Level 1 systems.
+                 */
 #ifndef gx_dc_type_pattern
 /*extern const gx_device_color_type_t * const gx_dc_type_pattern; *//* gspcolor.c */
 #endif
@@ -431,9 +435,6 @@ extern const gx_device_color_type_t *const gx_dc_type_ht_binary;	/* gxht.c */
 #endif
 #ifndef gx_dc_type_ht_colored
 extern const gx_device_color_type_t *const gx_dc_type_ht_colored;	/* gxcht.c */
-#endif
-#ifndef gx_dc_type_ht_colored
-extern const gx_device_color_type_t *const gx_dc_type_wts;	/* gxwts.c */
 #endif
 
 #endif /* gsdcolor_INCLUDED */

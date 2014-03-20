@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxshade1.c 10230 2009-10-27 16:13:23Z robin $ */
+
 /* Rendering for non-mesh shadings */
 #include "math_.h"
 #include "memory_.h"
@@ -31,11 +33,11 @@
 #include "gxdevcli.h"
 #include "gxshade4.h"
 #include "vdtrace.h"
+#include "gsicc_cache.h"
 
 #define VD_TRACE_AXIAL_PATCH 1
 #define VD_TRACE_RADIAL_PATCH 1
 #define VD_TRACE_FUNCTIONAL_PATCH 1
-
 
 /* ---------------- Function-based shading ---------------- */
 
@@ -59,13 +61,25 @@ make_other_poles(patch_curve_t curve[4])
     int i, j;
 
     for (i = 0; i < 4; i++) {
-	j = (i + 1) % 4;
-	curve[i].control[0].x = (curve[i].vertex.p.x * 2 + curve[j].vertex.p.x) / 3;
-	curve[i].control[0].y = (curve[i].vertex.p.y * 2 + curve[j].vertex.p.y) / 3;
-	curve[i].control[1].x = (curve[i].vertex.p.x + curve[j].vertex.p.x * 2) / 3;
-	curve[i].control[1].y = (curve[i].vertex.p.y + curve[j].vertex.p.y * 2) / 3;
-	curve[i].straight = true;
+        j = (i + 1) % 4;
+        curve[i].control[0].x = (curve[i].vertex.p.x * 2 + curve[j].vertex.p.x) / 3;
+        curve[i].control[0].y = (curve[i].vertex.p.y * 2 + curve[j].vertex.p.y) / 3;
+        curve[i].control[1].x = (curve[i].vertex.p.x + curve[j].vertex.p.x * 2) / 3;
+        curve[i].control[1].y = (curve[i].vertex.p.y + curve[j].vertex.p.y * 2) / 3;
+        curve[i].straight = true;
     }
+}
+
+/* Transform a point with a fixed-point result. */
+static void
+gs_point_transform2fixed_clamped(const gs_matrix_fixed * pmat,
+                         floatp x, floatp y, gs_fixed_point * ppt)
+{
+    gs_point fpt;
+
+    gs_point_transform(x, y, (const gs_matrix *)pmat, &fpt);
+    ppt->x = clamp_coord(fpt.x);
+    ppt->y = clamp_coord(fpt.y);
 }
 
 static int
@@ -77,16 +91,16 @@ Fb_fill_region(Fb_fill_state_t * pfs, const gs_fixed_rect *rect)
     int code;
 
     if (VD_TRACE_FUNCTIONAL_PATCH && vd_allowed('s')) {
-	vd_get_dc('s');
-	vd_set_shift(0, 0);
-	vd_set_scale(0.01);
-	vd_set_origin(0, 0);
+        vd_get_dc('s');
+        vd_set_shift(0, 0);
+        vd_set_scale(0.01);
+        vd_set_origin(0, 0);
     }
     memcpy(&pfs1, (shading_fill_state_t *)pfs, sizeof(shading_fill_state_t));
     pfs1.Function = pfs->psh->params.Function;
     code = init_patch_fill_state(&pfs1);
     if (code < 0)
-	return code;
+        return code;
     pfs1.maybe_self_intersecting = false;
     pfs1.n_color_args = 2;
     pfs1.rect = *rect;
@@ -101,24 +115,26 @@ Fb_fill_region(Fb_fill_state_t * pfs, const gs_fixed_rect *rect)
     curve[3].vertex.cc[0] = fp->region.p.x;   curve[3].vertex.cc[1] = fp->region.q.y;
     code = patch_fill(&pfs1, curve, NULL, NULL);
     if (term_patch_fill_state(&pfs1))
-	return_error(gs_error_unregistered); /* Must not happen. */
+        return_error(gs_error_unregistered); /* Must not happen. */
     if (VD_TRACE_FUNCTIONAL_PATCH && vd_allowed('s'))
-	vd_release_dc;
+        vd_release_dc;
     return code;
 }
 
 int
-gs_shading_Fb_fill_rectangle(const gs_shading_t * psh0, const gs_rect * rect, 
-			     const gs_fixed_rect * rect_clip,
-			     gx_device * dev, gs_imager_state * pis)
+gs_shading_Fb_fill_rectangle(const gs_shading_t * psh0, const gs_rect * rect,
+                             const gs_fixed_rect * rect_clip,
+                             gx_device * dev, gs_imager_state * pis)
 {
     const gs_shading_Fb_t * const psh = (const gs_shading_Fb_t *)psh0;
     gs_matrix save_ctm;
-    int xi, yi;
+    int xi, yi, code;
     float x[2], y[2];
     Fb_fill_state_t state;
 
-    shade_init_fill_state((shading_fill_state_t *) & state, psh0, dev, pis);
+    code = shade_init_fill_state((shading_fill_state_t *) & state, psh0, dev, pis);
+    if (code < 0)
+        return code;
     state.psh = psh;
     /****** HACK FOR FIXED-POINT MATRIX MULTIPLY ******/
     gs_currentmatrix((gs_state *) pis, &save_ctm);
@@ -127,31 +143,34 @@ gs_shading_Fb_fill_rectangle(const gs_shading_t * psh0, const gs_rect * rect,
     gs_setmatrix((gs_state *) pis, &save_ctm);
     /* Compute the parameter X and Y ranges. */
     {
-	gs_rect pbox;
+        gs_rect pbox;
 
-	gs_bbox_transform_inverse(rect, &psh->params.Matrix, &pbox);
-	x[0] = max(pbox.p.x, psh->params.Domain[0]);
-	x[1] = min(pbox.q.x, psh->params.Domain[1]);
-	y[0] = max(pbox.p.y, psh->params.Domain[2]);
-	y[1] = min(pbox.q.y, psh->params.Domain[3]);
+        gs_bbox_transform_inverse(rect, &psh->params.Matrix, &pbox);
+        x[0] = max(pbox.p.x, psh->params.Domain[0]);
+        x[1] = min(pbox.q.x, psh->params.Domain[1]);
+        y[0] = max(pbox.p.y, psh->params.Domain[2]);
+        y[1] = min(pbox.q.y, psh->params.Domain[3]);
     }
     if (x[0] > x[1] || y[0] > y[1]) {
-	/* The region is outside the shading area. */
-	return 0;
+        /* The region is outside the shading area. */
+        if (state.icclink != NULL) gsicc_release_link(state.icclink);
+        return 0;
     }
     for (xi = 0; xi < 2; ++xi)
-	for (yi = 0; yi < 2; ++yi) {
-	    float v[2];
+        for (yi = 0; yi < 2; ++yi) {
+            float v[2];
 
-	    v[0] = x[xi], v[1] = y[yi];
-	    gs_function_evaluate(psh->params.Function, v,
-				 state.frame.cc[yi * 2 + xi].paint.values);
-	}
+            v[0] = x[xi], v[1] = y[yi];
+            gs_function_evaluate(psh->params.Function, v,
+                                 state.frame.cc[yi * 2 + xi].paint.values);
+        }
     state.frame.region.p.x = x[0];
     state.frame.region.p.y = y[0];
     state.frame.region.q.x = x[1];
     state.frame.region.q.y = y[1];
-    return Fb_fill_region(&state, rect_clip);
+    code = Fb_fill_region(&state, rect_clip);
+    if (state.icclink != NULL) gsicc_release_link(state.icclink);
+    return code;
 }
 
 /* ---------------- Axial shading ---------------- */
@@ -196,8 +215,8 @@ A_fill_region(A_fill_state_t * pfs, patch_fill_state_t *pfs1)
 
 static inline int
 gs_shading_A_fill_rectangle_aux(const gs_shading_t * psh0, const gs_rect * rect,
-			    const gs_fixed_rect *clip_rect,
-			    gx_device * dev, gs_imager_state * pis)
+                            const gs_fixed_rect *clip_rect,
+                            gx_device * dev, gs_imager_state * pis)
 {
     const gs_shading_A_t *const psh = (const gs_shading_A_t *)psh0;
     gs_function_t * const pfn = psh->params.Function;
@@ -212,12 +231,16 @@ gs_shading_A_fill_rectangle_aux(const gs_shading_t * psh0, const gs_rect * rect,
     int code;
 
     state.psh = psh;
-    shade_init_fill_state((shading_fill_state_t *)&pfs1, psh0, dev, pis);
+    code = shade_init_fill_state((shading_fill_state_t *)&pfs1, psh0, dev, pis);
+    if (code < 0)
+        return code;
     pfs1.Function = pfn;
     pfs1.rect = *clip_rect;
     code = init_patch_fill_state(&pfs1);
-    if (code < 0)
-	return code;
+    if (code < 0) {
+        if (pfs1.icclink != NULL) gsicc_release_link(pfs1.icclink);
+        return code;
+    }
     pfs1.maybe_self_intersecting = false;
     pfs1.function_arg_shift = 1;
     /*
@@ -243,201 +266,271 @@ gs_shading_A_fill_rectangle_aux(const gs_shading_t * psh0, const gs_rect * rect,
     state.t0 = t0 * dd + d0;
     state.t1 = t1 * dd + d0;
     gs_distance_transform(state.delta.x, state.delta.y, &ctm_only(pis),
-			  &dist);
+                          &dist);
     state.length = hypot(dist.x, dist.y);	/* device space line length */
     code = A_fill_region(&state, &pfs1);
     if (psh->params.Extend[0] && t0 > t_rect.p.y) {
-	if (code < 0)
-	    return code;
-	/* Use the general algorithm, because we need the trapping. */
-	state.v0 = t_rect.p.y;
-	state.v1 = t0;
-	state.t0 = state.t1 = t0 * dd + d0;
-	code = A_fill_region(&state, &pfs1);
+        if (code < 0) {
+            if (pfs1.icclink != NULL) gsicc_release_link(pfs1.icclink);
+            return code;
+        }
+        /* Use the general algorithm, because we need the trapping. */
+        state.v0 = t_rect.p.y;
+        state.v1 = t0;
+        state.t0 = state.t1 = t0 * dd + d0;
+        code = A_fill_region(&state, &pfs1);
     }
     if (psh->params.Extend[1] && t1 < t_rect.q.y) {
-	if (code < 0)
-	    return code;
-	/* Use the general algorithm, because we need the trapping. */
-	state.v0 = t1;
-	state.v1 = t_rect.q.y;
-	state.t0 = state.t1 = t1 * dd + d0;
-	code = A_fill_region(&state, &pfs1);
+        if (code < 0) {
+            if (pfs1.icclink != NULL) gsicc_release_link(pfs1.icclink);
+            return code;
+        }
+        /* Use the general algorithm, because we need the trapping. */
+        state.v0 = t1;
+        state.v1 = t_rect.q.y;
+        state.t0 = state.t1 = t1 * dd + d0;
+        code = A_fill_region(&state, &pfs1);
     }
+    if (pfs1.icclink != NULL) gsicc_release_link(pfs1.icclink);
     if (term_patch_fill_state(&pfs1))
-	return_error(gs_error_unregistered); /* Must not happen. */
+        return_error(gs_error_unregistered); /* Must not happen. */
     return code;
 }
 
 int
 gs_shading_A_fill_rectangle(const gs_shading_t * psh0, const gs_rect * rect,
-			    const gs_fixed_rect * rect_clip,
-			    gx_device * dev, gs_imager_state * pis)
+                            const gs_fixed_rect * rect_clip,
+                            gx_device * dev, gs_imager_state * pis)
 {
     int code;
 
     if (VD_TRACE_AXIAL_PATCH && vd_allowed('s')) {
-	vd_get_dc('s');
-	vd_set_shift(0, 0);
-	vd_set_scale(0.01);
-	vd_set_origin(0, 0);
+        vd_get_dc('s');
+        vd_set_shift(0, 0);
+        vd_set_scale(0.01);
+        vd_set_origin(0, 0);
     }
     code = gs_shading_A_fill_rectangle_aux(psh0, rect, rect_clip, dev, pis);
     if (VD_TRACE_AXIAL_PATCH && vd_allowed('s'))
-	vd_release_dc;
+        vd_release_dc;
     return code;
 }
 
 /* ---------------- Radial shading ---------------- */
 
-static int 
-R_tensor_annulus(patch_fill_state_t *pfs, const gs_rect *rect,
+/* Some notes on what I have struggled to understand about the following
+ * function. This function renders the 'tube' given by interpolating one
+ * circle to another.
+ *
+ * The first circle is at (x0, y0) with radius r0, and has 'color' t0.
+ * The other circle is at (x1, y1) with radius r1, and has 'color' t1.
+ *
+ * We perform this rendering by approximating each quadrant of the 'tube'
+ * by a tensor patch. The tensor patch is formed by taking a curve along
+ * 1/4 of the circumference of the first circle, a straight line to the
+ * equivalent point on the circumference of the second circle, a curve
+ * back along the circumference of the second circle, and then a straight
+ * line back to where we started.
+ *
+ * There is additional logic in this function that forms the directions of
+ * the curves differently for different quadrants. This is done to ensure
+ * that we always paint 'around' the tube from the back towards the front,
+ * so we don't get unexpected regions showing though. This is explained more
+ * below.
+ *
+ * The original code here examined the position change between the two
+ * circles dx and dy. Based upon this vector it would pick which quadrant/
+ * tensor patch to draw first. It would draw the quadrants/tensor patches
+ * in anticlockwise order. Presumably this was intended to be done so that
+ * the 'top' quadrant would be drawn last.
+ *
+ * Unfortunately this did not always work; see bug 692513. If the quadrants
+ * were rendered in the order 0,1,2,3, the rendering of 1 was leaving traces
+ * on top of 0, which was unexpected.
+ *
+ * I have therefore altered the code slightly; rather than picking a start
+ * quadrant and moving anticlockwise, we now draw the 'undermost' quadrant,
+ * then the two adjacent quadrants, then the topmost quadrant.
+ *
+ * For the purposes of explaination, we shall label the octants as below:
+ *
+ *     \2|1/       and Quadrants as:       |
+ *     3\|/0                            Q1 | Q0 
+ *    ---+---                          ----+----
+ *     4/|\7                            Q2 | Q3
+ *     /5|6\                               |
+ *
+ * We find (dx,dy), the difference between the centres of the circles.
+ * We look to see which octant this falls in. Firstly, this tells us which
+ * quadrant of the circle we need to draw first (Octant n, starts with
+ * Quadrant floor(n/2)). Secondly, it tells us which direction to form the 
+ * tensor patch in; we always want to draw from the side 'closest' to
+ * dx/dy to the side further away. This ensures that we don't overwrite
+ * pixels in the incorrect order as the patch decomposes.
+ */
+static int
+R_tensor_annulus(patch_fill_state_t *pfs,
     double x0, double y0, double r0, double t0,
     double x1, double y1, double r1, double t1)
-{   
+{
     double dx = x1 - x0, dy = y1 - y0;
     double d = hypot(dx, dy);
     gs_point p0, p1, pc0, pc1;
-    int k, j, code;
+    int k, j, code, dirn;
     bool inside = 0;
 
-    pc0.x = x0, pc0.y = y0; 
+    /* pc0 and pc1 are the centres of the respective circles. */
+    pc0.x = x0, pc0.y = y0;
     pc1.x = x1, pc1.y = y1;
+    /* Set p0 up so it's a unit vector giving the direction of 90 degrees
+     * to the right of the major axis as we move from p0c to p1c. */
     if (r0 + d <= r1 || r1 + d <= r0) {
-	/* One circle is inside another one. 
-	   Use any subdivision, 
-	   but don't depend on dx, dy, which may be too small. */
-	p0.x = 0, p0.y = -1;
-	/* Align stripes along radii for faster triangulation : */
-	inside = 1;
+        /* One circle is inside another one.
+           Use any subdivision,
+           but don't depend on dx, dy, which may be too small. */
+        p0.x = 0, p0.y = -1, dirn = 0;
+        /* Align stripes along radii for faster triangulation : */
+        inside = 1;
     } else {
         /* Must generate canonic quadrangle arcs,
-	   because we approximate them with curves. */
-	if(any_abs(dx) >= any_abs(dy)) {
-	    if (dx > 0)
-		p0.x = 0, p0.y = -1;
-	    else
-		p0.x = 0, p0.y = 1;
-	} else {
-	    if (dy > 0)
-		p0.x = 1, p0.y = 0;
-	    else
-		p0.x = -1, p0.y = 0;
-	}
+           because we approximate them with curves. */
+        if(dx >= 0) {
+            if (dy >= 0)
+                p0.x = 1, p0.y = 0, dirn = (dx >= dy ? 1 : 0);
+            else
+                p0.x = 0, p0.y = -1, dirn = (dx >= -dy ? 0 : 1);
+        } else {
+            if (dy >= 0)
+                p0.x = 0, p0.y = 1, dirn = (-dx >= dy ? 1 : 0);
+            else
+                p0.x = -1, p0.y = 0, dirn = (-dx >= -dy ? 0 : 1);
+        }
     }
-    /* fixme: wish: cut invisible parts off. 
+    /* fixme: wish: cut invisible parts off.
        Note : when r0 != r1 the invisible part is not a half circle. */
-    for (k = 0; k < 4; k++, p0 = p1) {
-	gs_point p[12];
-	patch_curve_t curve[4];
+    for (k = 0; k < 4; k++) {
+        gs_point p[12];
+        patch_curve_t curve[4];
 
-	p1.x = -p0.y; p1.y = p0.x;
-	if ((k & 1) == k >> 1) {
-	    make_quadrant_arc(p + 0, &pc0, &p1, &p0, r0);
-	    make_quadrant_arc(p + 6, &pc1, &p0, &p1, r1);
-	} else {
-	    make_quadrant_arc(p + 0, &pc0, &p0, &p1, r0);
-	    make_quadrant_arc(p + 6, &pc1, &p1, &p0, r1);
-	}
-	p[4].x = (p[3].x * 2 + p[6].x) / 3;
-	p[4].y = (p[3].y * 2 + p[6].y) / 3;
-	p[5].x = (p[3].x + p[6].x * 2) / 3;
-	p[5].y = (p[3].y + p[6].y * 2) / 3;
-	p[10].x = (p[9].x * 2 + p[0].x) / 3;
-	p[10].y = (p[9].y * 2 + p[0].y) / 3;
-	p[11].x = (p[9].x + p[0].x * 2) / 3;
-	p[11].y = (p[9].y + p[0].y * 2) / 3;
-	for (j = 0; j < 4; j++) {
-	    int jj = (j + inside) % 4;
+        /* Set p1 to be 90 degrees anticlockwise from p0 */
+        p1.x = -p0.y; p1.y = p0.x;
+        if (dirn == 0) { /* Clockwise */
+            make_quadrant_arc(p + 0, &pc0, &p1, &p0, r0);
+            make_quadrant_arc(p + 6, &pc1, &p0, &p1, r1);
+        } else { /* Anticlockwise */
+            make_quadrant_arc(p + 0, &pc0, &p0, &p1, r0);
+            make_quadrant_arc(p + 6, &pc1, &p1, &p0, r1);
+        }
+        p[4].x = (p[3].x * 2 + p[6].x) / 3;
+        p[4].y = (p[3].y * 2 + p[6].y) / 3;
+        p[5].x = (p[3].x + p[6].x * 2) / 3;
+        p[5].y = (p[3].y + p[6].y * 2) / 3;
+        p[10].x = (p[9].x * 2 + p[0].x) / 3;
+        p[10].y = (p[9].y * 2 + p[0].y) / 3;
+        p[11].x = (p[9].x + p[0].x * 2) / 3;
+        p[11].y = (p[9].y + p[0].y * 2) / 3;
+        for (j = 0; j < 4; j++) {
+            int jj = (j + inside) % 4;
 
-	    code = gs_point_transform2fixed(&pfs->pis->ctm, 
-			p[j * 3 + 0].x, p[j * 3 + 0].y, &curve[jj].vertex.p);
-	    if (code < 0)
-		return code;
-	    code = gs_point_transform2fixed(&pfs->pis->ctm, 
-			p[j * 3 + 1].x, p[j * 3 + 1].y, &curve[jj].control[0]);
-	    if (code < 0)
-		return code;
-	    code = gs_point_transform2fixed(&pfs->pis->ctm, 
-			p[j * 3 + 2].x, p[j * 3 + 2].y, &curve[jj].control[1]);
-	    if (code < 0)
-		return code;
-	    curve[j].straight = (((j + inside) & 1) != 0);
-	}
-	curve[(0 + inside) % 4].vertex.cc[0] = t0;
-	curve[(1 + inside) % 4].vertex.cc[0] = t0;
-	curve[(2 + inside) % 4].vertex.cc[0] = t1;
-	curve[(3 + inside) % 4].vertex.cc[0] = t1;
-	curve[0].vertex.cc[1] = curve[1].vertex.cc[1] = 0; /* Initialize against FPE. */
-	curve[2].vertex.cc[1] = curve[3].vertex.cc[1] = 0; /* Initialize against FPE. */
-	code = patch_fill(pfs, curve, NULL, NULL);
-	if (code < 0)
-	    return code;
+            if (gs_point_transform2fixed(&pfs->pis->ctm,         p[j*3 + 0].x, p[j*3 + 0].y, &curve[jj].vertex.p) < 0)
+                gs_point_transform2fixed_clamped(&pfs->pis->ctm, p[j*3 + 0].x, p[j*3 + 0].y, &curve[jj].vertex.p);
+
+            if (gs_point_transform2fixed(&pfs->pis->ctm,         p[j*3 + 1].x, p[j*3 + 1].y, &curve[jj].control[0]) < 0)
+                gs_point_transform2fixed_clamped(&pfs->pis->ctm, p[j*3 + 1].x, p[j*3 + 1].y, &curve[jj].control[0]);
+
+            if (gs_point_transform2fixed(&pfs->pis->ctm,         p[j*3 + 2].x, p[j*3 + 2].y, &curve[jj].control[1]) < 0)
+                gs_point_transform2fixed_clamped(&pfs->pis->ctm, p[j*3 + 2].x, p[j*3 + 2].y, &curve[jj].control[1]);
+            curve[j].straight = (((j + inside) & 1) != 0);
+        }
+        curve[(0 + inside) % 4].vertex.cc[0] = t0;
+        curve[(1 + inside) % 4].vertex.cc[0] = t0;
+        curve[(2 + inside) % 4].vertex.cc[0] = t1;
+        curve[(3 + inside) % 4].vertex.cc[0] = t1;
+        curve[0].vertex.cc[1] = curve[1].vertex.cc[1] = 0; /* Initialize against FPE. */
+        curve[2].vertex.cc[1] = curve[3].vertex.cc[1] = 0; /* Initialize against FPE. */
+        code = patch_fill(pfs, curve, NULL, NULL);
+        if (code < 0)
+            return code;
+        /* Move p0 to be ready for the next position */
+        if (k == 0) {
+            /* p0 moves clockwise */
+            p1 = p0;
+            p0.x = p1.y; p0.y = -p1.x;
+            dirn = 0;
+        } else if (k == 1) {
+            /* p0 flips sides */
+            p0.x = -p0.x; p0.y = -p0.y;
+            dirn = 1;
+        } else if (k == 2) {
+            /* p0 moves anti-clockwise */
+            p1 = p0;
+            p0.x = -p1.y; p0.y = p1.x;
+            dirn = 0;
+        }
     }
     return 0;
 }
 
-
 static int
-R_outer_circle(patch_fill_state_t *pfs, const gs_rect *rect, 
-	double x0, double y0, double r0, 
-	double x1, double y1, double r1, 
-	double *x2, double *y2, double *r2)
+R_outer_circle(patch_fill_state_t *pfs, const gs_rect *rect,
+        double x0, double y0, double r0,
+        double x1, double y1, double r1,
+        double *x2, double *y2, double *r2)
 {
     double dx = x1 - x0, dy = y1 - y0;
     double sp, sq, s;
 
     /* Compute a cone circle, which contacts the rect externally. */
-    /* Don't bother with all 4 sides of the rect, 
+    /* Don't bother with all 4 sides of the rect,
        just do with the X or Y span only,
        so it's not an exact contact, sorry. */
     if (any_abs(dx) > any_abs(dy)) {
-	/* Solving :
-	    x0 + (x1 - x0) * sq + r0 + (r1 - r0) * sq == bbox_px
-	    (x1 - x0) * sp + (r1 - r0) * sp == bbox_px - x0 - r0
-	    sp = (bbox_px - x0 - r0) / (x1 - x0 + r1 - r0)
+        /* Solving :
+            x0 + (x1 - x0) * sq + r0 + (r1 - r0) * sq == bbox_px
+            (x1 - x0) * sp + (r1 - r0) * sp == bbox_px - x0 - r0
+            sp = (bbox_px - x0 - r0) / (x1 - x0 + r1 - r0)
 
-	    x0 + (x1 - x0) * sq - r0 - (r1 - r0) * sq == bbox_qx
-	    (x1 - x0) * sq - (r1 - r0) * sq == bbox_x - x0 + r0
-	    sq = (bbox_x - x0 + r0) / (x1 - x0 - r1 + r0)
-	 */
-	if (x1 - x0 + r1 - r0 ==  0) /* We checked for obtuse cone. */
-	    return_error(gs_error_unregistered); /* Must not happen. */
-	if (x1 - x0 - r1 + r0 ==  0) /* We checked for obtuse cone. */
-	    return_error(gs_error_unregistered); /* Must not happen. */
-	sp = (rect->p.x - x0 - r0) / (x1 - x0 + r1 - r0);
-	sq = (rect->q.x - x0 + r0) / (x1 - x0 - r1 + r0);
+            x0 + (x1 - x0) * sq - r0 - (r1 - r0) * sq == bbox_qx
+            (x1 - x0) * sq - (r1 - r0) * sq == bbox_x - x0 + r0
+            sq = (bbox_x - x0 + r0) / (x1 - x0 - r1 + r0)
+         */
+        if (x1 - x0 + r1 - r0 ==  0) /* We checked for obtuse cone. */
+            return_error(gs_error_unregistered); /* Must not happen. */
+        if (x1 - x0 - r1 + r0 ==  0) /* We checked for obtuse cone. */
+            return_error(gs_error_unregistered); /* Must not happen. */
+        sp = (rect->p.x - x0 - r0) / (x1 - x0 + r1 - r0);
+        sq = (rect->q.x - x0 + r0) / (x1 - x0 - r1 + r0);
     } else {
-	/* Same by Y. */
-	if (y1 - y0 + r1 - r0 ==  0) /* We checked for obtuse cone. */
-	    return_error(gs_error_unregistered); /* Must not happen. */
-	if (y1 - y0 - r1 + r0 ==  0) /* We checked for obtuse cone. */
-	    return_error(gs_error_unregistered); /* Must not happen. */
-	sp = (rect->p.y - y0 - r0) / (y1 - y0 + r1 - r0);
-	sq = (rect->q.y - y0 + r0) / (y1 - y0 - r1 + r0);
+        /* Same by Y. */
+        if (y1 - y0 + r1 - r0 ==  0) /* We checked for obtuse cone. */
+            return_error(gs_error_unregistered); /* Must not happen. */
+        if (y1 - y0 - r1 + r0 ==  0) /* We checked for obtuse cone. */
+            return_error(gs_error_unregistered); /* Must not happen. */
+        sp = (rect->p.y - y0 - r0) / (y1 - y0 + r1 - r0);
+        sq = (rect->q.y - y0 + r0) / (y1 - y0 - r1 + r0);
     }
     if (sp >= 1 && sq >= 1)
-	s = max(sp, sq);
+        s = max(sp, sq);
     else if(sp >= 1)
-	s = sp;
+        s = sp;
     else if (sq >= 1)
-	s = sq;
+        s = sq;
     else {
-	/* The circle 1 is outside the rect, use it. */
+        /* The circle 1 is outside the rect, use it. */
         s = 1;
     }
     if (r0 + (r1 - r0) * s < 0) {
-	/* Passed the cone apex, use the apex. */
-	s = r0 / (r0 - r1);
-	*r2 = 0;
+        /* Passed the cone apex, use the apex. */
+        s = r0 / (r0 - r1);
+        *r2 = 0;
     } else
-	*r2 = r0 + (r1 - r0) * s;
+        *r2 = r0 + (r1 - r0) * s;
     *x2 = x0 + (x1 - x0) * s;
     *y2 = y0 + (y1 - y0) * s;
     return 0;
 }
 
-static double 
+static double
 R_rect_radius(const gs_rect *rect, double x0, double y0)
 {
     double d, dd;
@@ -453,7 +546,7 @@ R_rect_radius(const gs_rect *rect, double x0, double y0)
 }
 
 static int
-R_fill_triangle_new(patch_fill_state_t *pfs, const gs_rect *rect, 
+R_fill_triangle_new(patch_fill_state_t *pfs, const gs_rect *rect,
     double x0, double y0, double x1, double y1, double x2, double y2, double t)
 {
     shading_vertex_t p0, p1, p2;
@@ -466,13 +559,13 @@ R_fill_triangle_new(patch_fill_state_t *pfs, const gs_rect *rect,
     p2.c = c;
     code = gs_point_transform2fixed(&pfs->pis->ctm, x0, y0, &p0.p);
     if (code >= 0)
-	code = gs_point_transform2fixed(&pfs->pis->ctm, x1, y1, &p1.p);
+        code = gs_point_transform2fixed(&pfs->pis->ctm, x1, y1, &p1.p);
     if (code >= 0)
-	code = gs_point_transform2fixed(&pfs->pis->ctm, x2, y2, &p2.p);
+        code = gs_point_transform2fixed(&pfs->pis->ctm, x2, y2, &p2.p);
     if (code >= 0) {
-	c->t[0] = c->t[1] = t;
-	patch_resolve_color(c, pfs);
-	code = mesh_triangle(pfs, &p0, &p1, &p2);
+        c->t[0] = c->t[1] = t;
+        patch_resolve_color(c, pfs);
+        code = mesh_triangle(pfs, &p0, &p1, &p2);
     }
     release_colors(pfs, pfs->color_stack, 1);
     return code;
@@ -480,9 +573,9 @@ R_fill_triangle_new(patch_fill_state_t *pfs, const gs_rect *rect,
 
 static int
 R_obtuse_cone(patch_fill_state_t *pfs, const gs_rect *rect,
-	double x0, double y0, double r0, 
-	double x1, double y1, double r1, double t0, double r_rect,
-	bool inwards)
+        double x0, double y0, double r0,
+        double x1, double y1, double r1, double t0, double r_rect,
+        bool inwards)
 {
     double dx = x1 - x0, dy = y1 - y0, dr = any_abs(r1 - r0);
     double d = hypot(dx, dy);
@@ -497,69 +590,114 @@ R_obtuse_cone(patch_fill_state_t *pfs, const gs_rect *rect,
     ay = y0 + (y1 - y0) * as;
     g0 = sqrt(dx * dx + dy * dy - dr * dr) * as;
     if (g0 < 1e-7 * r0) {
-	/* Nearly degenerate, replace with half-plane. */
-	/* Restrict the half plane with triangle, which covers the rect. */
-	gs_point p0, p1, p2; /* Right tangent limit, apex limit, left tangent linit,
-				(right, left == when looking from the apex). */
+        /* Nearly degenerate, replace with half-plane. */
+        /* Restrict the half plane with triangle, which covers the rect. */
+        gs_point p0, p1, p2; /* Right tangent limit, apex limit, left tangent linit,
+                                (right, left == when looking from the apex). */
 
-	p0.x = ax - dy * r / d;
-	p0.y = ay + dx * r / d;
-	p1.x = ax - dx * r / d;
-	p1.y = ay - dy * r / d;
-	p2.x = ax + dy * r / d;
-	p2.y = ay - dx * r / d;
-	/* Split into 2 triangles at the apex,
-	   so that the apex is preciselly covered.
-	   Especially important when it is not exactly degenerate. */
-	code = R_fill_triangle_new(pfs, rect, ax, ay, p0.x, p0.y, p1.x, p1.y, t0);
-	if (code < 0)
-	    return code;
-	return R_fill_triangle_new(pfs, rect, ax, ay, p1.x, p1.y, p2.x, p2.y, t0);
+        p0.x = ax - dy * r / d;
+        p0.y = ay + dx * r / d;
+        p1.x = ax - dx * r / d;
+        p1.y = ay - dy * r / d;
+        p2.x = ax + dy * r / d;
+        p2.y = ay - dx * r / d;
+        /* Split into 2 triangles at the apex,
+           so that the apex is preciselly covered.
+           Especially important when it is not exactly degenerate. */
+        code = R_fill_triangle_new(pfs, rect, ax, ay, p0.x, p0.y, p1.x, p1.y, t0);
+        if (code < 0)
+            return code;
+        return R_fill_triangle_new(pfs, rect, ax, ay, p1.x, p1.y, p2.x, p2.y, t0);
     } else {
-	/* Compute the "limit" circle so that its
-	   tangent points are outside the rect. */
-	/* Note: this branch is executed when the condition above is false :
-	   g0 >= 1e-7 * r0 .
-	   We believe that computing this branch with doubles
-	   provides enough precision after converting coordinates into 'fixed',
-	   and that the limit circle radius is not dramatically big.
-	 */
-	double es, er; /* The limit circle parameter, radius. */
-	double ex, ey; /* The limit circle centrum. */
+        /* Compute the "limit" circle so that its
+           tangent points are outside the rect. */
+        /* Note: this branch is executed when the condition above is false :
+           g0 >= 1e-7 * r0 .
+           We believe that computing this branch with doubles
+           provides enough precision after converting coordinates into 'fixed',
+           and that the limit circle radius is not dramatically big.
+         */
+        double es, er; /* The limit circle parameter, radius. */
+        double ex, ey; /* The limit circle centrum. */
 
-	es = as - as * r / g0; /* Always negative. */
-	er = r * r0 / g0 ;
-	ex = x0 + dx * es;
-	ey = y0 + dy * es;
-	/* Fill the annulus: */
-	code = R_tensor_annulus(pfs, rect, x0, y0, r0, t0, ex, ey, er, t0);
-	if (code < 0)
-	    return code;
-	/* Fill entire ending circle to ensure entire rect is covered, but
-	 * only if we are filling "inwards" (as otherwise we will overwrite
-	 * all the hard work we have done to this point) */
-	if (inwards)
-	    code = R_tensor_annulus(pfs, rect, ex, ey, er, t0, ex, ey, 0, t0);
+        es = as - as * r / g0; /* Always negative. */
+        er = r * r0 / g0 ;
+        ex = x0 + dx * es;
+        ey = y0 + dy * es;
+        /* Fill the annulus: */
+        code = R_tensor_annulus(pfs, x0, y0, r0, t0, ex, ey, er, t0);
+        if (code < 0)
+            return code;
+        /* Fill entire ending circle to ensure entire rect is covered, but
+         * only if we are filling "inwards" (as otherwise we will overwrite
+         * all the hard work we have done to this point) */
+        if (inwards)
+            code = R_tensor_annulus(pfs, ex, ey, er, t0, ex, ey, 0, t0);
         return code;
     }
 }
 
 static int
 R_tensor_cone_apex(patch_fill_state_t *pfs, const gs_rect *rect,
-	double x0, double y0, double r0, 
-	double x1, double y1, double r1, double t)
+        double x0, double y0, double r0,
+        double x1, double y1, double r1, double t)
 {
     double as = r0 / (r0 - r1);
     double ax = x0 + (x1 - x0) * as;
     double ay = y0 + (y1 - y0) * as;
 
-    return R_tensor_annulus(pfs, rect, x1, y1, r1, t, ax, ay, 0, t);
+    return R_tensor_annulus(pfs, x1, y1, r1, t, ax, ay, 0, t);
 }
 
-
+/*
+ * A map of this code:
+ *
+ * R_extensions
+ * |-> (R_rect_radius)
+ * |-> (R_outer_circle)
+ * |-> R_obtuse_cone
+ * |   |-> R_fill_triangle_new
+ * |   |   '-> mesh_triangle
+ * |   |       '-> mesh_triangle_rec <--.
+ * |   |           |--------------------'
+ * |   |           |-> small_mesh_triangle
+ * |   |           |   '-> fill_triangle
+ * |   |           |       '-> triangle_by_4 <--.
+ * |   |           |           |----------------'
+ * |   |           |           |-> constant_color_triangle
+ * |   |           |           |-> make_wedge_median (etc)
+ * |   |           '-----------+--------------------.
+ * |   '-------------------.                        |
+ * |-> R_tensor_cone_apex  |                        |
+ * |   '-------------------+                        |
+ * '-> R_tensor_annulus <--'                       \|/
+ *     |-> (make_quadrant_arc)                      |
+ *     '-> patch_fill                               |
+ *         |-> fill_patch <--.                      |
+ *         |   |-------------'                      |
+ *         |   |------------------------------------+
+ *         |   '-> fill_stripe                      |
+ *         |       |-----------------------.        |
+ *         |      \|/                      |        |
+ *         |-> fill_wedges                 |        |
+ *             '-> fill_wedges_aux <--.    |        |
+ *                 |------------------'   \|/       |
+ *                 |----------------> mesh_padding  '
+ *                 |                  '----------------------------------.
+ *                 '-> wedge_by_triangles <--.      .                    |
+ *                     |---------------------'      |                    |
+ *                     '-> fill_triangle_wedge <----'                    |
+ *                         '-> fill_triangle_wedge_aux                   |
+ *                             '-> fill_wedge_trap                       |
+ *                                 '-> wedge_trap_decompose              |
+ *                                     '-> linear_color_trapezoid        |
+ *                                         '-> decompose_linear_color <--|
+ *                                             |-------------------------'
+ *                                             '-> constant_color_trapezoid
+ */
 static int
-R_extensions(patch_fill_state_t *pfs, const gs_shading_R_t *psh, const gs_rect *rect, 
-	double t0, double t1, bool Extend0, bool Extend1)
+R_extensions(patch_fill_state_t *pfs, const gs_shading_R_t *psh, const gs_rect *rect,
+        double t0, double t1, bool Extend0, bool Extend1)
 {
     float x0 = psh->params.Coords[0], y0 = psh->params.Coords[1];
     floatp r0 = psh->params.Coords[2];
@@ -570,76 +708,76 @@ R_extensions(patch_fill_state_t *pfs, const gs_shading_R_t *psh, const gs_rect *
     int code;
 
     if (dr >= d - 1e-7 * (d + dr)) {
-	/* Nested circles, or degenerate. */
-	if (r0 > r1) {
-	    if (Extend0) {
-		r = R_rect_radius(rect, x0, y0);
-		if (r > r0) {
-		    code = R_tensor_annulus(pfs, rect, x0, y0, r, t0, x0, y0, r0, t0);
-		    if (code < 0)
-			return code;
-		}
-	    }
-	    if (Extend1 && r1 > 0)
-		return R_tensor_annulus(pfs, rect, x1, y1, r1, t1, x1, y1, 0, t1);
-	} else {
-	    if (Extend1) {
-		r = R_rect_radius(rect, x1, y1);
-		if (r > r1) {
-		    code = R_tensor_annulus(pfs, rect, x1, y1, r, t1, x1, y1, r1, t1);
-		    if (code < 0)
-			return code;
-		}
-	    }
-	    if (Extend0 && r0 > 0)
-		return R_tensor_annulus(pfs, rect, x0, y0, r0, t0, x0, y0, 0, t0);
-	}
+        /* Nested circles, or degenerate. */
+        if (r0 > r1) {
+            if (Extend0) {
+                r = R_rect_radius(rect, x0, y0);
+                if (r > r0) {
+                    code = R_tensor_annulus(pfs, x0, y0, r, t0, x0, y0, r0, t0);
+                    if (code < 0)
+                        return code;
+                }
+            }
+            if (Extend1 && r1 > 0)
+                return R_tensor_annulus(pfs, x1, y1, r1, t1, x1, y1, 0, t1);
+        } else {
+            if (Extend1) {
+                r = R_rect_radius(rect, x1, y1);
+                if (r > r1) {
+                    code = R_tensor_annulus(pfs, x1, y1, r, t1, x1, y1, r1, t1);
+                    if (code < 0)
+                        return code;
+                }
+            }
+            if (Extend0 && r0 > 0)
+                return R_tensor_annulus(pfs, x0, y0, r0, t0, x0, y0, 0, t0);
+        }
     } else if (dr > d / 3) {
-	/* Obtuse cone. */
-	if (r0 > r1) {
-	    if (Extend0) {
-		r = R_rect_radius(rect, x0, y0);
-		code = R_obtuse_cone(pfs, rect, x0, y0, r0, x1, y1, r1, t0, r, true);
-		if (code < 0)
-		    return code;
-	    }
-	    if (Extend1 && r1 != 0)
-		return R_tensor_cone_apex(pfs, rect, x0, y0, r0, x1, y1, r1, t1);
-	    return 0;
-	} else {
-	    if (Extend1) {
-		r = R_rect_radius(rect, x1, y1);
-		code = R_obtuse_cone(pfs, rect, x1, y1, r1, x0, y0, r0, t1, r, false);
-		if (code < 0)
-		    return code;
-	    }
-	    if (Extend0 && r0 != 0)
-		return R_tensor_cone_apex(pfs, rect, x1, y1, r1, x0, y0, r0, t0);
-	}
+        /* Obtuse cone. */
+        if (r0 > r1) {
+            if (Extend0) {
+                r = R_rect_radius(rect, x0, y0);
+                code = R_obtuse_cone(pfs, rect, x0, y0, r0, x1, y1, r1, t0, r, true);
+                if (code < 0)
+                    return code;
+            }
+            if (Extend1 && r1 != 0)
+                return R_tensor_cone_apex(pfs, rect, x0, y0, r0, x1, y1, r1, t1);
+            return 0;
+        } else {
+            if (Extend1) {
+                r = R_rect_radius(rect, x1, y1);
+                code = R_obtuse_cone(pfs, rect, x1, y1, r1, x0, y0, r0, t1, r, false);
+                if (code < 0)
+                    return code;
+            }
+            if (Extend0 && r0 != 0)
+                return R_tensor_cone_apex(pfs, rect, x1, y1, r1, x0, y0, r0, t0);
+        }
     } else {
-	/* Acute cone or cylinder. */
-	double x2, y2, r2, x3, y3, r3;
+        /* Acute cone or cylinder. */
+        double x2, y2, r2, x3, y3, r3;
 
-	if (Extend0) {
-	    code = R_outer_circle(pfs, rect, x1, y1, r1, x0, y0, r0, &x3, &y3, &r3);
-	    if (code < 0)
-		return code;
-	    if (x3 != x1 || y3 != y1) {
-		code = R_tensor_annulus(pfs, rect, x0, y0, r0, t0, x3, y3, r3, t0);
-		if (code < 0)
-		    return code;
-	    }
-	}
-	if (Extend1) {
-	    code = R_outer_circle(pfs, rect, x0, y0, r0, x1, y1, r1, &x2, &y2, &r2);
-	    if (code < 0)
-		return code;
-	    if (x2 != x0 || y2 != y0) {
-		code = R_tensor_annulus(pfs, rect, x1, y1, r1, t1, x2, y2, r2, t1);
-		if (code < 0)
-		    return code;
-	    }
-	}
+        if (Extend0) {
+            code = R_outer_circle(pfs, rect, x1, y1, r1, x0, y0, r0, &x3, &y3, &r3);
+            if (code < 0)
+                return code;
+            if (x3 != x1 || y3 != y1) {
+                code = R_tensor_annulus(pfs, x0, y0, r0, t0, x3, y3, r3, t0);
+                if (code < 0)
+                    return code;
+            }
+        }
+        if (Extend1) {
+            code = R_outer_circle(pfs, rect, x0, y0, r0, x1, y1, r1, &x2, &y2, &r2);
+            if (code < 0)
+                return code;
+            if (x2 != x0 || y2 != y0) {
+                code = R_tensor_annulus(pfs, x1, y1, r1, t1, x2, y2, r2, t1);
+                if (code < 0)
+                    return code;
+            }
+        }
     }
     return 0;
 }
@@ -647,7 +785,7 @@ R_extensions(patch_fill_state_t *pfs, const gs_shading_R_t *psh, const gs_rect *
 static int
 R_fill_rect_with_const_color(patch_fill_state_t *pfs, const gs_fixed_rect *clip_rect, float t)
 {
-#if 0 /* Disabled because the clist writer device doesn't pass 
+#if 0 /* Disabled because the clist writer device doesn't pass
          the clipping path with fill_recatangle. */
     patch_color_t pc;
     const gs_color_space *pcs = pfs->direct_space;
@@ -656,17 +794,17 @@ R_fill_rect_with_const_color(patch_fill_state_t *pfs, const gs_fixed_rect *clip_
 
     code = gs_function_evaluate(pfs->Function, &t, pc.cc.paint.values);
     if (code < 0)
-	return code;
+        return code;
     pcs->type->restrict_color(&pc.cc, pcs);
     code = patch_color_to_device_color(pfs, &pc, &dc);
     if (code < 0)
-	return code;
-    return gx_fill_rectangle_device_rop(fixed2int_pixround(clip_rect->p.x), fixed2int_pixround(clip_rect->p.y), 
-					fixed2int_pixround(clip_rect->q.x) - fixed2int_pixround(clip_rect->p.x),
-					fixed2int_pixround(clip_rect->q.y) - fixed2int_pixround(clip_rect->p.y), 
-					&dc, pfs->dev, pfs->pis->log_op);
+        return code;
+    return gx_fill_rectangle_device_rop(fixed2int_pixround(clip_rect->p.x), fixed2int_pixround(clip_rect->p.y),
+                                        fixed2int_pixround(clip_rect->q.x) - fixed2int_pixround(clip_rect->p.x),
+                                        fixed2int_pixround(clip_rect->q.y) - fixed2int_pixround(clip_rect->p.y),
+                                        &dc, pfs->dev, pfs->pis->log_op);
 #else
-    /* Can't apply fill_rectangle, because the clist writer device doesn't pass 
+    /* Can't apply fill_rectangle, because the clist writer device doesn't pass
        the clipping path with fill_recatangle. Convert into trapezoids instead.
     */
     quadrangle_patch p;
@@ -677,7 +815,7 @@ R_fill_rect_with_const_color(patch_fill_state_t *pfs, const gs_fixed_rect *clip_
 
     code = gs_function_evaluate(pfs->Function, &t, pc.cc.paint.values);
     if (code < 0)
-	return code;
+        return code;
     pcs->type->restrict_color(&pc.cc, pcs);
     pc.t[0] = pc.t[1] = t;
     pp[0][0].p = clip_rect->p;
@@ -719,16 +857,16 @@ radial_shading_external_contact(radial_shading_attrs_t *rsa, int point_index, do
     double dy = rsa->p[point_index - 1].y - rsa->p[point_index].y;
 
     if (at_corner) {
-	double Dx = rsa->p[point_index + 1].x - rsa->p[point_index].x;
-	double Dy = rsa->p[point_index + 1].y - rsa->p[point_index].y;
-	bool b1 = (dx * rx + dy * ry >= 0);
-	bool b2 = (Dx * rx + Dy * ry >= 0);
+        double Dx = rsa->p[point_index + 1].x - rsa->p[point_index].x;
+        double Dy = rsa->p[point_index + 1].y - rsa->p[point_index].y;
+        bool b1 = (dx * rx + dy * ry >= 0);
+        bool b2 = (Dx * rx + Dy * ry >= 0);
 
-	if (b1 & b2)
-	    rsa->outer_contact[root_index] = true;
+        if (b1 & b2)
+            rsa->outer_contact[root_index] = true;
     } else {
-	if (rx * dy - ry * dx < 0)
-	    rsa->outer_contact[root_index] = true;
+        if (rx * dy - ry * dx < 0)
+            rsa->outer_contact[root_index] = true;
     }
 }
 
@@ -738,23 +876,23 @@ store_roots(radial_shading_attrs_t *rsa, const bool have_root[2], const double t
     int i;
 
     for (i = 0; i < 2; i++) {
-	bool good_root;
+        bool good_root;
 
-	if (!have_root[i])
-	    continue;
-	good_root = (!rsa->have_apex || (rsa->apex <= 0 || r0 == 0 ? t[i] >= rsa->apex : t[i] <= rsa->apex));
-	if (good_root) {
-	    radial_shading_external_contact(rsa, point_index, t[i], r0, r1, at_corner, i);
-	    if (!rsa->have_root[i]) {
-		rsa->span[i][0] = rsa->span[i][1] = t[i];
-		rsa->have_root[i] = true;
-	    } else {
-		if (rsa->span[i][0] > t[i])
-		    rsa->span[i][0] = t[i];
-		if (rsa->span[i][1] < t[i])
-		    rsa->span[i][1] = t[i];
-	    }
-	}
+        if (!have_root[i])
+            continue;
+        good_root = (!rsa->have_apex || (rsa->apex <= 0 || r0 == 0 ? t[i] >= rsa->apex : t[i] <= rsa->apex));
+        if (good_root) {
+            radial_shading_external_contact(rsa, point_index, t[i], r0, r1, at_corner, i);
+            if (!rsa->have_root[i]) {
+                rsa->span[i][0] = rsa->span[i][1] = t[i];
+                rsa->have_root[i] = true;
+            } else {
+                if (rsa->span[i][0] > t[i])
+                    rsa->span[i][0] = t[i];
+                if (rsa->span[i][1] < t[i])
+                    rsa->span[i][1] = t[i];
+            }
+        }
     }
 }
 
@@ -764,41 +902,47 @@ compute_radial_shading_span_extended_side(radial_shading_attrs_t *rsa, double r0
     double cc, c;
     bool have_root[2] = {false, false};
     double t[2];
-    bool by_x = (rsa->p[point_index].x == rsa->p[point_index + 1].x);
+    bool by_x = (rsa->p[point_index].x != rsa->p[point_index + 1].x);
     int i;
 
-    /* Assuming x0 = y0 = 0 : 
-       cc * t +- (r0 + (r1 - r0) * t) == c 
-       t0 := (c - r0) / (cc + (r1 - r0))
-       t1 := (c + r0) / (cc - (r1 - r0))
+    /* As t moves from 0 to 1, the circles move from r0 to r1, and from
+     * from position p0 to py. For simplicity, adjust so that p0 is at
+     * the origin. Consider the projection of the circle drawn at any given
+     * time onto the x axis. The range of points would be:
+     * p1x*t +/- (r0+(r1-r0)*t). We are interested in the first (and last)
+     * moments when the range includes a point c on the x axis. So solve for:
+     * p1x*t +/- (r0+(r1-r0)*t) = c. Let cc = p1x.
+     * So p1x*t0 + (r1-r0)*t0 = c - r0 => t0 = (c - r0)/(p1x + r1 - r0)
+     *    p1x*t1 - (r1-r0)*t1 = c + r0 => t1 = (c + r0)/(p1x - r1 + r0)
      */
     if (by_x) {
-	c = rsa->p[point_index].x - rsa->x0;
-	cc = rsa->x1 - rsa->x0;
+        c = rsa->p[point_index].x - rsa->x0;
+        cc = rsa->x1 - rsa->x0;
     } else {
-	c = rsa->p[point_index].y - rsa->y0;
-	cc = rsa->y1 - rsa->y0;
+        c = rsa->p[point_index].y - rsa->y0;
+        cc = rsa->y1 - rsa->y0;
     }
     t[0] = (c - r0) / (cc + r1 - r0);
     t[1] = (c + r0) / (cc - r1 + r0);
     if (t[0] > t[1]) {
-	t[0] = t[1];
-	t[1] = (c - r0) / (cc + r1 - r0);
+        c    = t[0];
+        t[0] = t[1];
+        t[1] = c;
     }
     for (i = 0; i < 2; i++) {
-	double d, d0, d1;
+        double d, d0, d1;
 
-	if (by_x) {
-	    d = rsa->y1 - rsa->y0 + r0 + (r1 - r0) * t[i];
-	    d0 = rsa->p[point_index].y;
-	    d1 = rsa->p[point_index + 1].y;
-	} else {
-	    d = rsa->x1 - rsa->x0 + r0 + (r1 - r0) * t[i];
-	    d0 = rsa->p[point_index].x;
-	    d1 = rsa->p[point_index + 1].x;
-	}
-	if (d1 > d0 ? d0 <= d && d <= d1 : d1 <= d && d <= d0)
-	    have_root[i] = true;
+        if (by_x) {
+            d = rsa->y1 - rsa->y0 + r0 + (r1 - r0) * t[i];
+            d0 = rsa->p[point_index].y;
+            d1 = rsa->p[point_index + 1].y;
+        } else {
+            d = rsa->x1 - rsa->x0 + r0 + (r1 - r0) * t[i];
+            d0 = rsa->p[point_index].x;
+            d1 = rsa->p[point_index + 1].x;
+        }
+        if (d1 > d0 ? d0 <= d && d <= d1 : d1 <= d && d <= d0)
+            have_root[i] = true;
     }
     store_roots(rsa, have_root, t, r0, r1, point_index, false);
 }
@@ -806,49 +950,75 @@ compute_radial_shading_span_extended_side(radial_shading_attrs_t *rsa, double r0
 static int
 compute_radial_shading_span_extended_point(radial_shading_attrs_t *rsa, double r0, double r1, int point_index)
 {
+    /* As t moves from 0 to 1, the circles move from r0 to r1, and from
+     * from position p0 to py. At any given time t, therefore, we
+     * paint the points that are distance r0+(r1-r0)*t from point
+     * (p0x+(p1x-p0x)*t,p0y+(p1y-p0y)*t) = P(t).
+     *
+     * To simplify our algebra, adjust so that (p0x, p0y) is at the origin.
+     * To find the time(s) t at which the a point q is painted, we therefore
+     * solve for t in:
+     *
+     * |q-P(t)| = r0+(r1-r0)*t
+     *
+     *   (qx-p1x*t)^2 + (qy-p1y*t)^2 - (r0+(r1-r0)*t)^2 = 0
+     * = qx^2 - 2qx.p1x.t + p1x^2.t^2 + qy^2 - 2qy.p1y.t + p1y^2.t^2 -
+     *                                   (r0^2 + 2r0(r1-r0)t + (r1-r0)^2.t^2)
+     * =   qx^2 + qy^2 - r0^2
+     *   + -2(qx.p1x + qy.p1y + r0(r1-r0)).t
+     *   + (p1x^2 + p1y^2 - (r1-r0)^2).t^2
+     *
+     * So solve using the usual t = (-b +/- SQRT(b^2 - 4ac)) where
+     *   a = p1x^2 + p1y^2 - (r1-r0)^2
+     *   b = -2(qx.p1x + qy.p1y + r0(r1-r0))
+     *   c = qx^2 + qy^2 - r0^2
+     */
     double p1x = rsa->x1 - rsa->x0;
     double p1y = rsa->y1 - rsa->y0;
-    double qx = rsa->p[point_index].x - rsa->x0;
-    double qy = rsa->p[point_index].y - rsa->y0;
-    double div = (Pw2(p1x) + Pw2(p1y) - Pw2(r0 - r1));
+    double qx  = rsa->p[point_index].x - rsa->x0;
+    double qy  = rsa->p[point_index].y - rsa->y0;
+    double a   = (Pw2(p1x) + Pw2(p1y) - Pw2(r0 - r1));
     bool have_root[2] = {false, false};
     double t[2];
 
-    if (fabs(div) < 1e-8) {
-	/* Linear equation. */
-	/* This case is always the ongoing eclipese contact. */
-	double cx = rsa->x0 - (rsa->x1 - rsa->x0) * r0 / (r1 - r0);
-	double cy = rsa->y0 - (rsa->y1 - rsa->y0) * r0 / (r1 - r0);
-	
-	t[0] = (Pw2(qx) + Pw2(qy))/(cx*qx + cy*qy) / 2;
-	have_root[0] = true;
+    if (fabs(a) < 1e-8) {
+        /* Linear equation. */
+        /* This case is always the ongoing ellipse contact. */
+        double cx = rsa->x0 - (rsa->x1 - rsa->x0) * r0 / (r1 - r0);
+        double cy = rsa->y0 - (rsa->y1 - rsa->y0) * r0 / (r1 - r0);
+
+        t[0] = (Pw2(qx) + Pw2(qy))/(cx*qx + cy*qy) / 2;
+        have_root[0] = true;
     } else {
-	/* Square equation. */
-	double desc2 = -((Pw2(qx) + Pw2(qy) - Pw2(r0))*(Pw2(p1x) + Pw2(p1y) - Pw2(r0 - r1))) + Pw2(p1x*qx + p1y*qy + r0*(-r0 + r1));
+        /* Square equation.  No solution if b^2 - 4ac = 0. Equivalently if
+         * (b^2)/4 -a.c = 0 === (b/2)^2 - a.c = 0 ===  (-b/2)^2 - a.c = 0 */
+        double minushalfb = r0*(r1-r0) + p1x*qx + p1y*qy;
+        double c          = Pw2(qx) + Pw2(qy) - Pw2(r0);
+        double desc2      = Pw2(minushalfb) - a*c; /* desc2 = 1/4 (b^2-4ac) */
 
-	if (desc2 < 0) {
-	    return -1; /* The point is outside the shading coverage. 
-		          Do not shorten, because we didn't observe it in practice. */
-	} else {
-	    double desc1 = sqrt(desc2);
+        if (desc2 < 0) {
+            return -1; /* The point is outside the shading coverage.
+                          Do not shorten, because we didn't observe it in practice. */
+        } else {
+            double desc1 = sqrt(desc2); /* desc1 = 1/2 SQRT(b^2-4ac) */
 
-	    if (div > 0) {
-		t[0] = (p1x*qx + p1y*qy + r0*(-r0 + r1) - desc1) / div;
-		t[1] = (p1x*qx + p1y*qy + r0*(-r0 + r1) + desc1) / div;
-	    } else {
-		t[0] = (p1x*qx + p1y*qy + r0*(-r0 + r1) + desc1) / div;
-		t[1] = (p1x*qx + p1y*qy + r0*(-r0 + r1) - desc1) / div;
-	    }
-	    have_root[0] = have_root[1] = true;
-	}
+            if (a > 0) {
+                t[0] = (minushalfb - desc1) / a;
+                t[1] = (minushalfb + desc1) / a;
+            } else {
+                t[0] = (minushalfb + desc1) / a;
+                t[1] = (minushalfb - desc1) / a;
+            }
+            have_root[0] = have_root[1] = true;
+        }
     }
     store_roots(rsa, have_root, t, r0, r1, point_index, true);
-    if (have_root[0] && have_root[1]) 
-	return 15;
+    if (have_root[0] && have_root[1])
+        return 15;
     if (have_root[0])
-	return 15 - 4;
+        return 15 - 4;
     if (have_root[1])
-	return 15 - 2;
+        return 15 - 2;
     return -1;
 }
 
@@ -858,19 +1028,19 @@ static int
 compute_radial_shading_span_extended(radial_shading_attrs_t *rsa, double r0, double r1)
 {
     int span_type0, span_type1;
-    
+
     span_type0 = compute_radial_shading_span_extended_point(rsa, r0, r1, 1);
     if (span_type0 == -1)
-	return -1;
+        return -1;
     span_type1 = compute_radial_shading_span_extended_point(rsa, r0, r1, 2);
     if (span_type0 != span_type1)
-	return -1;
+        return -1;
     span_type1 = compute_radial_shading_span_extended_point(rsa, r0, r1, 3);
     if (span_type0 != span_type1)
-	return -1;
+        return -1;
     span_type1 = compute_radial_shading_span_extended_point(rsa, r0, r1, 4);
     if (span_type0 != span_type1)
-	return -1;
+        return -1;
     compute_radial_shading_span_extended_side(rsa, r0, r1, 1);
     compute_radial_shading_span_extended_side(rsa, r0, r1, 2);
     compute_radial_shading_span_extended_side(rsa, r0, r1, 3);
@@ -887,8 +1057,8 @@ compute_radial_shading_span(radial_shading_attrs_t *rsa, float x0, float y0, flo
        our math is not applicable, and we render entire shading.
        If the path bbox is inside the shading area,
        we compute 1 or 2 'spans' - the shading parameter intervals,
-       which covers the bbox. For doing that we need to resolve 
-       a square eqation by the shading parameter 
+       which covers the bbox. For doing that we need to resolve
+       a square eqation by the shading parameter
        for each corner of the bounding box,
        and for each side of the shading bbox.
        Note the equation to be solved in the user space.
@@ -898,7 +1068,7 @@ compute_radial_shading_span(radial_shading_attrs_t *rsa, float x0, float y0, flo
        the running circle, and the second one corresponds to the last (outgoing) contact
        (like in a sun eclipse; well our sun is rectangular).
 
-       Here are few exceptions. 
+       Here are few exceptions.
 
        First, the equation degenerates when the distance sqrt((x1-x0)^2 + (y1-y0)^2)
        appears equal to r0-r1. In this case the base circles do contact,
@@ -924,7 +1094,7 @@ compute_radial_shading_span(radial_shading_attrs_t *rsa, float x0, float y0, flo
        implement this optimization. The general tensor patch algorithm
        will skip uncovering parts.
 
-       Fourth, when one base circle is (almost) inside the other, 
+       Fourth, when one base circle is (almost) inside the other,
        the parameter interval must include the shading apex.
        To know that, we determine whether the contacting circle
        is outside the rectangle (the "outer" contact),
@@ -932,7 +1102,7 @@ compute_radial_shading_span(radial_shading_attrs_t *rsa, float x0, float y0, flo
 
        At last, a small shortening of a shading won't give a
        sensible speedup, but it may replace a symmetric function domain
-       with an assymmetric one, so that the rendering 
+       with an assymmetric one, so that the rendering
        would be asymmetyric for a symmetric shading.
        Therefore we do not perform a small sortening.
        Instead we shorten only if the shading span
@@ -956,40 +1126,40 @@ compute_radial_shading_span(radial_shading_attrs_t *rsa, float x0, float y0, flo
     rsa->apex = (rsa->have_apex ? -r0 / (r1 - r0) : 0);
     span_type0 = compute_radial_shading_span_extended(rsa, r0 / extent, r1 * extent);
     if (span_type0 == -1)
-	return -1;
+        return -1;
     span_type1 = compute_radial_shading_span_extended(rsa, r0 / extent, r1 / extent);
     if (span_type0 != span_type1)
-	return -1;
+        return -1;
     span_type1 = compute_radial_shading_span_extended(rsa, r0 * extent, r1 * extent);
     if (span_type0 != span_type1)
-	return -1;
+        return -1;
     span_type1 = compute_radial_shading_span_extended(rsa, r0 * extent, r1 / extent);
     if (span_type1 == -1)
-	return -1;
+        return -1;
     if (r0 < r1) {
-	if (rsa->have_root[0] && !rsa->outer_contact[0])
-	    rsa->span[0][0] = rsa->apex; /* Likely never happens. Remove ? */
-	if (rsa->have_root[1] && !rsa->outer_contact[1])
-	    rsa->span[1][0] = rsa->apex;
+        if (rsa->have_root[0] && !rsa->outer_contact[0])
+            rsa->span[0][0] = rsa->apex; /* Likely never happens. Remove ? */
+        if (rsa->have_root[1] && !rsa->outer_contact[1])
+            rsa->span[1][0] = rsa->apex;
     } else if (r0 > r1) {
-	if (rsa->have_root[0] && !rsa->outer_contact[0])
-	    rsa->span[0][1] = rsa->apex;
-	if (rsa->have_root[1] && !rsa->outer_contact[1])
-	    rsa->span[1][1] = rsa->apex; /* Likely never happens. Remove ? */
+        if (rsa->have_root[0] && !rsa->outer_contact[0])
+            rsa->span[0][1] = rsa->apex;
+        if (rsa->have_root[1] && !rsa->outer_contact[1])
+            rsa->span[1][1] = rsa->apex; /* Likely never happens. Remove ? */
     }
     span_type = 0;
     if (rsa->have_root[0] && rsa->span[0][0] < 0)
-	span_type |= 1;
+        span_type |= 1;
     if (rsa->have_root[1] && rsa->span[1][0] < 0)
-	span_type |= 1;
+        span_type |= 1;
     if (rsa->have_root[0] && rsa->span[0][1] > 0 && rsa->span[0][0] < 1)
-	span_type |= 2;
+        span_type |= 2;
     if (rsa->have_root[1] && rsa->span[1][1] > 0 && rsa->span[1][0] < 1)
-	span_type |= 4;
+        span_type |= 4;
     if (rsa->have_root[0] && rsa->span[0][1] > 1)
-	span_type |= 8;
+        span_type |= 8;
     if (rsa->have_root[1] && rsa->span[1][1] > 1)
-	span_type |= 8;
+        span_type |= 8;
     return span_type;
 }
 
@@ -999,36 +1169,36 @@ shorten_radial_shading(float *x0, float *y0, floatp *r0, float *d0, float *x1, f
     double s0 = span_[0], s1 = span_[1], w;
 
     if (s0 < 0)
-	s0 = 0;
+        s0 = 0;
     if (s1 < 0)
-	s1 = 0;
+        s1 = 0;
     if (s0 > 1)
-	s0 = 1;
+        s0 = 1;
     if (s1 > 1)
-	s1 = 1;
+        s1 = 1;
     w = s1 - s0;
     if (w == 0)
-	return false; /* Don't pass a degenerate shading. */
+        return false; /* Don't pass a degenerate shading. */
     if (w > 0.3)
-	return false; /* The span is big, don't shorten it. */
+        return false; /* The span is big, don't shorten it. */
     {	/* Do shorten. */
-	double R0 = *r0, X0 = *x0, Y0 = *y0, D0 = *d0;
-	double R1 = *r1, X1 = *x1, Y1 = *y1, D1 = *d1;
+        double R0 = *r0, X0 = *x0, Y0 = *y0, D0 = *d0;
+        double R1 = *r1, X1 = *x1, Y1 = *y1, D1 = *d1;
 
-	*r0 = R0 + (R1 - R0) * s0;
-	*x0 = X0 + (X1 - X0) * s0;
-	*y0 = Y0 + (Y1 - Y0) * s0;
-	*d0 = D0 + (D1 - D0) * s0;
-	*r1 = R0 + (R1 - R0) * s1;
-	*x1 = X0 + (X1 - X0) * s1;
-	*y1 = Y0 + (Y1 - Y0) * s1;
-	*d1 = D0 + (D1 - D0) * s1;
+        *r0 = R0 + (R1 - R0) * s0;
+        *x0 = X0 + (X1 - X0) * s0;
+        *y0 = Y0 + (Y1 - Y0) * s0;
+        *d0 = D0 + (D1 - D0) * s0;
+        *r1 = R0 + (R1 - R0) * s1;
+        *x1 = X0 + (X1 - X0) * s1;
+        *y1 = Y0 + (Y1 - Y0) * s1;
+        *d1 = D0 + (D1 - D0) * s1;
     }
     return true;
 }
 
 static bool inline
-is_radial_shading_large(double x0, double y0, double r0, double d0, double x1, double y1, double r1, const gs_rect * rect)
+is_radial_shading_large(double x0, double y0, double r0, double x1, double y1, double r1, const gs_rect * rect)
 {
     const double d = hypot(x1 - x0, y1 - y0);
     const double area0 = M_PI * r0 * r0 / 2;
@@ -1044,17 +1214,17 @@ is_radial_shading_large(double x0, double y0, double r0, double d0, double x1, d
     /* If one dimension is large enough, the shading parameter span is wide. */
     areaX = (rect->q.x - rect->p.x) * (rect->q.x - rect->p.x);
     if (areaX * arbitrary < area0 + area1 + area2)
-	return true;
+        return true;
     areaY = (rect->q.y - rect->p.y) * (rect->q.y - rect->p.y);
     if (areaY * arbitrary < area0 + area1 + area2)
-	return true;
+        return true;
     return false;
 }
 
 static int
 gs_shading_R_fill_rectangle_aux(const gs_shading_t * psh0, const gs_rect * rect,
-			    const gs_fixed_rect *clip_rect,
-			    gx_device * dev, gs_imager_state * pis)
+                            const gs_fixed_rect *clip_rect,
+                            gx_device * dev, gs_imager_state * pis)
 {
     const gs_shading_R_t *const psh = (const gs_shading_R_t *)psh0;
     float d0 = psh->params.Domain[0], d1 = psh->params.Domain[1];
@@ -1068,84 +1238,88 @@ gs_shading_R_fill_rectangle_aux(const gs_shading_t * psh0, const gs_rect * rect,
     patch_fill_state_t pfs1;
 
     if (r0 == 0 && r1 == 0)
-	return 0; /* PLRM requires to paint nothing. */
-    shade_init_fill_state((shading_fill_state_t *)&pfs1, psh0, dev, pis);
+        return 0; /* PLRM requires to paint nothing. */
+    code = shade_init_fill_state((shading_fill_state_t *)&pfs1, psh0, dev, pis);
+    if (code < 0)
+        return code;
     pfs1.Function = psh->params.Function;
     code = init_patch_fill_state(&pfs1);
-    if (code < 0)
-	return code;
+    if (code < 0) {
+        if (pfs1.icclink != NULL) gsicc_release_link(pfs1.icclink);
+        return code;
+    }
     pfs1.function_arg_shift = 1;
     pfs1.rect = *clip_rect;
     pfs1.maybe_self_intersecting = false;
-    if (is_radial_shading_large(x0, y0, r0, d0, x1, y1, r1, rect))
-	span_type = compute_radial_shading_span(&rsa, x0, y0, r0, x1, y1, r1, rect);
+    if (is_radial_shading_large(x0, y0, r0, x1, y1, r1, rect))
+        span_type = compute_radial_shading_span(&rsa, x0, y0, r0, x1, y1, r1, rect);
     else
-	span_type = -1;
+        span_type = -1;
     if (span_type < 0) {
-	code = R_extensions(&pfs1, psh, rect, d0, d1, psh->params.Extend[0], false);
-	if (code >= 0)
-	    code = R_tensor_annulus(&pfs1, rect, x0, y0, r0, d0, x1, y1, r1, d1);
-	if (code >= 0)
-	    code = R_extensions(&pfs1, psh, rect, d0, d1, false, psh->params.Extend[1]);
+        code = R_extensions(&pfs1, psh, rect, d0, d1, psh->params.Extend[0], false);
+        if (code >= 0)
+            code = R_tensor_annulus(&pfs1, x0, y0, r0, d0, x1, y1, r1, d1);
+        if (code >= 0)
+            code = R_extensions(&pfs1, psh, rect, d0, d1, false, psh->params.Extend[1]);
     } else if (span_type == 1) {
-	code = R_fill_rect_with_const_color(&pfs1, clip_rect, d0);
+        code = R_fill_rect_with_const_color(&pfs1, clip_rect, d0);
     } else if (span_type == 8) {
-	code = R_fill_rect_with_const_color(&pfs1, clip_rect, d1);
+        code = R_fill_rect_with_const_color(&pfs1, clip_rect, d1);
     } else {
-	bool second_interval = true; 
+        bool second_interval = true;
 
-	code = 0;
-	if (span_type & 1)
-	    code = R_extensions(&pfs1, psh, rect, d0, d1, psh->params.Extend[0], false);
-	if (code >= 0) {
-	    float X0 = x0, Y0 = y0, D0 = d0, X1 = x1, Y1 = y1, D1 = d1;
-	    floatp R0 = r0, R1 = r1;
+        code = 0;
+        if (span_type & 1)
+            code = R_extensions(&pfs1, psh, rect, d0, d1, psh->params.Extend[0], false);
+        if ((code >= 0) && (span_type & 2)) {
+            float X0 = x0, Y0 = y0, D0 = d0, X1 = x1, Y1 = y1, D1 = d1;
+            floatp R0 = r0, R1 = r1;
 
-	    if ((span_type & 2) && (span_type & 4) && rsa.span[0][1] >= rsa.span[1][0]) {
-		double united[2];
+            if ((span_type & 4) && rsa.span[0][1] >= rsa.span[1][0]) {
+                double united[2];
 
-		united[0] = rsa.span[0][0];
-		united[1] = rsa.span[1][1];
-		shorten_radial_shading(&X0, &Y0, &R0, &D0, &X1, &Y1, &R1, &D1, united);
-		second_interval = false;
-		code = R_tensor_annulus(&pfs1, rect, X0, Y0, R0, D0, X1, Y1, R1, D1);
-	    } else if (span_type & 2) {
-		second_interval = shorten_radial_shading(&X0, &Y0, &R0, &D0, &X1, &Y1, &R1, &D1, rsa.span[0]);
-		code = R_tensor_annulus(&pfs1, rect, X0, Y0, R0, D0, X1, Y1, R1, D1);
-	    }
-	}
-	if (code >= 0 && second_interval) {
-	    if (span_type & 4) {
-		float X0 = x0, Y0 = y0, D0 = d0, X1 = x1, Y1 = y1, D1 = d1;
-		floatp R0 = r0, R1 = r1;
+                united[0] = rsa.span[0][0];
+                united[1] = rsa.span[1][1];
+                shorten_radial_shading(&X0, &Y0, &R0, &D0, &X1, &Y1, &R1, &D1, united);
+                second_interval = false;
+            } else {
+                second_interval = shorten_radial_shading(&X0, &Y0, &R0, &D0, &X1, &Y1, &R1, &D1, rsa.span[0]);
+            }
+            code = R_tensor_annulus(&pfs1, X0, Y0, R0, D0, X1, Y1, R1, D1);
+        }
+        if (code >= 0 && second_interval) {
+            if (span_type & 4) {
+                float X0 = x0, Y0 = y0, D0 = d0, X1 = x1, Y1 = y1, D1 = d1;
+                floatp R0 = r0, R1 = r1;
 
-		shorten_radial_shading(&X0, &Y0, &R0, &D0, &X1, &Y1, &R1, &D1, rsa.span[1]);
-		code = R_tensor_annulus(&pfs1, rect, X0, Y0, R0, D0, X1, Y1, R1, D1);
-	    }
-	}
-	if (code >= 0 && (span_type & 8))
-	    code = R_extensions(&pfs1, psh, rect, d0, d1, false, psh->params.Extend[1]);
+                shorten_radial_shading(&X0, &Y0, &R0, &D0, &X1, &Y1, &R1, &D1, rsa.span[1]);
+                code = R_tensor_annulus(&pfs1, X0, Y0, R0, D0, X1, Y1, R1, D1);
+            }
+        }
+        if (code >= 0 && (span_type & 8))
+            code = R_extensions(&pfs1, psh, rect, d0, d1, false, psh->params.Extend[1]);
     }
+    if (pfs1.icclink != NULL) gsicc_release_link(pfs1.icclink);
     if (term_patch_fill_state(&pfs1))
-	return_error(gs_error_unregistered); /* Must not happen. */
+        return_error(gs_error_unregistered); /* Must not happen. */
     return code;
 }
 
 int
 gs_shading_R_fill_rectangle(const gs_shading_t * psh0, const gs_rect * rect,
-			    const gs_fixed_rect * rect_clip,
-			    gx_device * dev, gs_imager_state * pis)
-{   
+                            const gs_fixed_rect * rect_clip,
+                            gx_device * dev, gs_imager_state * pis)
+{
     int code;
 
     if (VD_TRACE_RADIAL_PATCH && vd_allowed('s')) {
-	vd_get_dc('s');
-	vd_set_shift(0, 0);
-	vd_set_scale(0.01);
-	vd_set_origin(0, 0);
+        vd_get_dc('s');
+        vd_set_shift(0, 0);
+        vd_set_scale(0.01);
+        vd_set_origin(0, 0);
     }
     code = gs_shading_R_fill_rectangle_aux(psh0, rect, rect_clip, dev, pis);
     if (VD_TRACE_FUNCTIONAL_PATCH && vd_allowed('s'))
-	vd_release_dc;
+        vd_release_dc;
     return code;
 }

@@ -1,16 +1,17 @@
-#  Copyright (C) 2001-2007 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: msvclib.mak 10592 2010-01-07 10:53:36Z robin $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 # makefile for Microsoft Visual C++ 4.1 or later, Windows NT or Windows 95 LIBRARY.
 #
 # All configurable options are surrounded by !ifndef/!endif to allow 
@@ -49,13 +50,10 @@ GS_LIB_DEFAULT=$(GSROOTDIR)/Resource/Init;$(GSROOTDIR)/lib;$(GSROOTDIR)/Resource
 
 # Define whether or not searching for initialization files should always
 # look in the current directory first.  This leads to well-known security
-# and confusion problems, but users insist on it.
-# NOTE: this also affects searching for files named on the command line:
-# see the "File searching" section of Use.htm for full details.
-# Because of this, setting SEARCH_HERE_FIRST to 0 is not recommended.
+# and confusion problems,  but may be convenient sometimes.
 
 !ifndef SEARCH_HERE_FIRST
-SEARCH_HERE_FIRST=1
+SEARCH_HERE_FIRST=0
 !endif
 
 # Define the name of the interpreter initialization file.
@@ -83,6 +81,10 @@ DEBUG=0
 TDEBUG=1
 !endif
 
+!if "$(MEMENTO)"=="1"
+CFLAGS=$(CFLAGS) -DMEMENTO
+!endif
+
 # Define the name of the executable file.
 
 !ifndef GS
@@ -98,6 +100,9 @@ BINDIR=.\bin
 !endif
 !ifndef GLSRCDIR
 GLSRCDIR=.\base
+!ifndef DEVSRCDIR
+DEVSRCDIR=.\devices
+!endif
 !ifndef PSRESDIR
 PSRESDIR=.\Resource
 !endif
@@ -117,6 +122,19 @@ GLOBJDIR=.\obj
 !endif
 !endif
 
+!ifndef DEVGENDIR
+!if "$(DEBUG)"="1"
+DEVGENDIR=.\debugobj
+!else
+DEVGENDIR=.\obj
+!endif
+!endif
+
+!ifndef DEVOBJDIR
+DEVOBJDIR=$(DEVGENDIR)
+!endif
+
+
 # Do not edit the next group of lines.
 NUL=
 DD=$(GLGENDIR)\$(NUL)
@@ -134,7 +152,7 @@ JSRCDIR=jpeg
 # Define the directory where the PNG library sources are stored,
 # and the version of the library that is stored there.
 # You may need to change this if the libpng version changes.
-# See libpng.mak for more information.
+# See png.mak for more information.
 
 !ifndef PNGSRCDIR
 PNGSRCDIR=libpng
@@ -158,32 +176,18 @@ JBIG2_LIB=jbig2dec
 JBIG2SRCDIR=jbig2dec
 !endif
 
-# Define the jasper library source location.
-# See jasper.mak for more information.
+# Define the directory where the lcms source is stored.
+# See lcms.mak for more information
 
-!ifndef JPX_LIB
-JPX_LIB=jasper
+!ifndef LCMSSRCDIR
+LCMSSRCDIR=lcms
 !endif
 
-# Alternatively, you can build a separate DLL
-# and define SHARE_JPX=1 in src/winlib.mak
+# Define the directory where the lcms2 source is stored.
+# See lcms2.mak for more information
 
-!ifndef JPXSRCDIR
-JPXSRCDIR=jasper
-!endif
-
-# Define the directory where the icclib source are stored.
-# See icclib.mak for more information
-
-!ifndef ICCSRCDIR
-ICCSRCDIR=icclib
-!endif
-
-# Define the directory where the imdi library source is stored.
-# See devs.mak for more information
-
-!ifndef IMDISRCDIR
-IMDISRCDIR=imdi
+!ifndef LCMS2SRCDIR
+LCMS2SRCDIR=lcms2
 !endif
 
 # Define any other compilation flags.
@@ -373,14 +377,14 @@ SYNC=winsync
 # Choose the language feature(s) to include.  See gs.mak for details.
 
 !ifndef FEATURE_DEVS
-FEATURE_DEVS=$(GLD)psl3lib.dev $(GLD)path1lib.dev $(GLD)dps2lib.dev $(GLD)psl2cs.dev $(GLD)cielib.dev $(GLD)imasklib.dev $(GLD)patlib.dev $(GLD)htxlib.dev $(GLD)roplib.dev $(GLD)devcmap.dev $(GLD)bbox.dev $(GLD)pipe.dev
+FEATURE_DEVS=$(GLD)psl3lib.dev $(GLD)path1lib.dev $(GLD)dps2lib.dev $(GLD)psl2cs.dev $(GLD)cielib.dev $(GLD)imasklib.dev $(GLD)patlib.dev $(GLD)htxlib.dev $(GLD)devcmap.dev $(GLD)bbox.dev $(GLD)pipe.dev
 !endif
 
 # Choose whether to compile the .ps initialization files into the executable.
 # See gs.mak for details.
 
 !ifndef COMPILE_INITS
-COMPILE_INITS=0
+COMPILE_INITS=1
 !endif
 
 # Choose whether to store band lists on files or in memory.
@@ -446,14 +450,15 @@ TOP_MAKEFILES=$(MAKEFILE) $(GLSRCDIR)\msvccmd.mak $(GLSRCDIR)\msvctail.mak $(GLS
 # nmake expands macros when encountered, not when used,
 # so this must precede the !include statements.
 
-BEGINFILES2=$(GLOBJDIR)\$(GS).ilk $(GLOBJDIR)\$(GS).pdb $(GLOBJDIR)\genarch.ilk $(GLOBJDIR)\genarch.pdb $(GLOBJDIR)\*.sbr
+BEGINFILES2=$(GLOBJDIR)\$(GS).ilk $(GLOBJDIR)\$(GS).pdb $(GLOBJDIR)\genarch.ilk $(GLOBJDIR)\genarch.pdb \
+$(GLOBJDIR)\*.sbr $(GLOBJDIR)\cups\*.h $(AUXDIR)\*.sbr $(AUXDIR)\*.pdb
 
 # Define these right away because they modify the behavior of
 # msvccmd.mak, msvctail.mak & winlib.mak.
 
 LIB_ONLY=$(GLOBJDIR)\gslib.obj $(GLOBJDIR)\gsnogc.obj $(GLOBJDIR)\gconfig.obj $(GLOBJDIR)\gscdefs.obj $(GLOBJDIR)\gsromfs$(COMPILE_INITS).obj
 MAKEDLL=0
-PLATFORM=mslib32_
+GSPLATFORM=mslib32_
 
 !include $(GLSRCDIR)\version.mak
 !include $(GLSRCDIR)\msvccmd.mak

@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2008 Artifex Software, Inc.
+/* Copyright (C) 2001-2013 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gscdef.c 10732 2010-02-10 18:17:48Z giles $ */
+
 /* Configuration scalars */
 
 #include "std.h"
@@ -25,25 +27,25 @@
 
 #ifndef GS_BUILDTIME
 #  define GS_BUILDTIME\
-	0			/* should be set in the makefile */
+        0			/* should be set in the makefile */
 #endif
 const long gs_buildtime = GS_BUILDTIME;
 
 #ifndef GS_COPYRIGHT
 #  define GS_COPYRIGHT\
-	"Copyright (C) 2010 Artifex Software, Inc.  All rights reserved."
+        "Copyright (C) 2013 Artifex Software, Inc.  All rights reserved."
 #endif
 const char *const gs_copyright = GS_COPYRIGHT;
 
 #ifndef GS_PRODUCTFAMILY
 #  define GS_PRODUCTFAMILY\
-	"GPL Ghostscript"
+        "GPL Ghostscript"
 #endif
 const char *const gs_productfamily = GS_PRODUCTFAMILY;
 
 #ifndef GS_PRODUCT
 #  define GS_PRODUCT\
-	GS_PRODUCTFAMILY ""
+        GS_PRODUCTFAMILY ""
 #endif
 const char *const gs_product = GS_PRODUCT;
 
@@ -67,7 +69,7 @@ const long gs_revisiondate = GS_REVISIONDATE;
 
 #ifndef GS_SERIALNUMBER
 #  define GS_SERIALNUMBER\
-	42			/* a famous number */
+        42			/* a famous number */
 #endif
 const long gs_serialnumber = GS_SERIALNUMBER;
 

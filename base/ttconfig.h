@@ -1,38 +1,40 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: ttconfig.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Changes after FreeType: cut out the TrueType instruction interpreter. */
 
 /*******************************************************************
  *
- *  ttconfig.h                                                1.0   
+ *  ttconfig.h                                                1.0
  *
- *    Configuration settings header file (spec only).            
+ *    Configuration settings header file (spec only).
  *
  *  Copyright 1996-1998 by
  *  David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  *  This file is part of the FreeType project, and may only be used
  *  modified and distributed under the terms of the FreeType project
- *  license, LICENSE.TXT.  By continuing to use, modify, or distribute 
+ *  license, LICENSE.TXT.  By continuing to use, modify, or distribute
  *  this file you indicate that you have read the license and
  *  understand and accept it fully.
  *
  *  Notes:
  *
  *    All the configuration #define statements have been gathered in
- *    this file to allow easy check and modification.       
+ *    this file to allow easy check and modification.
  *
  ******************************************************************/
 
@@ -47,14 +49,12 @@
 
 #include "ttconf.h"
 
-
 /* ------------ general debugging -------------------------------------- */
 
 /* Define DEBUG if you want the program to output a series of messages   */
 /* to stderr regarding its behaviour.  Only useful during development.   */
 
 /* #define DEBUG */
-
 
 /* ------------ arithmetic and processor support - ttcalc, ttraster ---- */
 
@@ -64,10 +64,8 @@
 
 /* #define ONE_COMPLEMENT */
 
-
 /* BOUND_CALC isn't needed anymore due to changes in the ttcalc */
 /* component.  All computations are now bounded.                */
-
 
 /* Define _GNUC_LONG64_ if you want to enable the use of the 'long long' */
 /* 64-bit type provided by gcc.  Note that:                              */
@@ -86,7 +84,6 @@
 
 /* #define _GNUC_LONG64_ */
 
-
 /* define BUS_ERROR if your processor is unable to access words that */
 /* are not aligned to their respective size (i.e. a 4byte dword      */
 /* beginning at address 3 will result in a bus error on a Sun).      */
@@ -95,13 +92,11 @@
 
 /* #define BUS_ERROR */
 
-
 /* define ALIGNMENT to your processor/environment preferred alignment */
 /* size. A value of 8 should work on all current processors, even     */
 /* 64-bits ones.                                                      */
 
 #define ALIGNMENT 8
-
 
 /* ------------ rasterizer configuration ----- ttraster ----------------- */
 
@@ -119,7 +114,6 @@
 
 #define SECURE_COMPUTATIONS
 
-
 /* Define this if you want to generate a debug version of the rasterizer. */
 /* This will progressively draw the glyphs while the computations are     */
 /* done directly on the graphics screen... (with inverted glyphs)         */
@@ -131,7 +125,6 @@
 
 /* #define DEBUG_RASTER */
 
-
 /* The TrueType specs stipulate that the filled regions delimited by  */
 /* the contours must be to the right of the drawing orientation.      */
 /* Unfortunately, a lot of cheapo fonts do not respect this rule.     */
@@ -141,9 +134,6 @@
 
 #define IGNORE_FILL_FLOW
 /* We want to draw all kinds of glyphs, even incorrect ones... */
-
-
-
 
 /* --------------- automatic setup -- don't touch ------------------ */
 
@@ -209,6 +199,5 @@
 /* engine itself or some badly written extension.                      */
 
 #endif /* TTCONFIG_H */
-
 
 /* END */

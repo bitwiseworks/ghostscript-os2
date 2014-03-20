@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsiparam.h 8767 2008-05-21 19:46:47Z giles $ */
+
 /* Image parameter definition */
 
 #ifndef gsiparam_INCLUDED
@@ -44,11 +46,11 @@ typedef struct gx_image_type_s gx_image_type_t;
 
 #endif
 #define gs_image_common\
-	const gx_image_type_t *type;\
-		/*\
-		 * Define the transformation from user space to image space.\
-		 */\
-	gs_matrix ImageMatrix
+        const gx_image_type_t *type;\
+                /*\
+                 * Define the transformation from user space to image space.\
+                 */\
+        gs_matrix ImageMatrix
 typedef struct gs_image_common_s {
     gs_image_common;
 } gs_image_common_t;
@@ -56,6 +58,17 @@ typedef struct gs_image_common_s {
 #define public_st_gs_image_common() /* in gximage.c */\
   gs_public_st_simple(st_gs_image_common, gs_image_common_t,\
     "gs_image_common_t")
+
+/*  Parent image type enumerations.  Since type3 images can give rise to
+    type 1 image types, we want to know the origin of these to avoid
+    doing different halftone methods to the image and the mask.  */
+typedef enum {
+    gs_image_type1,
+    gs_image_type2,
+    gs_image_type3,
+    gs_image_type3x,
+    gs_image_type4
+} gs_image_parent_t;
 
 /*
  * Define the maximum number of components/planes in image data.
@@ -76,34 +89,34 @@ typedef struct gs_image_common_s {
  *      how the data are actually supplied.
  */
 #define gs_data_image_common\
-	gs_image_common;\
-		/*\
-		 * Define the width of source image in pixels.\
-		 */\
-	int Width;\
-		/*\
-		 * Define the height of source image in pixels.\
-		 */\
-	int Height;\
-		/*\
-		 * Define B, the number of bits per pixel component.\
-		 * Currently this must be 1 for masks.\
-		 */\
-	int BitsPerComponent;\
-		/*\
-		 * Define the linear remapping of the input values.\
-		 * For the I'th pixel component, we start by treating\
-		 * the B bits of component data as a fraction F between\
-		 * 0 and 1; the actual component value is then\
-		 * Decode[I*2] + F * (Decode[I*2+1] - Decode[I*2]).\
-		 * For masks, only the first two entries are used;\
-		 * they must be 1,0 for write-0s masks, 0,1 for write-1s.\
-		 */\
-	float Decode[GS_IMAGE_MAX_COMPONENTS * 2];\
-		/*\
-		 * Define whether to smooth the image.\
-		 */\
-	bool Interpolate
+        gs_image_common;\
+                /*\
+                 * Define the width of source image in pixels.\
+                 */\
+        int Width;\
+                /*\
+                 * Define the height of source image in pixels.\
+                 */\
+        int Height;\
+                /*\
+                 * Define B, the number of bits per pixel component.\
+                 * Currently this must be 1 for masks.\
+                 */\
+        int BitsPerComponent;\
+                /*\
+                 * Define the linear remapping of the input values.\
+                 * For the I'th pixel component, we start by treating\
+                 * the B bits of component data as a fraction F between\
+                 * 0 and 1; the actual component value is then\
+                 * Decode[I*2] + F * (Decode[I*2+1] - Decode[I*2]).\
+                 * For masks, only the first two entries are used;\
+                 * they must be 1,0 for write-0s masks, 0,1 for write-1s.\
+                 */\
+        float Decode[GS_IMAGE_MAX_COMPONENTS * 2];\
+                /*\
+                 * Define whether to smooth the image.\
+                 */\
+        bool Interpolate
 typedef struct gs_data_image_s {
     gs_data_image_common;
 } gs_data_image_t;
@@ -144,27 +157,26 @@ typedef struct gs_color_space_s gs_color_space;
 #endif
 
 #define gs_pixel_image_common\
-	gs_data_image_common;\
-		/*\
-		 * Define how the pixels are divided up into planes.\
-		 */\
-	gs_image_format_t format;\
-		/*\
-		 * Define whether to use the drawing color as the\
-		 * "texture" for RasterOp.  For more information,\
-		 * see the discussion of RasterOp in Language.htm.\
-		 */\
-	bool CombineWithColor;\
-		/*\
-		 * Define the source color space (must be NULL for masks).\
-		 *\
+        gs_data_image_common;\
+                /*\
+                 * Define how the pixels are divided up into planes.\
+                 */\
+        gs_image_format_t format;\
+                /*\
+                 * Define whether to use the drawing color as the\
+                 * "texture" for RasterOp.  For more information,\
+                 * see the discussion of RasterOp in Language.htm.\
+                 */\
+        bool CombineWithColor;\
+                /*\
+                 * Define the source color space (must be NULL for masks).\
+                 *\
                  * Make the pointer the last element of the structure.\
                  * Otherwise, the padding at the end overwrites the 1st\
                  * member of the subclass, when the base structure is assigned\
                  * to the subclass structure. Bugs 613909, 688725\
                  */\
-	gs_color_space *ColorSpace
-
+        gs_color_space *ColorSpace
 
 typedef struct gs_pixel_image_s {
     gs_pixel_image_common;
@@ -207,6 +219,13 @@ typedef struct gs_image1_s {
      * components implied by the color space.
      */
     gs_image_alpha_t Alpha;
+    /*
+     * Define the parent image type that gave rise to this.
+     * Used to avoid the use of mixed halftoning methods
+     * between images and their masks, which
+     * can cause misalignment issues in pixel replications.
+     */
+    gs_image_parent_t image_parent_type;
 } gs_image1_t;
 
 /* The descriptor is public for soft masks. */
@@ -247,7 +266,7 @@ void
    * (Decode is not initialized).
    */
     gs_pixel_image_t_init(gs_pixel_image_t * pim,
-			  gs_color_space * color_space);
+                          gs_color_space * color_space);
 
 /*
  * Initialize an ImageType 1 image (or imagemask).  Also sets ImageMask,
@@ -262,14 +281,39 @@ void
  * pim->ImageMask is true.
  */
 void gs_image_t_init_adjust(gs_image_t * pim, gs_color_space * pcs,
-			    bool adjust);
+                            bool adjust);
 #define gs_image_t_init(pim, pcs)\
   gs_image_t_init_adjust(pim, pcs, true)
 void gs_image_t_init_mask_adjust(gs_image_t * pim, bool write_1s,
-				 bool adjust);
+                                 bool adjust);
 #define gs_image_t_init_mask(pim, write_1s)\
   gs_image_t_init_mask_adjust(pim, write_1s, true)
 
+/* When doing thresholding in landscape mode, we collect scancolumns into a
+ * buffer LAND_BITS wide, and then flush them to copy_mono. Because we use
+ * SSE operations, LAND_BITS must be a multiple of 16. For performance,
+ * copy_mono would prefer longer runs than shorter ones, so we leave this
+ * configurable. The hope is that we can effectively trade memory for speed.
+ *
+ * Timings with LAND_BITS set to 32 and 128 both show slower performance than
+ * 16 though, due to increased time in image_render_mono_ht in the loop
+ * that copies data from scanlines to scancolumns. It seems that writing to
+ * the buffer in positions [0] [16] [32] [48] etc is faster than writing in
+ * positions [0] [32] [64] [96] etc. For now we leave LAND_BITS set to 16. */
+#define LAND_BITS 16
+
+/* Used for bookkeeping ht buffer information in landscape mode */
+typedef struct ht_landscape_info_s {
+    int count;
+    int widths[LAND_BITS];
+    int xstart;
+    int curr_pos;
+    int index;
+    int num_contones;
+    bool offset_set;
+    bool flipy;
+    int y_pos;
+} ht_landscape_info_t;
 
 /****** REMAINDER OF FILE UNDER CONSTRUCTION. PROCEED AT YOUR OWN RISK. ******/
 
@@ -283,10 +327,10 @@ void gs_image_t_init_mask_adjust(gs_image_t * pim, bool write_1s,
  */
 
 int gx_map_image_color(gx_device * dev,
-		       const gs_image_t * pim,
-		       const gx_color_rendering_info * pcri,
-		       const uint components[GS_IMAGE_MAX_COMPONENTS],
-		       gx_drawing_color * pdcolor);
+                       const gs_image_t * pim,
+                       const gx_color_rendering_info * pcri,
+                       const uint components[GS_IMAGE_MAX_COMPONENTS],
+                       gx_drawing_color * pdcolor);
 
 /*
   Map a source color to a drawing color.  The components are simply the

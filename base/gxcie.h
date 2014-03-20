@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxcie.h 9666 2009-04-20 19:16:24Z mvrhel $ */
+
 /* Internal definitions for CIE color implementation */
 /* Requires gxcspace.h */
 
@@ -49,12 +51,9 @@ cs_proc_install_cspace(gx_install_CIEA);
  * semi-hack for the PDF writer.
  */
 extern	int	gx_cie_to_xyz_alloc(gs_imager_state **,
-				    const gs_color_space *, gs_memory_t *);
+                                    const gs_color_space *, gs_memory_t *);
 extern	void	gx_cie_to_xyz_free(gs_imager_state *);
-
-
 extern int gx_cie_to_xyz_alloc2(gs_color_space * pcs, gs_state * pgs);
-
 
 /* Defined in gsciemap.c */
 
@@ -72,9 +71,9 @@ int gx_cie_check_rendering(const gs_color_space * pcs, frac * pconc, const gs_im
  * structure.
  */
 extern  int     gx_cie_remap_finish( cie_cached_vector3,
-				     frac *,
-				     const gs_imager_state *,
-				     const gs_color_space * );
+                                     frac *,
+                                     const gs_imager_state *,
+                                     const gs_color_space * );
 /* Make sure the prototype matches the one defined in gscie.h. */
 extern GX_CIE_REMAP_FINISH_PROC(gx_cie_remap_finish);
 
@@ -92,11 +91,11 @@ cs_proc_concretize_color(gx_concretize_CIEDEFG);
 cs_proc_concretize_color(gx_concretize_CIEDEF);
 cs_proc_concretize_color(gx_concretize_CIEABC);
 #if ENABLE_CUSTOM_COLOR_CALLBACK
-cs_proc_remap_color(gx_remap_CIEDEFG);
-cs_proc_remap_color(gx_remap_CIEDEF);
-cs_proc_remap_color(gx_remap_CIEA);
 cs_proc_remap_color(gx_remap_IndexedSpace);
 #endif
+cs_proc_remap_color(gx_remap_CIEDEF);
+cs_proc_remap_color(gx_remap_CIEDEFG);
+cs_proc_remap_color(gx_remap_CIEA);
 cs_proc_remap_color(gx_remap_CIEABC);
 cs_proc_concretize_color(gx_concretize_CIEA);
 
@@ -108,7 +107,7 @@ extern_st(st_cie_common_elements_t);
 
 /* set up the common default values for a CIE color space */
 extern  void    gx_set_common_cie_defaults( gs_cie_common *,
-					    void *  client_data );
+                                            void *  client_data );
 
 /* Load the common caches for a CIE color space */
 extern  void    gx_cie_load_common_cache(gs_cie_common *, gs_state *);
@@ -121,9 +120,9 @@ cs_proc_install_cspace(gx_install_CIE);
 
 /* allocate and initialize the common part of a cie color space */
 extern  void *  gx_build_cie_space( gs_color_space **           ppcspace,
-				    const gs_color_space_type * pcstype,
-				    gs_memory_type_ptr_t        stype,
-				    gs_memory_t *               pmem );
+                                    const gs_color_space_type * pcstype,
+                                    gs_memory_type_ptr_t        stype,
+                                    gs_memory_t *               pmem );
 
 /*
  * Determine the concrete space which underlies a CIE based space. For all
@@ -132,5 +131,19 @@ extern  void *  gx_build_cie_space( gs_color_space **           ppcspace,
  * is exported for use by gsicc.c to implement ICCBased color spaces.
  */
 cs_proc_concrete_space(gx_concrete_space_CIE);
+
+/* Special operations used in the creation of ICC color spaces from PS
+   spaces.  These are used to map from PS color to CIEXYZ */
+int gx_psconcretize_CIEDEFG(const gs_client_color * pc, const gs_color_space * pcs,
+                      frac * pconc, const gs_imager_state * pis);
+int gx_psconcretize_CIEDEF(const gs_client_color * pc, const gs_color_space * pcs,
+                     frac * pconc, const gs_imager_state * pis);
+int gx_psconcretize_CIEABC(const gs_client_color * pc, const gs_color_space * pcs,
+                     frac * pconc, const gs_imager_state * pis);
+int gx_psconcretize_CIEA(const gs_client_color * pc, const gs_color_space * pcs,
+                     frac * pconc, const gs_imager_state * pis);
+bool check_range(gs_range *ranges, int num_colorants);
+bool check_cie_range( const gs_color_space * pcs );
+gs_range* get_cie_range( const gs_color_space * pcs );
 
 #endif /* gxcie_INCLUDED */

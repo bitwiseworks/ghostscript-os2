@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gp_unifn.c 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Unix-like file name syntax platform routines for Ghostscript */
 #include "gx.h"
 #include "gp.h"
@@ -26,24 +28,29 @@ const char gp_file_name_list_separator = ':';
 const char gp_fmode_binary_suffix[] = "";
 
 /* Define the file modes for binary reading or writing. */
+#if (defined(__MINGW32__) && __MINGW32__ == 1) || (defined(__CYGWIN__) && __CYGWIN__ == 1)
+const char gp_fmode_rb[] = "rb";
+const char gp_fmode_wb[] = "wb";
+#else
 const char gp_fmode_rb[] = "r";
 const char gp_fmode_wb[] = "w";
+#endif
 
 /* -------------- Helpers for gp_file_name_combine_generic ------------- */
 
 uint gp_file_name_root(const char *fname, uint len)
 {   if (len > 0 && fname[0] == '/')
-	return 1;
+        return 1;
     return 0;
 }
 
 uint gs_file_name_check_separator(const char *fname, int len, const char *item)
 {   if (len > 0) {
-	if (fname[0] == '/')
-	    return 1;
+        if (fname[0] == '/')
+            return 1;
     } else if (len < 0) {
-	if (fname[-1] == '/')
-	    return 1;
+        if (fname[-1] == '/')
+            return 1;
     }
     return 0;
 }
@@ -81,9 +88,15 @@ bool gp_file_name_is_empty_item_meanful(void)
 }
 
 gp_file_name_combine_result
-gp_file_name_combine(const char *prefix, uint plen, const char *fname, uint flen, 
-		    bool no_sibling, char *buffer, uint *blen)
+gp_file_name_combine(const char *prefix, uint plen, const char *fname, uint flen,
+                    bool no_sibling, char *buffer, uint *blen)
 {
-    return gp_file_name_combine_generic(prefix, plen, 
-	    fname, flen, no_sibling, buffer, blen);
+    return gp_file_name_combine_generic(prefix, plen,
+            fname, flen, no_sibling, buffer, blen);
+}
+
+bool
+gp_file_name_good_char(unsigned char c)
+{
+	return c != 0 && c != '/' && c != '\\' && c != ':';
 }

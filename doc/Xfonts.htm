@@ -1,8 +1,8 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
 <html>
 <head>
+<meta http-equiv="content-type" content="text/html; charset=us-ascii">
 <title>Ghostscript's external font and text interface</title>
-<!-- $Id: Xfonts.htm 10732 2010-02-10 18:17:48Z giles $ -->
 <!-- Originally: xfonts.txt -->
 <link rel="stylesheet" type="text/css" href="gs.css" title="Ghostscript Style">
 </head>
@@ -21,6 +21,7 @@
 <h2>Table of contents</h2>
 
 <blockquote><ul>
+<li><a href="#Deprecated">Deprecated</a>
 <li><a href="#Introduction">Introduction</a>
 <li><a href="#Types">Types</a>
 <li><a href="#Implementation_procedures">Implementation procedures</a>
@@ -48,6 +49,18 @@ overview</a>.
 <!-- [1.0 end visible header] ============================================== -->
 
 <!-- [2.0 begin contents] ================================================== -->
+<h2><a name="Removal"></a>Removal</h2>
+<p>
+As of Ghostscript 9.04, the Xfont functionality has been removed
+
+<h2><a name="Deprecated"></a>Deprecated</h2>
+<p>
+As of Ghostscript 9.01 Xfont functionality is considered deprecated, and
+unsupported. Its complete removal is planned for a near future release.
+<p>
+If your application relies on this feature you should either plan for
+its removal, or contact the Ghostscript developers so our Xfont plans
+can be revisited.
 
 <h2><a name="Introduction"></a>Introduction</h2>
 
@@ -115,14 +128,14 @@ to a small number of Ghostscript porters and implementors.
 	    "display string" operation.
 <tr>	<td valign=top><code>gx_xfont_procs</code>
 	<td>&nbsp;
-	<td valign=top><code>gsxfont.h</code>, <b><tt>gxxfont.h</tt></b>
+	<td valign=top><code>gsxfont.h</code>, <code>gxxfont.h</code>
 	<td>&nbsp;
 	<td valign=top>The xfont analogue of
 	    <code>gx_device_procs</code>, the type of the
 	    procedure record that defines an xfont implementation.
 <tr>	<td valign=top><code>gx_xfont</code>
 	<td>&nbsp;
-	<td valign=top><code>gsxfont.h</code>, <b><tt>gxxfont.h</tt></b>
+	<td valign=top><code>gsxfont.h</code>, <code>gxxfont.h</code>
 	<td>&nbsp;
 	<td valign=top>The gxfont analogue of <code>gx_device</code>,
 	    the type of the basic structure for an xfont.
@@ -153,9 +166,9 @@ success, or an appropriate negative error code for error conditions; these
 error codes are defined in <code>gserrors.h</code>.  The relevant ones
 are the same as for <a href="Drivers.htm">drivers</a>, and as with drivers,
 if an implementation procedure returns an error, it should use the
-<code>return_error</code> macro -- defined in <b><tt>gx.h</tt></b>,
+<code>return_error</code> macro -- defined in <code>gx.h</code>,
 which is automatically included by <code>gdevprn.h</code> but not by
-<code>gserrors.h</code> -- rather than a simple <b><tt>return</tt></b>
+<code>gserrors.h</code> -- rather than a simple <code>return</code>
 statement, for instance
 
 <blockquote>
@@ -182,7 +195,7 @@ Type 1 font.
 <p>
 Note that this is the only implementation procedure that does not take an
 xfont * as its first argument.  In fact, callers of
-<code>lookup_font</code> must use the <b><tt>get_xfont_device</tt></b>
+<code>lookup_font</code> must use the <code>get_xfont_device</code>
 driver procedure to get the correct device to pass as the first argument to
 <code>lookup_font</code>.
 </dl>
@@ -194,8 +207,8 @@ driver procedure to get the correct device to pass as the first argument to
 int&nbsp;encoding_index, gs_glyph&nbsp;glyph,
 gs_proc_glyph_name_t&nbsp;glyph_name))</code>
 <dd>Convert a character name to an xglyph code.  In the case of
-<code>glyphshow</code>, <b><tt>chr</tt></b> may be
-<code>gs_no_char</code>; for an ordinary <b><tt>show</tt></b> operation,
+<code>glyphshow</code>, <code>chr</code> may be
+<code>gs_no_char</code>; for an ordinary <code>show</code> operation,
 if the character code is invalid, <code>glyph</code> may be
 <code>gs_no_glyph</code>.
 </dl>
@@ -222,7 +235,7 @@ will check whether the target can handle this type of xfont directly (for
 instance by checking the target name), and if so, will render the character
 directly; otherwise, it will do what has to be done in the general case,
 namely, get a bitmap for the character and use the target's
-<code>copy_mono</code> operation.  If <b><tt>required</tt></b> is false,
+<code>copy_mono</code> operation.  If <code>required</code> is false,
 the procedure should return an error if the rendering operation would be
 expensive, since in this case Ghostscript has already cached the bitmap and
 metrics from a previous call with <code>required</code>=true.  If the
@@ -235,7 +248,7 @@ operation cannot be done, return 1.
 <dt><code>int (*release)(P2(gx_xfont&nbsp;*xf,
 const&nbsp;gs_memory_procs&nbsp;*mprocs))</code>
 <dd>Release any external resources associated with an xfont.  If
-<code>mprocs</code> is not <b><tt>NULL</tt></b>, also free any storage
+<code>mprocs</code> is not <code>NULL</code>, also free any storage
 allocated by <code>lookup_font</code> (including the xfont itself).
 </dl>
 
@@ -258,9 +271,9 @@ or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
 San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
 
 <p>
-<small>Ghostscript version 8.71, 10 February 2010
+<small>Ghostscript version 9.10, 30 August 2013
 
 <!-- [3.0 end visible trailer] ============================================= -->
 
-</small></body>
+</body>
 </html>

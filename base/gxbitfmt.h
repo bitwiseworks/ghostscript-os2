@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxbitfmt.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Definitions for bitmap storage formats */
 
 #ifndef gxbitfmt_INCLUDED
@@ -158,7 +160,7 @@ typedef ulong gx_bitmap_format_t;
 #define GB_OFFSET_0         (1L<<24)  /* no offsetting */
 #define GB_OFFSET_SPECIFIED (1L<<25)  /* client-specified offset */
 #define GB_OFFSET_ANY       (1L<<26)  /* any offset is acceptable */
-				/* (for GB_RETURN_POINTER only) */
+                                /* (for GB_RETURN_POINTER only) */
   /*unused*/                /*(1L<<27)*/
 
 #define GB_OFFSET_ALL\
@@ -183,7 +185,7 @@ typedef ulong gx_bitmap_format_t;
 #define GB_RASTER_STANDARD  (1L<<28)
 #define GB_RASTER_SPECIFIED (1L<<29)  /* any client-specified raster */
 #define GB_RASTER_ANY       (1L<<30)  /* any raster is acceptable (for */
-				/* GB_RETURN_POINTER only) */
+                                /* GB_RETURN_POINTER only) */
 
 #define GB_RASTER_ALL\
   (GB_RASTER_STANDARD | GB_RASTER_SPECIFIED | GB_RASTER_ANY)
@@ -192,8 +194,7 @@ typedef ulong gx_bitmap_format_t;
 
     /*
      * Return halftoned raster.  (This requires a custom get_bit_rectangle
-     * device procedure.  See the wtsimdi device.  Most devices ignore this
-     * bit.
+     * device procedure.  Most devices ignore this bit.
      */
 #define GB_HALFTONED (1L<<31)
 #define GB_HALFTONED_NAMES\

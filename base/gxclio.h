@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxclio.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* I/O interface for command lists */
 
 #ifndef gxclio_INCLUDED
@@ -40,9 +42,9 @@ struct clist_io_procs_s {
      * Mode "r" with *fname = 0 is an error.
      */
     int (*fopen)(char fname[gp_file_name_sizeof], const char *fmode,
-		    clist_file_ptr * pcf,
-		    gs_memory_t * mem, gs_memory_t *data_mem,
-		    bool ok_to_compress);
+                    clist_file_ptr * pcf,
+                    gs_memory_t * mem, gs_memory_t *data_mem,
+                    bool ok_to_compress);
 
     /*
      * Close a file, optionally deleting it.

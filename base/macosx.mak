@@ -1,16 +1,17 @@
-#  Copyright (C) 2001-2007 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: macosx.mak 9126 2008-10-02 19:33:22Z giles $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 # makefile for MacOS X/darwin/gcc/framework configuration.
 
 # ------------------------------- Options ------------------------------- #
@@ -21,15 +22,19 @@
 # source, generated intermediate file, and object directories
 # for the graphics library (GL) and the PostScript/PDF interpreter (PS).
 
-BINDIR=./bin
+BINDIR=./$(BUILDDIRPREFIX)bin
 GLSRCDIR=./base
-GLGENDIR=./obj
-GLOBJDIR=./obj
+DEVSRCDIR=./devices
+GLGENDIR=./$(BUILDDIRPREFIX)obj
+GLOBJDIR=./$(BUILDDIRPREFIX)obj
+DEVGENDIR=./$(BUILDDIRPREFIX)obj
+DEVOBJDIR=./$(BUILDDIRPREFIX)obj
+AUXDIR=$(GLGENDIR)/aux
 PSSRCDIR=./psi
 PSLIBDIR=./lib
 PSRESDIR=./Resource
-PSGENDIR=./obj
-PSOBJDIR=./obj
+PSGENDIR=./$(BUILDDIRPREFIX)obj
+PSOBJDIR=./$(BUILDDIRPREFIX)obj
 
 # Do not edit the next group of lines.
 
@@ -78,12 +83,9 @@ GS_LIB_DEFAULT=$(gsdatadir)/Resource/Init:$(gsdatadir)/lib:$(gsdatadir)/Resource
 
 # Define whether or not searching for initialization files should always
 # look in the current directory first.  This leads to well-known security
-# and confusion problems, but users insist on it.
-# NOTE: this also affects searching for files named on the command line:
-# see the "File searching" section of Use.htm for full details.
-# Because of this, setting SEARCH_HERE_FIRST to 0 is not recommended.
+# and confusion problems,  but may be convenient sometimes.
 
-SEARCH_HERE_FIRST=1
+SEARCH_HERE_FIRST=0
 
 # Define the name of the interpreter initialization file.
 # (There is no reason to change this.)
@@ -105,8 +107,6 @@ GENOPT=
 #       uses mkstemp instead of mktemp
 #               This uses the more secure temporary file creation call
 #               Enable this if it is available on your platform.
-# -DHAVE_HYPOT
-#       use the system hypot() call
 
 CAPOPT= -DHAVE_MKSTEMP
 
@@ -117,9 +117,10 @@ GS=gs
 # Define the directories for debugging and profiling binaries, relative to
 # the standard binaries.
 
-DEBUGRELDIR=../debugobj
-PGRELDIR=../pgobj
-SORELDIR=../soobj
+DEBUGDIRPREFIX=debug
+MEMENTODIRPREFIX=debug
+PGDIRPREFIX=pg
+SODIRPREFIX=so
 
 # Define the directory where the IJG JPEG library sources are stored,
 # and the major version of the library that is stored there.
@@ -139,7 +140,7 @@ JPEG_NAME=jpeg
 # Define the directory where the PNG library sources are stored,
 # and the version of the library that is stored there.
 # You may need to change this if the libpng version changes.
-# See libpng.mak for more information.
+# See png.mak for more information.
 
 PNGSRCDIR=libpng
 
@@ -169,22 +170,29 @@ JBIG2_LIB=jbig2dec
 SHARE_JBIG2=0
 JBIG2SRCDIR=jbig2dec
 
-# Define the directory where the icclib source are stored.
-# See icclib.mak for more information
+# Define the directory where the lcms source is stored.
+# See lcms.mak for more information
 
-ICCSRCDIR=icclib
+LCMSSRCDIR=lcms
+
+# Define the directory where the lcms2 source is stored.
+# See lcms2.mak for more information
+
+LCMS2SRCDIR=lcms2
+
+# Which CMS are we using?
+# Options are currently lcms or lcms2
+
+WHICH_CMS=lcms2
 
 # Define the directory where the ijs source is stored,
 # and the process forking method to use for the server.
 # See ijs.mak for more information.
-
+ 
+SHARE_IJS=0
+IJS_NAME=
 IJSSRCDIR=ijs
 IJSEXECTYPE=unix
-
-# Define the directory where the imdi library source is stored.
-# See devs.mak for more information
-
-IMDISRCDIR=imdi
 
 # Define how to build the library archives.  (These are not used in any
 # standard configuration.)
@@ -303,6 +311,9 @@ XLIBS=
 # Default is No sync primitives since some platforms don't have it (HP-UX)
 SYNC=nosync
 
+# define the file name extension for a shared lib
+DYNANIC_LIB_EXT=dylib
+
 # ------ Devices and features ------ #
 
 # Choose the language feature(s) to include.  See gs.mak for details.
@@ -347,7 +358,7 @@ DISPLAY_DEV=
 # devs.mak and contrib.mak for the list of available devices.
 
 # use png output by default
-DEVICE_DEVS=$(DD)png16m.dev $(DD)pnggray.dev $(DD)pngmono.dev
+DEVICE_DEVS=$(DD)png16m.dev $(DD)pnggray.dev $(DD)pngmono.dev $(DD)pngmonod.dev
 #DEVICE_DEVS=$(DISPLAY_DEV)
 
 # most devices are disabled by default since file conversion is the
@@ -364,11 +375,11 @@ DEVICE_DEVS9=$(DD)pbm.dev $(DD)pbmraw.dev $(DD)pgm.dev $(DD)pgmraw.dev $(DD)pgnm
 DEVICE_DEVS10=
 DEVICE_DEVS11=
 DEVICE_DEVS12=
-#DEVICE_DEVS13=$(DD)pngmono.dev $(DD)pnggray.dev $(DD)png16.dev $(DD)png256.dev $(DD)png16m.dev $(DD)pngalpha.dev
+#DEVICE_DEVS13=$(DD)pngmono.dev $(DD)pngmonod.dev $(DD)pnggray.dev $(DD)png16.dev $(DD)png256.dev $(DD)png16m.dev $(DD)pngalpha.dev
 DEVICE_DEVS13=$(DD)png16.dev $(DD)png256.dev $(DD)pngalpha.dev
 DEVICE_DEVS14=$(DD)jpeg.dev $(DD)jpeggray.dev $(DD)jpegcmyk.dev
-DEVICE_DEVS15=$(DD)pdfwrite.dev $(DD)pswrite.dev $(DD)ps2write.dev $(DD)epswrite.dev $(DD)txtwrite.dev $(DD)pxlmono.dev $(DD)pxlcolor.dev
-DEVICE_DEVS16=$(DD)bbox.dev
+DEVICE_DEVS15=$(DD)pdfwrite.dev $(DD)ps2write.dev $(DD)epswrite.dev $(DD)txtwrite.dev $(DD)pxlmono.dev $(DD)pxlcolor.dev
+DEVICE_DEVS16=$(DD)bbox.dev $(DD)inkcov.dev
 DEVICE_DEVS17=
 DEVICE_DEVS18=
 DEVICE_DEVS19=
@@ -395,6 +406,8 @@ CCAUX=$(CC)
 # specific few files that need this.  We may turn off others in the future.
 CC_NO_WARN=$(CC_) -Wno-cast-qual -Wno-traditional
 
+LD_SET_DT_SONAME=-soname=
+
 # ---------------- End of platform-specific section ---------------- #
 
 include $(GLSRCDIR)/unixhead.mak
@@ -404,11 +417,10 @@ include $(PSSRCDIR)/psromfs.mak
 include $(GLSRCDIR)/lib.mak
 include $(PSSRCDIR)/int.mak
 include $(GLSRCDIR)/jpeg.mak
-# zlib.mak must precede libpng.mak
+# zlib.mak must precede png.mak
 include $(GLSRCDIR)/zlib.mak
-include $(GLSRCDIR)/libpng.mak
+include $(GLSRCDIR)/png.mak
 include $(GLSRCDIR)/jbig2.mak
-include $(GLSRCDIR)/icclib.mak
 include $(GLSRCDIR)/ijs.mak
 include $(GLSRCDIR)/devs.mak
 include $(GLSRCDIR)/contrib.mak

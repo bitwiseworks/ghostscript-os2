@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsinit.c 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Initialization for the imager */
 #include "stdio_.h"
 #include "memory_.h"
@@ -21,6 +23,11 @@
 #include "gsmalloc.h"
 #include "gp.h"
 #include "gslib.h"		/* interface definition */
+#include "gxfapi.h"
+
+#ifdef PACIFY_VALGRIND
+#include "valgrind.h"
+#endif
 
 /* Configuration information from gconfig.c. */
 extern_gx_init_table();
@@ -34,14 +41,14 @@ gs_lib_init(FILE * debug_out)
 gs_memory_t *
 gs_lib_init0(FILE * debug_out)
 {
-    gs_memory_t *mem;
-
-    mem = (gs_memory_t *) gs_malloc_init(NULL);
-
     /* Reset debugging flags */
+#ifdef PACIFY_VALGRIND
+    VALGRIND_HG_DISABLE_CHECKING(gs_debug, 128);
+#endif
     memset(gs_debug, 0, 128);
     gs_log_errors = 0;
-    return mem;
+
+    return (gs_memory_t *) gs_malloc_init();
 }
 int
 gs_lib_init1(gs_memory_t * mem)
@@ -51,8 +58,8 @@ gs_lib_init1(gs_memory_t * mem)
     int code;
 
     for (ipp = gx_init_table; *ipp != 0; ++ipp)
-	if ((code = (**ipp)(mem)) < 0)
-	    return code;
+        if ((code = (**ipp)(mem)) < 0)
+            return code;
     return 0;
 }
 
@@ -60,6 +67,8 @@ gs_lib_init1(gs_memory_t * mem)
 void
 gs_lib_finit(int exit_status, int code, gs_memory_t *mem)
 {
+    gs_fapi_finit (mem);
+
     /* Do platform-specific cleanup. */
     gp_exit(exit_status, code);
 
@@ -68,6 +77,6 @@ gs_lib_finit(int exit_status, int code, gs_memory_t *mem)
      *    gs_malloc_release(mem);
      * else
      *    someone else has control of mem so we can't free it.
-     *    gs_view and iapi.h interface 
+     *    gs_view and iapi.h interface
      */
 }

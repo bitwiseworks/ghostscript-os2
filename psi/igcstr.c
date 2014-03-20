@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: igcstr.c 9062 2008-09-03 11:42:35Z leonardo $ */
+
 /* String GC routines for Ghostscript */
 #include "memory_.h"
 #include "ghost.h"
@@ -19,6 +21,7 @@
 #include "gsstruct.h"
 #include "iastate.h"
 #include "igcstr.h"
+#include "igc.h"
 
 /* Forward references */
 static bool gc_mark_string(const byte *, uint, bool, const chunk_t *);
@@ -28,11 +31,11 @@ void
 gc_strings_set_marks(chunk_t * cp, bool mark)
 {
     if (cp->smark != 0) {
-	if_debug3('6', "[6]clearing string marks 0x%lx[%u] to %d\n",
-		  (ulong) cp->smark, cp->smark_size, (int)mark);
-	memset(cp->smark, 0, cp->smark_size);
-	if (mark)
-	    gc_mark_string(cp->sbase, cp->climit - cp->sbase, true, cp);
+        if_debug3('6', "[6]clearing string marks 0x%lx[%u] to %d\n",
+                  (ulong) cp->smark, cp->smark_size, (int)mark);
+        memset(cp->smark, 0, cp->smark_size);
+        if (mark)
+            gc_mark_string(cp->sbase + HDR_ID_OFFSET, (cp->climit - cp->sbase) - HDR_ID_OFFSET, true, cp);
     }
 }
 
@@ -50,7 +53,7 @@ typedef string_mark_unit bword;
 #    define bword_swap_bytes(m) m = (m << 8) | (m >> 8)
 #  else				/* bword_bytes == 4 */
 #    define bword_swap_bytes(m)\
-	m = (m << 24) | ((m & 0xff00) << 8) | ((m >> 8) & 0xff00) | (m >> 24)
+        m = (m << 24) | ((m & 0xff00) << 8) | ((m >> 8) & 0xff00) | (m >> 24)
 #  endif
 #else
 #  define bword_swap_bytes(m) DO_NOTHING
@@ -60,52 +63,52 @@ typedef string_mark_unit bword;
 static bool
 gc_mark_string(const byte * ptr, uint size, bool set, const chunk_t * cp)
 {
-    uint offset = ptr - cp->sbase;
+    uint offset = (ptr - HDR_ID_OFFSET) - cp->sbase;
     bword *bp = (bword *) (cp->smark + ((offset & -bword_bits) >> 3));
     uint bn = offset & (bword_bits - 1);
     bword m = bword_1s << bn;
-    uint left = size;
+    uint left = size + HDR_ID_OFFSET;
     bword marks = 0;
 
     bword_swap_bytes(m);
     if (set) {
-	if (left + bn >= bword_bits) {
-	    marks |= ~*bp & m;
-	    *bp |= m;
-	    m = bword_1s, left -= bword_bits - bn, bp++;
-	    while (left >= bword_bits) {
-		marks |= ~*bp;
-		*bp = bword_1s;
-		left -= bword_bits, bp++;
-	    }
-	}
-	if (left) {
-	    bword_swap_bytes(m);
-	    m -= m << left;
-	    bword_swap_bytes(m);
-	    marks |= ~*bp & m;
-	    *bp |= m;
-	}
+        if (left + bn >= bword_bits) {
+            marks |= ~*bp & m;
+            *bp |= m;
+            m = bword_1s, left -= bword_bits - bn, bp++;
+            while (left >= bword_bits) {
+                marks |= ~*bp;
+                *bp = bword_1s;
+                left -= bword_bits, bp++;
+            }
+        }
+        if (left) {
+            bword_swap_bytes(m);
+            m -= m << left;
+            bword_swap_bytes(m);
+            marks |= ~*bp & m;
+            *bp |= m;
+        }
     } else {
-	if (left + bn >= bword_bits) {
-	    *bp &= ~m;
-	    m = bword_1s, left -= bword_bits - bn, bp++;
-	    if (left >= bword_bits * 5) {
-		memset(bp, 0, (left & -bword_bits) >> 3);
-		bp += left >> bword_log2_bits;
-		left &= bword_bits - 1;
-	    } else
-		while (left >= bword_bits) {
-		    *bp = 0;
-		    left -= bword_bits, bp++;
-		}
-	}
-	if (left) {
-	    bword_swap_bytes(m);
-	    m -= m << left;
-	    bword_swap_bytes(m);
-	    *bp &= ~m;
-	}
+        if (left + bn >= bword_bits) {
+            *bp &= ~m;
+            m = bword_1s, left -= bword_bits - bn, bp++;
+            if (left >= bword_bits * 5) {
+                memset(bp, 0, (left & -bword_bits) >> 3);
+                bp += left >> bword_log2_bits;
+                left &= bword_bits - 1;
+            } else
+                while (left >= bword_bits) {
+                    *bp = 0;
+                    left -= bword_bits, bp++;
+                }
+        }
+        if (left) {
+            bword_swap_bytes(m);
+            m -= m << left;
+            bword_swap_bytes(m);
+            *bp &= ~m;
+        }
     }
     return marks != 0;
 }
@@ -115,11 +118,11 @@ gc_mark_string(const byte * ptr, uint size, bool set, const chunk_t * cp)
  * equivalent of fwrite.
  */
 static void
-dfwrite(const byte *ptr, uint count)
+dmfwrite(const gs_memory_t *mem, const byte *ptr, uint count)
 {
     uint i;
     for (i = 0; i < count; ++i)
-	dputc(ptr[i]);
+        dmputc(mem, ptr[i]);
 }
 #endif
 
@@ -131,58 +134,58 @@ gc_string_mark(const byte * ptr, uint size, bool set, gc_state_t * gcst)
     bool marks;
 
     if (size == 0)
-	return false;
-#define dprintstr()\
-  dputc('('); dfwrite(ptr, min(size, 20));\
-  dputs((size <= 20 ? ")" : "...)"))
-    if (!(cp = gc_locate(ptr, gcst))) {		/* not in a chunk */
+        return false;
+#define dmprintstr(mem)\
+  dmputc(mem, '('); dmfwrite(mem, ptr - HDR_ID_OFFSET, min(size, 20));\
+  dmputs(mem, (size <= 20 ? ")" : "...)"))
+    if (!(cp = gc_locate(ptr - HDR_ID_OFFSET, gcst))) {		/* not in a chunk */
 #ifdef DEBUG
-	if (gs_debug_c('5')) {
-	    dlprintf2("[5]0x%lx[%u]", (ulong) ptr, size);
-	    dprintstr();
-	    dputs(" not in a chunk\n");
-	}
+        if (gs_debug_c('5')) {
+            dmlprintf2(gcst->heap, "[5]0x%lx[%u]", (ulong) ptr - HDR_ID_OFFSET, size);
+            dmprintstr(gcst->heap);
+            dmputs(gcst->heap, " not in a chunk\n");
+        }
 #endif
-	return false;
+        return false;
     }
     if (cp->smark == 0)		/* not marking strings */
-	return false;
+        return false;
 #ifdef DEBUG
-    if (ptr < cp->ctop) {
-	lprintf4("String pointer 0x%lx[%u] outside [0x%lx..0x%lx)\n",
-		 (ulong) ptr, size, (ulong) cp->ctop, (ulong) cp->climit);
-	return false;
+    if (ptr - HDR_ID_OFFSET < cp->ctop) {
+        lprintf4("String pointer 0x%lx[%u] outside [0x%lx..0x%lx)\n",
+                 (ulong) ptr - HDR_ID_OFFSET, size, (ulong) cp->ctop, (ulong) cp->climit);
+        return false;
     } else if (ptr + size > cp->climit) {	/*
-						 * If this is the bottommost string in a chunk that has
-						 * an inner chunk, the string's starting address is both
-						 * cp->ctop of the outer chunk and cp->climit of the inner;
-						 * gc_locate may incorrectly attribute the string to the
-						 * inner chunk because of this.  This doesn't affect
-						 * marking or relocation, since the machinery for these
-						 * is all associated with the outermost chunk,
-						 * but it can cause the validity check to fail.
-						 * Check for this case now.
-						 */
-	const chunk_t *scp = cp;
+                                                 * If this is the bottommost string in a chunk that has
+                                                 * an inner chunk, the string's starting address is both
+                                                 * cp->ctop of the outer chunk and cp->climit of the inner;
+                                                 * gc_locate may incorrectly attribute the string to the
+                                                 * inner chunk because of this.  This doesn't affect
+                                                 * marking or relocation, since the machinery for these
+                                                 * is all associated with the outermost chunk,
+                                                 * but it can cause the validity check to fail.
+                                                 * Check for this case now.
+                                                 */
+        const chunk_t *scp = cp;
 
-	while (ptr == scp->climit && scp->outer != 0)
-	    scp = scp->outer;
-	if (ptr + size > scp->climit) {
-	    lprintf4("String pointer 0x%lx[%u] outside [0x%lx..0x%lx)\n",
-		     (ulong) ptr, size,
-		     (ulong) scp->ctop, (ulong) scp->climit);
-	    return false;
-	}
+        while (ptr - HDR_ID_OFFSET == scp->climit && scp->outer != 0)
+            scp = scp->outer;
+        if (ptr - HDR_ID_OFFSET + size > scp->climit) {
+            lprintf4("String pointer 0x%lx[%u] outside [0x%lx..0x%lx)\n",
+                     (ulong) ptr - HDR_ID_OFFSET, size,
+                     (ulong) scp->ctop, (ulong) scp->climit);
+            return false;
+        }
     }
 #endif
     marks = gc_mark_string(ptr, size, set, cp);
 #ifdef DEBUG
     if (gs_debug_c('5')) {
-	dlprintf4("[5]%s%smarked 0x%lx[%u]",
-		  (marks ? "" : "already "), (set ? "" : "un"),
-		  (ulong) ptr, size);
-	dprintstr();
-	dputc('\n');
+        dmlprintf4(gcst->heap, "[5]%s%smarked 0x%lx[%u]",
+                  (marks ? "" : "already "), (set ? "" : "un"),
+                  (ulong) ptr - HDR_ID_OFFSET, size);
+        dmprintstr(gcst->heap);
+        dmputc(gcst->heap, '\n');
     }
 #endif
     return marks;
@@ -194,10 +197,10 @@ void
 gc_strings_clear_reloc(chunk_t * cp)
 {
     if (cp->sreloc != 0) {
-	gc_strings_set_marks(cp, true);
-	if_debug1('6', "[6]clearing string reloc 0x%lx\n",
-		  (ulong) cp->sreloc);
-	gc_strings_set_reloc(cp);
+        gc_strings_set_marks(cp, true);
+        if_debug1('6', "[6]clearing string reloc 0x%lx\n",
+                  (ulong) cp->sreloc);
+        gc_strings_set_reloc(cp);
     }
 }
 
@@ -222,52 +225,52 @@ void
 gc_strings_set_reloc(chunk_t * cp)
 {
     if (cp->sreloc != 0 && cp->smark != 0) {
-	byte *bot = cp->ctop;
-	byte *top = cp->climit;
-	uint count =
-	    (top - bot + (string_data_quantum - 1)) >>
-	    log2_string_data_quantum;
-	string_reloc_offset *relp =
-	    cp->sreloc +
-	    (cp->smark_size >> (log2_string_data_quantum - 3));
-	register const byte *bitp = cp->smark + cp->smark_size;
-	register string_reloc_offset reloc = 0;
+        byte *bot = cp->ctop;
+        byte *top = cp->climit;
+        uint count =
+            (top - bot + (string_data_quantum - 1)) >>
+            log2_string_data_quantum;
+        string_reloc_offset *relp =
+            cp->sreloc +
+            (cp->smark_size >> (log2_string_data_quantum - 3));
+        register const byte *bitp = cp->smark + cp->smark_size;
+        register string_reloc_offset reloc = 0;
 
-	/* Skip initial unrelocated strings quickly. */
+        /* Skip initial unrelocated strings quickly. */
 #if string_data_quantum == bword_bits || string_data_quantum == bword_bits * 2
-	{
-	    /* Work around the alignment aliasing bug. */
-	    const bword *wp = (const bword *)bitp;
+        {
+            /* Work around the alignment aliasing bug. */
+            const bword *wp = (const bword *)bitp;
 
 #if string_data_quantum == bword_bits
 #  define RELOC_TEST_1S(wp) (wp[-1])
 #else /* string_data_quantum == bword_bits * 2 */
 #  define RELOC_TEST_1S(wp) (wp[-1] & wp[-2])
 #endif
-	    while (count && RELOC_TEST_1S(wp) == bword_1s) {
-		wp -= string_data_quantum / bword_bits;
-		*--relp = reloc += string_data_quantum;
-		--count;
-	    }
+            while (count && RELOC_TEST_1S(wp) == bword_1s) {
+                wp -= string_data_quantum / bword_bits;
+                *--relp = reloc += string_data_quantum;
+                --count;
+            }
 #undef RELOC_TEST_1S
-	    bitp = (const byte *)wp;
-	}
+            bitp = (const byte *)wp;
+        }
 #endif
-	while (count--) {
-	    bitp -= string_data_quantum / 8;
-	    reloc += string_data_quantum -
-		byte_count_zero_bits(bitp[0]);
-	    reloc -= byte_count_zero_bits(bitp[1]);
-	    reloc -= byte_count_zero_bits(bitp[2]);
-	    reloc -= byte_count_zero_bits(bitp[3]);
+        while (count--) {
+            bitp -= string_data_quantum / 8;
+            reloc += string_data_quantum -
+                byte_count_zero_bits(bitp[0]);
+            reloc -= byte_count_zero_bits(bitp[1]);
+            reloc -= byte_count_zero_bits(bitp[2]);
+            reloc -= byte_count_zero_bits(bitp[3]);
 #if log2_string_data_quantum > 5
-	    reloc -= byte_count_zero_bits(bitp[4]);
-	    reloc -= byte_count_zero_bits(bitp[5]);
-	    reloc -= byte_count_zero_bits(bitp[6]);
-	    reloc -= byte_count_zero_bits(bitp[7]);
+            reloc -= byte_count_zero_bits(bitp[4]);
+            reloc -= byte_count_zero_bits(bitp[5]);
+            reloc -= byte_count_zero_bits(bitp[6]);
+            reloc -= byte_count_zero_bits(bitp[7]);
 #endif
-	    *--relp = reloc;
-	}
+            *--relp = reloc;
+        }
     }
     cp->sdest = cp->climit;
 }
@@ -284,40 +287,42 @@ igc_reloc_string(gs_string * sptr, gc_state_t * gcst)
     byte byt;
 
     if (sptr->size == 0) {
-	sptr->data = 0;
-	return;
+        sptr->data = 0;
+        return;
     }
     ptr = sptr->data;
+    ptr -= HDR_ID_OFFSET;
+
     if (!(cp = gc_locate(ptr, gcst)))	/* not in a chunk */
-	return;
+        return;
     if (cp->sreloc == 0 || cp->smark == 0)	/* not marking strings */
-	return;
+        return;
     offset = ptr - cp->sbase;
     reloc = cp->sreloc[offset >> log2_string_data_quantum];
     bitp = &cp->smark[offset >> 3];
     switch (offset & (string_data_quantum - 8)) {
 #if log2_string_data_quantum > 5
-	case 56:
-	    reloc -= byte_count_one_bits(bitp[-7]);
-	case 48:
-	    reloc -= byte_count_one_bits(bitp[-6]);
-	case 40:
-	    reloc -= byte_count_one_bits(bitp[-5]);
-	case 32:
-	    reloc -= byte_count_one_bits(bitp[-4]);
+        case 56:
+            reloc -= byte_count_one_bits(bitp[-7]);
+        case 48:
+            reloc -= byte_count_one_bits(bitp[-6]);
+        case 40:
+            reloc -= byte_count_one_bits(bitp[-5]);
+        case 32:
+            reloc -= byte_count_one_bits(bitp[-4]);
 #endif
-	case 24:
-	    reloc -= byte_count_one_bits(bitp[-3]);
-	case 16:
-	    reloc -= byte_count_one_bits(bitp[-2]);
-	case 8:
-	    reloc -= byte_count_one_bits(bitp[-1]);
+        case 24:
+            reloc -= byte_count_one_bits(bitp[-3]);
+        case 16:
+            reloc -= byte_count_one_bits(bitp[-2]);
+        case 8:
+            reloc -= byte_count_one_bits(bitp[-1]);
     }
     byt = *bitp & (0xff >> (8 - (offset & 7)));
     reloc -= byte_count_one_bits(byt);
     if_debug2('5', "[5]relocate string 0x%lx to 0x%lx\n",
-	      (ulong) ptr, (ulong) (cp->sdest - reloc));
-    sptr->data = cp->sdest - reloc;
+              (ulong) ptr, (ulong) (cp->sdest - reloc));
+    sptr->data = (cp->sdest - reloc) + HDR_ID_OFFSET;
 }
 void
 igc_reloc_const_string(gs_const_string * sptr, gc_state_t * gcst)
@@ -327,114 +332,115 @@ igc_reloc_const_string(gs_const_string * sptr, gc_state_t * gcst)
 }
 void
 igc_reloc_param_string(gs_param_string * sptr, gc_state_t * gcst)
-{   
+{
     if (!sptr->persistent) {
-	/* We assume that gs_param_string is a subclass of gs_string. */
-	igc_reloc_string((gs_string *)sptr, gcst);
+        /* We assume that gs_param_string is a subclass of gs_string. */
+        igc_reloc_string((gs_string *)sptr, gcst);
     }
 }
 
 /* Compact the strings in a chunk. */
 void
-gc_strings_compact(chunk_t * cp)
+gc_strings_compact(chunk_t * cp, const gs_memory_t *mem)
 {
     if (cp->smark != 0) {
-	byte *hi = cp->climit;
-	byte *lo = cp->ctop;
-	const byte *from = hi;
-	byte *to = hi;
-	const byte *bp = cp->smark + cp->smark_size;
+        byte *hi = cp->climit;
+        byte *lo = cp->ctop;
+        const byte *from = hi;
+        byte *to = hi;
+        const byte *bp = cp->smark + cp->smark_size;
 
 #ifdef DEBUG
-	if (gs_debug_c('4') || gs_debug_c('5')) {
-	    byte *base = cp->sbase;
-	    uint i = (lo - base) & -string_data_quantum;
-	    uint n = ROUND_UP(hi - base, string_data_quantum);
+        if (gs_debug_c('4') || gs_debug_c('5')) {
+            byte *base = cp->sbase;
+            uint i = (lo - base) & -string_data_quantum;
+            uint n = ROUND_UP(hi - base, string_data_quantum);
 
 #define R 16
-	    for (; i < n; i += R) {
-		uint j;
+            for (; i < n; i += R) {
+                uint j;
 
-		dlprintf1("[4]0x%lx: ", (ulong) (base + i));
-		for (j = i; j < i + R; j++) {
-		    byte ch = base[j];
+                dmlprintf1(mem, "[4]0x%lx: ", (ulong) (base + i));
+                for (j = i; j < i + R; j++) {
+                    byte ch = base[j];
 
-		    if (ch <= 31) {
-			dputc('^');
-			dputc(ch + 0100);
-		    } else
-			dputc(ch);
-		}
-		dputc(' ');
-		for (j = i; j < i + R; j++)
-		    dputc((cp->smark[j >> 3] & (1 << (j & 7)) ?
-			   '+' : '.'));
+                    if (ch <= 31) {
+                        dmputc(mem, '^');
+                        dmputc(mem, ch + 0100);
+                    } else
+                        dmputc(mem, ch);
+                }
+                dmputc(mem, ' ');
+                for (j = i; j < i + R; j++)
+                    dmputc(mem, (cp->smark[j >> 3] & (1 << (j & 7)) ?
+                           '+' : '.'));
 #undef R
-		if (!(i & (string_data_quantum - 1)))
-		    dprintf1(" %u", cp->sreloc[i >> log2_string_data_quantum]);
-		dputc('\n');
-	    }
-	}
+                if (!(i & (string_data_quantum - 1)))
+                    dmprintf1(mem, " %u", cp->sreloc[i >> log2_string_data_quantum]);
+                dmputc(mem, '\n');
+            }
+        }
 #endif
-	/*
-	 * Skip unmodified strings quickly.  We know that cp->smark is
-	 * aligned to a string_mark_unit.
-	 */
-	{
-	    /* Work around the alignment aliasing bug. */
-	    const bword *wp = (const bword *)bp;
+        /*
+         * Skip unmodified strings quickly.  We know that cp->smark is
+         * aligned to a string_mark_unit.
+         */
+        {
+            /* Work around the alignment aliasing bug. */
+            const bword *wp = (const bword *)bp;
 
-	    while (to > lo && wp[-1] == bword_1s)
-		to -= bword_bits, --wp;
-	    bp = (const byte *)wp;
-	    while (to > lo && bp[-1] == 0xff)
-		to -= 8, --bp;
-	}
-	from = to;
-	while (from > lo) {
-	    byte b = *--bp;
+            while (to > lo && wp[-1] == bword_1s)
+                to -= bword_bits, --wp;
+            bp = (const byte *)wp;
+            while (to > lo && bp[-1] == 0xff)
+                to -= 8, --bp;
+        }
+        from = to;
 
-	    from -= 8;
-	    switch (b) {
-		case 0xff:
-		    to -= 8;
-		    /*
-		     * Since we've seen a byte other than 0xff, we know
-		     * to != from at this point.
-		     */
-		    to[7] = from[7];
-		    to[6] = from[6];
-		    to[5] = from[5];
-		    to[4] = from[4];
-		    to[3] = from[3];
-		    to[2] = from[2];
-		    to[1] = from[1];
-		    to[0] = from[0];
-		    break;
-		default:
-		    if (b & 0x80)
-			*--to = from[7];
-		    if (b & 0x40)
-			*--to = from[6];
-		    if (b & 0x20)
-			*--to = from[5];
-		    if (b & 0x10)
-			*--to = from[4];
-		    if (b & 8)
-			*--to = from[3];
-		    if (b & 4)
-			*--to = from[2];
-		    if (b & 2)
-			*--to = from[1];
-		    if (b & 1)
-			*--to = from[0];
-		    /* falls through */
-		case 0:
-		    ;
-	    }
-	}
-	gs_alloc_fill(cp->ctop, gs_alloc_fill_collected,
-		      to - cp->ctop);
-	cp->ctop = to;
+        while (from > lo) {
+            byte b = *--bp;
+
+            from -= 8;
+            switch (b) {
+                case 0xff:
+                    to -= 8;
+                    /*
+                     * Since we've seen a byte other than 0xff, we know
+                     * to != from at this point.
+                     */
+                    to[7] = from[7];
+                    to[6] = from[6];
+                    to[5] = from[5];
+                    to[4] = from[4];
+                    to[3] = from[3];
+                    to[2] = from[2];
+                    to[1] = from[1];
+                    to[0] = from[0];
+                    break;
+                default:
+                    if (b & 0x80)
+                        *--to = from[7];
+                    if (b & 0x40)
+                        *--to = from[6];
+                    if (b & 0x20)
+                        *--to = from[5];
+                    if (b & 0x10)
+                        *--to = from[4];
+                    if (b & 8)
+                        *--to = from[3];
+                    if (b & 4)
+                        *--to = from[2];
+                    if (b & 2)
+                        *--to = from[1];
+                    if (b & 1)
+                        *--to = from[0];
+                    /* falls through */
+                case 0:
+                    ;
+            }
+        }
+        gs_alloc_fill(cp->ctop, gs_alloc_fill_collected,
+                      to - cp->ctop);
+        cp->ctop = to;
     }
 }

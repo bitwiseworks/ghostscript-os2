@@ -1,22 +1,23 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gp_psync.c 10559 2009-12-26 22:21:45Z alexcher $ */
+
 /* POSIX pthreads threads / semaphore / monitor implementation */
 #include "std.h"
 #include "malloc_.h"
 #include <pthread.h>
-#include "gserror.h"
 #include "gserrors.h"
 #include "gpsync.h"
 
@@ -64,11 +65,11 @@ gp_semaphore_open(gp_semaphore * sema)
     int scode;
 
     if (!sema)
-	return -1;		/* semaphores are not movable */
+        return -1;		/* semaphores are not movable */
     sem->count = 0;
     scode = pthread_mutex_init(&sem->mutex, NULL);
     if (scode == 0)
-	scode = pthread_cond_init(&sem->cond, NULL);
+        scode = pthread_cond_init(&sem->cond, NULL);
     return SEM_ERROR_CODE(scode);
 }
 
@@ -81,7 +82,7 @@ gp_semaphore_close(gp_semaphore * sema)
     scode = pthread_cond_destroy(&sem->cond);
     scode2 = pthread_mutex_destroy(&sem->mutex);
     if (scode == 0)
-	scode = scode2;
+        scode = scode2;
     return SEM_ERROR_CODE(scode);
 }
 
@@ -93,17 +94,17 @@ gp_semaphore_wait(gp_semaphore * sema)
 
     scode = pthread_mutex_lock(&sem->mutex);
     if (scode != 0)
-	return SEM_ERROR_CODE(scode);
+        return SEM_ERROR_CODE(scode);
     while (sem->count == 0) {
         scode = pthread_cond_wait(&sem->cond, &sem->mutex);
         if (scode != 0)
-	    break;
+            break;
     }
     if (scode == 0)
-	--sem->count;
+        --sem->count;
     scode2 = pthread_mutex_unlock(&sem->mutex);
     if (scode == 0)
-	scode = scode2;
+        scode = scode2;
     return SEM_ERROR_CODE(scode);
 }
 
@@ -115,15 +116,14 @@ gp_semaphore_signal(gp_semaphore * sema)
 
     scode = pthread_mutex_lock(&sem->mutex);
     if (scode != 0)
-	return SEM_ERROR_CODE(scode);
+        return SEM_ERROR_CODE(scode);
     if (sem->count++ == 0)
-	scode = pthread_cond_signal(&sem->cond);
+        scode = pthread_cond_signal(&sem->cond);
     scode2 = pthread_mutex_unlock(&sem->mutex);
     if (scode == 0)
-	scode = scode2;
+        scode = scode2;
     return SEM_ERROR_CODE(scode);
 }
-
 
 /* Monitor supports enter/leave semantics */
 
@@ -150,7 +150,7 @@ gp_monitor_open(gp_monitor * mona)
     int scode;
 
     if (!mona)
-	return -1;		/* monitors are not movable */
+        return -1;		/* monitors are not movable */
     mon = &((gp_pthread_recursive_t *)mona)->mutex;
     ((gp_pthread_recursive_t *)mona)->self_id = 0;	/* Not valid unless mutex is locked */
     scode = pthread_mutex_init(mon, NULL);
@@ -174,17 +174,17 @@ gp_monitor_enter(gp_monitor * mona)
     int scode;
 
     if ((scode = pthread_mutex_trylock(mon)) == 0) {
-	((gp_pthread_recursive_t *)mona)->self_id = pthread_self();
-	return SEM_ERROR_CODE(scode);
+        ((gp_pthread_recursive_t *)mona)->self_id = pthread_self();
+        return SEM_ERROR_CODE(scode);
     } else {
-	if (pthread_equal(pthread_self(),((gp_pthread_recursive_t *)mona)->self_id))
-	    return 0;
-	else {
-	    /* we were not the owner, wait */
-	    scode = pthread_mutex_lock(mon);
-	    ((gp_pthread_recursive_t *)mona)->self_id = pthread_self();
-	    return SEM_ERROR_CODE(scode);
-	}
+        if (pthread_equal(pthread_self(),((gp_pthread_recursive_t *)mona)->self_id))
+            return 0;
+        else {
+            /* we were not the owner, wait */
+            scode = pthread_mutex_lock(mon);
+            ((gp_pthread_recursive_t *)mona)->self_id = pthread_self();
+            return SEM_ERROR_CODE(scode);
+        }
     }
 }
 
@@ -198,7 +198,6 @@ gp_monitor_leave(gp_monitor * mona)
     ((gp_pthread_recursive_t *)mona)->self_id = 0;	/* Not valid unless mutex is locked */
     return SEM_ERROR_CODE(scode);
 }
-
 
 /* --------- Thread primitives ---------- */
 
@@ -229,22 +228,56 @@ int
 gp_create_thread(gp_thread_creation_callback_t proc, void *proc_data)
 {
     gp_thread_creation_closure_t *closure =
-	(gp_thread_creation_closure_t *)malloc(sizeof(*closure));
+        (gp_thread_creation_closure_t *)malloc(sizeof(*closure));
     pthread_t ignore_thread;
     pthread_attr_t attr;
     int code;
 
     if (!closure)
-	return_error(gs_error_VMerror);
+        return_error(gs_error_VMerror);
     closure->proc = proc;
     closure->proc_data = proc_data;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     code = pthread_create(&ignore_thread, &attr, gp_thread_begin_wrapper,
-			  closure);
+                          closure);
     if (code) {
-	free(closure);
-	return_error(gs_error_ioerror);
+        free(closure);
+        return_error(gs_error_ioerror);
     }
     return 0;
+}
+
+int
+gp_thread_start(gp_thread_creation_callback_t proc, void *proc_data,
+                gp_thread_id *thread)
+{
+    gp_thread_creation_closure_t *closure =
+        (gp_thread_creation_closure_t *)malloc(sizeof(*closure));
+    pthread_t new_thread;
+    pthread_attr_t attr;
+    int code;
+
+    if (!closure)
+        return_error(gs_error_VMerror);
+    closure->proc = proc;
+    closure->proc_data = proc_data;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    code = pthread_create(&new_thread, &attr, gp_thread_begin_wrapper,
+                          closure);
+    if (code) {
+        *thread = NULL;
+        free(closure);
+        return_error(gs_error_ioerror);
+    }
+    *thread = (gp_thread_id)new_thread;
+    return 0;
+}
+
+void gp_thread_finish(gp_thread_id thread)
+{
+    if (thread == NULL)
+        return;
+    pthread_join((pthread_t)thread, NULL);
 }

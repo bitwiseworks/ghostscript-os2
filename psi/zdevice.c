@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: zdevice.c 9043 2008-08-28 22:48:19Z giles $ */
+
 /* Device-related operators */
 #include "string_.h"
 #include "ghost.h"
@@ -31,6 +33,7 @@
 #include "gxalloc.h"
 #include "gxgetbit.h"
 #include "store.h"
+#include "gsicc_manage.h"
 
 /* <device> <keep_open> .copydevice2 <newdevice> */
 static int
@@ -43,9 +46,9 @@ zcopydevice2(i_ctx_t *i_ctx_p)
     check_read_type(op[-1], t_device);
     check_type(*op, t_boolean);
     code = gs_copydevice2(&new_dev, op[-1].value.pdevice, op->value.boolval,
-			  imemory);
+                          imemory);
     if (code < 0)
-	return code;
+        return code;
     new_dev->memory = imemory;
     make_tav(op - 1, t_device, icurrent_space | a_all, pdevice, new_dev);
     pop(1);
@@ -62,8 +65,8 @@ zcurrentdevice(i_ctx_t *i_ctx_p)
 
     push(1);
     make_tav(op, t_device,
-	     (mem == 0 ? avm_foreign : imemory_space(mem)) | a_all,
-	     pdevice, dev);
+             (mem == 0 ? avm_foreign : imemory_space(mem)) | a_all,
+             pdevice, dev);
     return 0;
 }
 
@@ -77,7 +80,7 @@ zdevicename(i_ctx_t *i_ctx_p)
     check_read_type(*op, t_device);
     dname = op->value.pdevice->dname;
     make_const_string(op, avm_foreign | a_readonly, strlen(dname),
-		      (const byte *)dname);
+                      (const byte *)dname);
     return 0;
 }
 
@@ -89,7 +92,7 @@ zdoneshowpage(i_ctx_t *i_ctx_p)
     gx_device *tdev = (*dev_proc(dev, get_page_device)) (dev);
 
     if (tdev != 0)
-	tdev->ShowpageCount++;
+        tdev->ShowpageCount++;
     return 0;
 }
 
@@ -105,18 +108,18 @@ zflushpage(i_ctx_t *i_ctx_p)
 static int
 zgetbitsrect(i_ctx_t *i_ctx_p)
 {	/*
-	 * alpha? is 0 for no alpha, -1 for alpha first, 1 for alpha last.
-	 * std_depth is null for native pixels, depth/component for
-	 * standard color space.
-	 */
+         * alpha? is 0 for no alpha, -1 for alpha first, 1 for alpha last.
+         * std_depth is null for native pixels, depth/component for
+         * standard color space.
+         */
     os_ptr op = osp;
     gx_device *dev;
     gs_int_rect rect;
     gs_get_bits_params_t params;
     int w, h;
     gs_get_bits_options_t options =
-	GB_ALIGN_ANY | GB_RETURN_COPY | GB_OFFSET_0 | GB_RASTER_STANDARD |
-	GB_PACKING_CHUNKY;
+        GB_ALIGN_ANY | GB_RETURN_COPY | GB_OFFSET_0 | GB_RASTER_STANDARD |
+        GB_PACKING_CHUNKY;
     int depth;
     uint raster;
     int num_rows;
@@ -138,48 +141,48 @@ zgetbitsrect(i_ctx_t *i_ctx_p)
      * which is not supported as a switch value in pre-ANSI C.
      */
     if (op[-2].value.intval == -1)
-	options |= GB_ALPHA_FIRST;
+        options |= GB_ALPHA_FIRST;
     else if (op[-2].value.intval == 0)
-	options |= GB_ALPHA_NONE;
+        options |= GB_ALPHA_NONE;
     else if (op[-2].value.intval == 1)
-	options |= GB_ALPHA_LAST;
+        options |= GB_ALPHA_LAST;
     else
-	return_error(e_rangecheck);
+        return_error(e_rangecheck);
     if (r_has_type(op - 1, t_null)) {
-	options |= GB_COLORS_NATIVE;
-	depth = dev->color_info.depth;
+        options |= GB_COLORS_NATIVE;
+        depth = dev->color_info.depth;
     } else {
-	static const gs_get_bits_options_t depths[17] = {
-	    0, GB_DEPTH_1, GB_DEPTH_2, 0, GB_DEPTH_4, 0, 0, 0, GB_DEPTH_8,
-	    0, 0, 0, GB_DEPTH_12, 0, 0, 0, GB_DEPTH_16
-	};
-	gs_get_bits_options_t depth_option;
-	int std_depth;
+        static const gs_get_bits_options_t depths[17] = {
+            0, GB_DEPTH_1, GB_DEPTH_2, 0, GB_DEPTH_4, 0, 0, 0, GB_DEPTH_8,
+            0, 0, 0, GB_DEPTH_12, 0, 0, 0, GB_DEPTH_16
+        };
+        gs_get_bits_options_t depth_option;
+        int std_depth;
 
-	check_int_leu(op[-1], 16);
-	std_depth = (int)op[-1].value.intval;
-	depth_option = depths[std_depth];
-	if (depth_option == 0)
-	    return_error(e_rangecheck);
-	options |= depth_option | GB_COLORS_NATIVE;
-	depth = (dev->color_info.num_components +
-		 (options & GB_ALPHA_NONE ? 0 : 1)) * std_depth;
+        check_int_leu(op[-1], 16);
+        std_depth = (int)op[-1].value.intval;
+        depth_option = depths[std_depth];
+        if (depth_option == 0)
+            return_error(e_rangecheck);
+        options |= depth_option | GB_COLORS_NATIVE;
+        depth = (dev->color_info.num_components +
+                 (options & GB_ALPHA_NONE ? 0 : 1)) * std_depth;
     }
     if (w == 0)
-	return_error(e_rangecheck);
+        return_error(e_rangecheck);
     raster = (w * depth + 7) >> 3;
     check_write_type(*op, t_string);
     num_rows = r_size(op) / raster;
     h = min(h, num_rows);
     if (h == 0)
-	return_error(e_rangecheck);
+        return_error(e_rangecheck);
     rect.q.x = rect.p.x + w;
     rect.q.y = rect.p.y + h;
     params.options = options;
     params.data[0] = op->value.bytes;
     code = (*dev_proc(dev, get_bits_rectangle))(dev, &rect, &params, NULL);
     if (code < 0)
-	return code;
+        return code;
     make_int(op - 7, h);
     op[-6] = *op;
     r_set_size(op - 6, h * raster);
@@ -196,14 +199,14 @@ zgetdevice(i_ctx_t *i_ctx_p)
 
     check_type(*op, t_integer);
     if (op->value.intval != (int)(op->value.intval))
-	return_error(e_rangecheck);	/* won't fit in an int */
+        return_error(e_rangecheck);	/* won't fit in an int */
     dev = gs_getdevice((int)(op->value.intval));
     if (dev == 0)		/* index out of range */
-	return_error(e_rangecheck);
+        return_error(e_rangecheck);
     /* Device prototypes are read-only; */
     /* the cast is logically unnecessary. */
     make_tav(op, t_device, avm_foreign | a_readonly, pdevice,
-	     (gx_device *) dev);
+             (gx_device *) dev);
     return 0;
 }
 
@@ -216,10 +219,10 @@ zgetdefaultdevice(i_ctx_t *i_ctx_p)
 
     dev = gs_getdefaultdevice();
     if (dev == 0) /* couldn't find a default device */
-	return_error(e_unknownerror);
+        return_error(e_unknownerror);
     push(1);
     make_tav(op, t_device, avm_foreign | a_readonly, pdevice,
-		(gx_device *) dev);
+                (gx_device *) dev);
     return 0;
 }
 
@@ -240,15 +243,15 @@ zget_device_params(i_ctx_t *i_ctx_p, bool is_hardware)
     pop(1);
     stack_param_list_write(&list, &o_stack, &rkeys, iimemory);
     code = gs_get_device_or_hardware_params(dev, (gs_param_list *) & list,
-					    is_hardware);
+                                            is_hardware);
     if (code < 0) {
-	/* We have to put back the top argument. */
-	if (list.count > 0)
-	    ref_stack_pop(&o_stack, list.count * 2 - 1);
-	else
-	    ref_stack_push(&o_stack, 1);
-	*osp = rkeys;
-	return code;
+        /* We have to put back the top argument. */
+        if (list.count > 0)
+            ref_stack_pop(&o_stack, list.count * 2 - 1);
+        else
+            ref_stack_push(&o_stack, 1);
+        *osp = rkeys;
+        return code;
     }
     pmark = ref_stack_index(&o_stack, list.count * 2);
     make_mark(pmark);
@@ -283,41 +286,51 @@ zmakewordimagedevice(i_ctx_t *i_ctx_p)
     check_int_leu(op[-2], max_uint >> 1);	/* height */
     check_type(*op, t_boolean);
     if (r_has_type(op1, t_null)) {	/* true color */
-	colors = 0;
-	colors_size = -24;	/* 24-bit true color */
+        colors = 0;
+        colors_size = -24;	/* 24-bit true color */
     } else if (r_has_type(op1, t_integer)) {
-	/*
-	 * We use if/else rather than switch because the value is long,
-	 * which is not supported as a switch value in pre-ANSI C.
-	 */
-	if (op1->value.intval != 16 && op1->value.intval != 24 &&
-	    op1->value.intval != 32
-	    )
-	    return_error(e_rangecheck);
-	colors = 0;
-	colors_size = -op1->value.intval;
+        /*
+         * We use if/else rather than switch because the value is long,
+         * which is not supported as a switch value in pre-ANSI C.
+         */
+        if (op1->value.intval != 16 && op1->value.intval != 24 &&
+            op1->value.intval != 32
+            )
+            return_error(e_rangecheck);
+        colors = 0;
+        colors_size = -op1->value.intval;
     } else {
-	check_type(*op1, t_string);	/* palette */
-	if (r_size(op1) > 3 * 256)
-	    return_error(e_rangecheck);
-	colors = op1->value.bytes;
-	colors_size = r_size(op1);
+        check_type(*op1, t_string);	/* palette */
+        if (r_size(op1) > 3 * 256)
+            return_error(e_rangecheck);
+        colors = op1->value.bytes;
+        colors_size = r_size(op1);
     }
     if ((code = read_matrix(imemory, op - 4, &imat)) < 0)
-	return code;
+        return code;
     /* Everything OK, create device */
     code = gs_makewordimagedevice(&new_dev, &imat,
-				  (int)op[-3].value.intval,
-				  (int)op[-2].value.intval,
-				  colors, colors_size,
-				  op->value.boolval, true, imemory);
+                                  (int)op[-3].value.intval,
+                                  (int)op[-2].value.intval,
+                                  colors, colors_size,
+                                  op->value.boolval, true, imemory);
     if (code == 0) {
-	new_dev->memory = imemory;
-	make_tav(op - 4, t_device, imemory_space(iimemory) | a_all,
-		 pdevice, new_dev);
-	pop(4);
+        new_dev->memory = imemory;
+        make_tav(op - 4, t_device, imemory_space(iimemory) | a_all,
+                 pdevice, new_dev);
+        pop(4);
     }
     return code;
+}
+
+static void invalidate_stack_devices(i_ctx_t *i_ctx_p)
+{
+    os_ptr op = osbot;
+    while (op != ostop) {
+        if (r_has_type(op, t_device))
+            op->value.pdevice = 0;
+        op++;
+    }
 }
 
 /* - nulldevice - */
@@ -326,6 +339,7 @@ static int
 znulldevice(i_ctx_t *i_ctx_p)
 {
     gs_nulldevice(igs);
+    invalidate_stack_devices(i_ctx_p);
     clear_pagedevice(istate);
     return 0;
 }
@@ -343,24 +357,24 @@ zoutputpage(i_ctx_t *i_ctx_p)
     check_type(op[-1], t_integer);
     check_type(*op, t_boolean);
     if (gs_debug[':']) {
-	gs_main_instance *minst = get_minst_from_memory((gs_memory_t *)i_ctx_p->memory.current->non_gc_memory);
+        gs_main_instance *minst = get_minst_from_memory((gs_memory_t *)i_ctx_p->memory.current->non_gc_memory);
 
-	print_resource_usage(minst, &(i_ctx_p->memory), "Outputpage start");
+        print_resource_usage(minst, &(i_ctx_p->memory), "Outputpage start");
     }
 #ifdef PSI_INCLUDED
     code = ps_end_page_top(imemory,
-			   (int)op[-1].value.intval, op->value.boolval);
+                           (int)op[-1].value.intval, op->value.boolval);
 #else
     code = gs_output_page(igs, (int)op[-1].value.intval,
-			  op->value.boolval);
+                          op->value.boolval);
 #endif
     if (code < 0)
-	return code;
+        return code;
     pop(2);
     if (gs_debug[':']) {
-	gs_main_instance *minst = get_minst_from_memory((gs_memory_t *)i_ctx_p->memory.current->non_gc_memory);
+        gs_main_instance *minst = get_minst_from_memory((gs_memory_t *)i_ctx_p->memory.current->non_gc_memory);
 
-	print_resource_usage(minst, &(i_ctx_p->memory), "Outputpage end");
+        print_resource_usage(minst, &(i_ctx_p->memory), "Outputpage end");
     }
     return 0;
 }
@@ -388,54 +402,54 @@ zputdeviceparams(i_ctx_t *i_ctx_p)
     int i, dest;
 
     if (count == 0)
-	return_error(e_unmatchedmark);
+        return_error(e_unmatchedmark);
     prequire_all = ref_stack_index(&o_stack, count);
     ppolicy = ref_stack_index(&o_stack, count + 1);
     pdev = ref_stack_index(&o_stack, count + 2);
     if (pdev == 0)
-	return_error(e_stackunderflow);
+        return_error(e_stackunderflow);
     check_type_only(*prequire_all, t_boolean);
     check_write_type_only(*pdev, t_device);
     dev = pdev->value.pdevice;
     code = stack_param_list_read(&list, &o_stack, 0, ppolicy,
-				 prequire_all->value.boolval, iimemory);
+                                 prequire_all->value.boolval, iimemory);
     if (code < 0)
-	return code;
+        return code;
     old_width = dev->width;
     old_height = dev->height;
     code = gs_putdeviceparams(dev, (gs_param_list *) & list);
     /* Check for names that were undefined or caused errors. */
     for (dest = count - 2, i = 0; i < count >> 1; i++)
-	if (list.results[i] < 0) {
-	    *ref_stack_index(&o_stack, dest) =
-		*ref_stack_index(&o_stack, count - (i << 1) - 2);
-	    gs_errorname(i_ctx_p, list.results[i],
-			 ref_stack_index(&o_stack, dest - 1));
-	    dest -= 2;
-	}
+        if (list.results[i] < 0) {
+            *ref_stack_index(&o_stack, dest) =
+                *ref_stack_index(&o_stack, count - (i << 1) - 2);
+            gs_errorname(i_ctx_p, list.results[i],
+                         ref_stack_index(&o_stack, dest - 1));
+            dest -= 2;
+        }
     iparam_list_release(&list);
     if (code < 0) {		/* There were errors reported. */
-	ref_stack_pop(&o_stack, dest + 1);
-	return 0;
+        ref_stack_pop(&o_stack, dest + 1);
+        return 0;
     }
     if (code > 0 || (code == 0 && (dev->width != old_width || dev->height != old_height))) {
-	/*
-	 * The device was open and is now closed, or its dimensions have
-	 * changed.  If it was the current device, call setdevice to
-	 * reinstall it and erase the page.
-	 */
-	/****** DOESN'T FIND ALL THE GSTATES THAT REFERENCE THE DEVICE. ******/
-	if (gs_currentdevice(igs) == dev) {
-	    bool was_open = dev->is_open;
+        /*
+         * The device was open and is now closed, or its dimensions have
+         * changed.  If it was the current device, call setdevice to
+         * reinstall it and erase the page.
+         */
+        /****** DOESN'T FIND ALL THE GSTATES THAT REFERENCE THE DEVICE. ******/
+        if (gs_currentdevice(igs) == dev) {
+            bool was_open = dev->is_open;
 
-	    code = gs_setdevice_no_erase(igs, dev);
-	    /* If the device wasn't closed, setdevice won't erase the page. */
-	    if (was_open && code >= 0)
-		code = 1;
-	}
+            code = gs_setdevice_no_erase(igs, dev);
+            /* If the device wasn't closed, setdevice won't erase the page. */
+            if (was_open && code >= 0)
+                code = 1;
+        }
     }
     if (code < 0)
-	return code;
+        return code;
     ref_stack_pop(&o_stack, count + 1);
     make_bool(osp, code);
     clear_pagedevice(istate);
@@ -454,18 +468,23 @@ zsetdevice(i_ctx_t *i_ctx_p)
     check_write_type(*op, t_device);
     if (dev->LockSafetyParams) {	  /* do additional checking if locked  */
         if(op->value.pdevice != dev) 	  /* don't allow a different device    */
-	    return_error(e_invalidaccess);
+            return_error(e_invalidaccess);
     }
 #ifndef PSI_INCLUDED
     /* the language switching build shouldn't install a new device
        here.  The language switching machinery installs a shared
        device. */
 
+    if (op->value.pdevice == 0)
+        return gs_note_error(gs_error_undefined);
+
     code = gs_setdevice_no_erase(igs, op->value.pdevice);
-#endif
     if (code < 0)
-	return code;
+        return code;
+
+#endif
     make_bool(op, code != 0);	/* erase page if 1 */
+    invalidate_stack_devices(i_ctx_p);
     clear_pagedevice(istate);
     return code;
 }

@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: vdtrace.c 8489 2008-01-17 13:47:11Z leonardo $ */
+
 /* Visual tracer service */
 
 #include "math_.h"
@@ -46,7 +48,7 @@ static inline double bezier_point(double p0, double p1, double p2, double p3, do
 }
 
 static void vd_flatten(double p0x, double p0y, double p1x, double p1y, double p2x, double p2y, double p3x, double p3y)
-{   
+{
 #ifdef DEBUG
     double flat = 0.5;
     double d2x0 = (p0x - 2 * p1x + p2x), d2y0 = (p0y - 2 * p1y + p2y);
@@ -60,11 +62,11 @@ static void vd_flatten(double p0x, double p0y, double p1x, double p1y, double p2
     double e = 0.5 / N;
 
     for (i = 0; i < N; i++) {
-	double t = (double)i / N + e;
-	double px = bezier_point(p0x, p1x, p2x, p3x, t);
-	double py = bezier_point(p0y, p1y, p2y, p3y, t);
+        double t = (double)i / N + e;
+        double px = bezier_point(p0x, p1x, p2x, p3x, t);
+        double py = bezier_point(p0y, p1y, p2y, p3y, t);
 
-	vd_lineto(px, py);
+        vd_lineto(px, py);
     }
     vd_lineto(p3x, p3y);
 #endif

@@ -1,16 +1,17 @@
-#  Copyright (C) 2001-2006 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: zlib.mak 8022 2007-06-05 22:23:38Z giles $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 # makefile for zlib library code.
 # Users of this makefile must define the following:
 #	GSSRCDIR - the GS library source directory
@@ -19,6 +20,7 @@
 #	ZOBJDIR - the object directory
 #	SHARE_ZLIB - 0 to compile zlib, 1 to share
 #	ZLIB_NAME - if SHARE_ZLIB=1, the name of the shared library
+#	ZAUXDIR - the directory for auxiliary objects
 
 # This partial makefile compiles the zlib library for use in Ghostscript.
 # You can get the source code for this library from:
@@ -43,13 +45,17 @@
 ZSRC=$(ZSRCDIR)$(D)
 ZGEN=$(ZGENDIR)$(D)
 ZOBJ=$(ZOBJDIR)$(D)
+ZAUX=$(ZAUXDIR)$(D)
 ZO_=$(O_)$(ZOBJ)
+ZAO_=$(O_)$(ZAUX)
 
 # We need D_, _D_, and _D because the OpenVMS compiler uses different
 # syntax from other compilers.
 # ZI_ and ZF_ are defined in gs.mak.
 ZCCFLAGS=$(I_)$(ZI_)$(_I) $(ZF_) $(D_)verbose$(_D_)-1$(_D)
 ZCC=$(CC_) $(ZCCFLAGS)
+ZCCAUXFLAGS=$(I_)$(ZI_)$(_I) $(ZF_) $(D_)verbose$(_D_)-1$(_D)
+ZCCAUX=$(CCAUX_) $(ZCCAUXFLAGS)
 
 # Define the name of this makefile.
 ZLIB_MAK=$(GLSRC)zlib.mak
@@ -160,3 +166,25 @@ $(ZOBJ)infutil.$(OBJ) : $(ZSRC)infutil.c $(ZDEP)
 $(ZOBJ)uncompr.$(OBJ) : $(ZSRC)uncompr.c $(ZDEP)
 	$(ZCC) $(ZO_)uncompr.$(OBJ) $(C_) $(ZSRC)uncompr.c
 
+# Auxiliary objects
+
+$(ZAUX)adler32.$(OBJ) : $(ZSRC)adler32.c $(ZDEP)
+	$(ZCCAUX) $(ZAO_)adler32.$(OBJ) $(C_) $(ZSRC)adler32.c
+
+$(ZAUX)deflate.$(OBJ) : $(ZSRC)deflate.c $(ZDEP)
+	$(ZCCAUX) $(ZAO_)deflate.$(OBJ) $(C_) $(ZSRC)deflate.c
+
+# new file in zlib 1.2.x
+$(ZAUX)compress.$(OBJ) : $(ZSRC)compress.c $(ZDEP)
+	$(ZCCAUX) $(ZAO_)compress.$(OBJ) $(C_) $(ZSRC)compress.c
+
+$(ZAUX)trees.$(OBJ) : $(ZSRC)trees.c $(ZDEP)
+	$(ZCCAUX) $(ZAO_)trees.$(OBJ) $(C_) $(ZSRC)trees.c
+
+$(ZAUX)zutil.$(OBJ) : $(ZSRC)zutil.c $(ZDEP)
+	$(ZCCAUX) $(ZAO_)zutil.$(OBJ) $(C_) $(ZSRC)zutil.c
+
+# We have to compile crc32 without warnings, because it defines 32-bit
+# constants that produces gcc warnings with -Wtraditional.
+$(ZAUX)crc32.$(OBJ) : $(ZSRC)crc32.c $(ZDEP)
+	$(CCAUX_NO_WARN) $(ZCCAUXFLAGS) $(ZAO_)crc32.$(OBJ) $(C_) $(ZSRC)crc32.c

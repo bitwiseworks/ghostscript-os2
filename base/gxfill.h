@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxfill.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Common structures for the filling algorithm and dropout prevention. */
 
 #ifndef gxfill_INCLUDED
@@ -27,9 +29,9 @@ struct active_line_s {
     gs_fixed_point end; 	/* x,y where line ends */
     gs_fixed_point diff;	/* end - start */
     fixed y_fast_max;		/* can do x_at_y in fixed point */
-				/* if y <= y_fast_max */
+                                /* if y <= y_fast_max */
     fixed num_adjust;		/* 0 if diff.x >= 0, -diff.y + epsilon if */
-				/* diff.x < 0 and division truncates */
+                                /* diff.x < 0 and division truncates */
 #if ARCH_DIV_NEG_POS_TRUNCATES
     /* neg/pos truncates, we must bias the numberator. */
 #  define SET_NUM_ADJUST(alp) \
@@ -123,7 +125,7 @@ struct line_list_s {
 #define x_list x_head.next
     active_line *h_list0, *h_list1; /* lists of horizontal lines for y, y1 */
     margin_set margin_set0, margin_set1;
-    margin *free_margin_list; 
+    margin *free_margin_list;
     int *windings;
     int local_margin_alloc_count;
     int bbox_left, bbox_width;
@@ -156,12 +158,12 @@ struct line_list_s {
 
 /* ---------------- Statistics ---------------- */
 
-#ifdef DEBUG
+#if defined(DEBUG) && !defined(GS_THREADSAFE)
 struct stats_fill_s {
     long
-	fill, fill_alloc, y_up, y_down, horiz, x_step, slow_x, iter, find_y,
-	band, band_step, band_fill, afill, slant, slant_shallow, sfill,
-	mq_cross, cross_slow, cross_low, order, slow_order;
+        fill, fill_alloc, y_up, y_down, horiz, x_step, slow_x, iter, find_y,
+        band, band_step, band_fill, afill, slant, slant_shallow, sfill,
+        mq_cross, cross_slow, cross_low, order, slow_order;
 };
 typedef struct stats_fill_s stats_fill_t;
 extern stats_fill_t stats_fill;
@@ -176,5 +178,3 @@ extern stats_fill_t stats_fill;
 #endif
 
 #endif /* gxfill_INCLUDED */
-
-

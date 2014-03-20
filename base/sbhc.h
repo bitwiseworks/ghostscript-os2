@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: sbhc.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Definitions for BoundedHuffman filters */
 /* Requires strimpl.h */
 
@@ -29,13 +31,13 @@
 
 /* Common state */
 #define stream_BHC_state_common\
-	stream_hc_state_common;\
-	hc_definition definition;\
-		/* The client sets the following before initialization. */\
-	bool EndOfData;\
-	uint EncodeZeroRuns;\
-		/* The following are updated dynamically. */\
-	int zeros		/* # of zeros scanned or left to output */
+        stream_hc_state_common;\
+        hc_definition definition;\
+                /* The client sets the following before initialization. */\
+        bool EndOfData;\
+        uint EncodeZeroRuns;\
+                /* The following are updated dynamically. */\
+        int zeros		/* # of zeros scanned or left to output */
 typedef struct stream_BHC_state_s {
     stream_BHC_state_common;
 } stream_BHC_state;
@@ -72,17 +74,17 @@ extern const stream_template s_BHCD_template;
 
 /* Declare variables that hold the decoder state. */
 #define bhcd_declare_state\
-	hcd_declare_state;\
-	int zeros
+        hcd_declare_state;\
+        int zeros
 
 /* Load the state from the stream. */
 /* Free variables: pr, ss, p, rlimit, bits, bits_left, zeros. */
 #define bhcd_load_state()\
-	hcd_load_state(), zeros = ss->zeros
+        hcd_load_state(), zeros = ss->zeros
 
 /* Store the state back in the stream. */
 /* Free variables: pr, ss, p, bits, bits_left, zeros. */
 #define bhcd_store_state()\
-	hcd_store_state(), ss->zeros = zeros
+        hcd_store_state(), ss->zeros = zeros
 
 #endif /* sbhc_INCLUDED */

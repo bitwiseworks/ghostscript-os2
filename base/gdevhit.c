@@ -1,19 +1,20 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
-/* $Id: gdevhit.c 8250 2007-09-25 13:31:24Z giles $ */
+
 /* Hit detection device */
 #include "std.h"
-#include "gserror.h"
 #include "gserrors.h"
 #include "gstypes.h"
 #include "gsmemory.h"
@@ -29,7 +30,7 @@ const int gs_hit_detected = gs_error_hit_detected;
 static dev_proc_fill_rectangle(hit_fill_rectangle);
 const gx_device gs_hit_device = {
  std_device_std_body(gx_device, 0, "hit detector",
-		     0, 0, 1, 1),
+                     0, 0, 1, 1),
  {NULL,				/* open_device */
   NULL,				/* get_initial_matrix */
   NULL,				/* sync_output */
@@ -78,9 +79,9 @@ const gx_device gs_hit_device = {
 /* Test for a hit when filling a rectangle. */
 static int
 hit_fill_rectangle(gx_device * dev, int x, int y, int w, int h,
-		   gx_color_index color)
+                   gx_color_index color)
 {
     if (w > 0 && h > 0)
-	return_error(gs_error_hit_detected);
+        return_error(gs_error_hit_detected);
     return 0;
 }

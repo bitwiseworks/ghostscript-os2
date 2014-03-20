@@ -1,16 +1,17 @@
-#  Copyright (C) 2001-2007 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: openvms.mmk 9334 2009-01-08 09:17:18Z ghostgum $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 # makefile for OpenVMS VAX and Alpha using MMK
 #
 # Please contact Jim Dunham (dunham@omtool.com) if you have questions.
@@ -31,8 +32,11 @@
 
 BINDIR=[.bin]
 GLSRCDIR=[.base]
+DEVSRCDIR=[.devices]
 GLGENDIR=[.obj]
 GLOBJDIR=[.obj]
+DEVGENDIR=[.obj]
+DEVOBJDIR=[.obj]
 PSSRCDIR=[.psi]
 PSGENDIR=[.obj]
 PSOBJDIR=[.obj]
@@ -73,12 +77,9 @@ GS_LIB_DEFAULT=GS_LIB
 
 # Define whether or not searching for initialization files should always
 # look in the current directory first.  This leads to well-known security
-# and confusion problems, but users insist on it.
-# NOTE: this also affects searching for files named on the command line:
-# see the "File searching" section of Use.htm for full details.
-# Because of this, setting SEARCH_HERE_FIRST to 0 is not recommended.
+# and confusion problems,  but may be convenient sometimes.
 
-SEARCH_HERE_FIRST=1
+SEARCH_HERE_FIRST=0
 
 # Define the name of the interpreter initialization file.
 # (There is no reason to change this.)
@@ -119,7 +120,7 @@ JSRCDIR=[.jpeg]
 # Define the directory where the PNG library sources are stored,
 # and the version of the library that is stored there.
 # You may need to change this if the libpng version changes.
-# See libpng.mak for more information.
+# See png.mak for more information.
 
 .ifdef SYSLIB
 PNGSRCDIR=sys$library:
@@ -148,21 +149,9 @@ JBIG2SRCDIR=[.jbig2dec]
 
 # Define the jpeg2k library and source directory
 
-JPX_LIB=jasper
-.ifdef SYSLIB
-JPXSRCDIR=sys$library:
-.else
-JPXSRCDIR=[.jasper]
-.endif
-
-# Define the directory where the icclib source are stored.
-# See icclib.mak for more information
-
-ICCSRCDIR=[.icclib]
-
 # IJS has not been ported to OpenVMS. If you do the port,
 # you'll need to set these values. You'll also need to
-# include the ijs.mak makefile (right after icclib.mak).
+# include the ijs.mak makefile
 #
 # Define the directory where the ijs source is stored,
 # and the process forking method to use for the server.
@@ -254,10 +243,10 @@ DEVICE_DEVS8=$(DD)pcxmono.dev $(DD)pcxgray.dev $(DD)pcx16.dev $(DD)pcx256.dev $(
 DEVICE_DEVS9=$(DD)pbm.dev $(DD)pbmraw.dev $(DD)pgm.dev $(DD)pgmraw.dev $(DD)pgnm.dev $(DD)pgnmraw.dev
 DEVICE_DEVS10=$(DD)tiffcrle.dev $(DD)tiffg3.dev $(DD)tiffg32d.dev $(DD)tiffg4.dev $(DD)tifflzw.dev $(DD)tiffpack.dev
 DEVICE_DEVS11=$(DD)tiff12nc.dev $(DD)tiff24nc.dev
-DEVICE_DEVS12=$(DD)psmono.dev $(DD)psgray.dev $(DD)psrgb.dev $(DD)bit.dev $(DD)bitrgb.dev $(DD)bitcmyk.dev
+DEVICE_DEVS12=$(DD)bit.dev $(DD)bitrgb.dev $(DD)bitcmyk.dev
 DEVICE_DEVS13=$(DD)pngmono.dev $(DD)pnggray.dev $(DD)png16.dev $(DD)png256.dev $(DD)png16m.dev $(DD)pngalpha.dev
 DEVICE_DEVS14=$(DD)jpeg.dev $(DD)jpeggray.dev
-DEVICE_DEVS15=$(DD)pdfwrite.dev $(DD)pswrite.dev $(DD)epswrite.dev $(DD)pxlmono.dev $(DD)pxlcolor.dev
+DEVICE_DEVS15=$(DD)pdfwrite.dev $(DD)epswrite.dev $(DD)pxlmono.dev $(DD)pxlcolor.dev
 DEVICE_DEVS16=$(DD)bbox.dev
 # Overflow from DEVS9
 DEVICE_DEVS17=$(DD)pnm.dev $(DD)pnmraw.dev $(DD)ppm.dev $(DD)ppmraw.dev $(DD)pkm.dev $(DD)pkmraw.dev $(DD)pksm.dev $(DD)pksmraw.dev
@@ -298,7 +287,7 @@ STDIO_IMPLEMENTATION=c
 
 # Define the platform name.
 
-PLATFORM=openvms_
+GSPLATFORM=openvms_
 
 # Define the name of the makefile -- used in dependencies.
 
@@ -431,12 +420,11 @@ all : macro [.lib]Fontmap. $(GS_XE)
 .include $(GLSRCDIR)lib.mak
 .include $(PSSRCDIR)int.mak
 .include $(GLSRCDIR)jpeg.mak
-# zlib.mak must precede libpng.mak
+# zlib.mak must precede png.mak
 .include $(GLSRCDIR)zlib.mak
-.include $(GLSRCDIR)libpng.mak
+.include $(GLSRCDIR)png.mak
 JBIG2_EXTRA_OBJS=$(JBIG2OBJDIR)$(D)snprintf.$(OBJ)
 .include $(GLSRCDIR)jbig2.mak
-.include $(GLSRCDIR)icclib.mak
 .include $(GLSRCDIR)devs.mak
 .include $(GLSRCDIR)contrib.mak
 

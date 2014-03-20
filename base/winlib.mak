@@ -1,16 +1,17 @@
-#  Copyright (C) 2001-2006 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: winlib.mak 10317 2009-11-11 15:50:28Z larsu $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 # Common makefile section for 32-bit MS Windows.
 
 # This makefile must be acceptable to Microsoft Visual C++, Watcom C++,
@@ -20,17 +21,47 @@
 
 # Note that built-in third-party libraries aren't available.
 
+SHARE_FT=0
 SHARE_JPEG=0
 SHARE_LIBPNG=0
 SHARE_LIBTIFF=0
 SHARE_ZLIB=0
 SHARE_JBIG2=0
 SHARE_JPX=0
+SHARE_LCMS=0
+SHARE_LCUPS=0
+SHARE_LCUPSI=0
+
+SHARE_IJS=0
+IJS_NAME=
+IJSSRCDIR=ijs
+IJSEXECTYPE=win
+
+# Define the directory where the CUPS library sources are stored,
+
+!ifndef LCUPSSRCDIR
+SHARE_LCUPS=0
+LCUPS_NAME=
+LCUPSSRCDIR=cups
+LCUPSBUILDTYPE=win
+CUPS_CC=$(CC) $(CFLAGS) -DWIN32 
+!endif
+
+!ifndef LCUPSISRCDIR
+SHARE_LCUPSI=0
+LCUPSI_NAME=
+LCUPSISRCDIR=cups
+CUPS_CC=$(CC) $(CFLAGS) -DWIN32 
+!endif
 
 # Define the platform name.
 
-!ifndef PLATFORM
-PLATFORM=mswin32_
+!ifndef GSPLATFORM
+!ifdef METRO
+GSPLATFORM=metro_
+!else
+GSPLATFORM=mswin32_
+!endif
 !endif
 
 # Define the auxiliary program dependency. We use this to 
@@ -74,18 +105,17 @@ PLATOPT=
 
 # Define conditinal name for UFST bridge :
 !ifdef UFST_ROOT
-UFST_BRIDGE = 1
 UFST_LIB_EXT=.lib
 !endif
 
-# Define conditinal name for FreeType bridge :
-!ifdef FT_ROOT
-FT_BRIDGE = 1
-FT_CFLAGS=$(I_)$(FT_ROOT)$(D)include$(_I)
-!ifndef FT_LIB
-FT_LIB = freetype238MT_D
+# Define conditinal for FreeType bridge :
+!ifndef FT_BRIDGE
+FT_BRIDGE = 0
 !endif
-FT_LIBS=$(FT_ROOT)$(D)objs$(D)$(FT_LIB).lib
+
+# Which CMS are we using?
+!ifndef WHICH_CMS
+WHICH_CMS=lcms2
 !endif
 
 # Define the files to be removed by `make clean'.
@@ -96,26 +126,35 @@ BEGINFILES=$(GLGENDIR)\ccf32.tr\
  $(GLOBJDIR)\*.res $(GLOBJDIR)\*.ico\
  $(BINDIR)\$(GSDLL).dll $(BINDIR)\$(GSCONSOLE).exe\
  $(BINDIR)\setupgs.exe $(BINDIR)\uninstgs.exe\
+ $(GLOBJDIR)\cups\*.h $(AUXDIR)\*.sbr $(AUXDIR)\*.pdb \
  $(BEGINFILES2)
 
 # Include the generic makefiles.
 #!include $(COMMONDIR)/pcdefs.mak
 #!include $(COMMONDIR)/generic.mak
 !include $(GLSRCDIR)\gs.mak
+!include $(GLSRCDIR)\trio.mak
 !include $(GLSRCDIR)\lib.mak
+!include $(GLSRCDIR)\freetype.mak
+!if "$(UFST_BRIDGE)"=="1"
+!include $(UFST_ROOT)\fapiufst.mak
+!endif
 !include $(GLSRCDIR)\jpeg.mak
-# zlib.mak must precede libpng.mak
+# zlib.mak must precede png.mak
 !include $(GLSRCDIR)\zlib.mak
-!include $(GLSRCDIR)\libpng.mak
-!include $(GLSRCDIR)\libtiff.mak
+!include $(GLSRCDIR)\png.mak
+!include $(GLSRCDIR)\tiff.mak
 !include $(GLSRCDIR)\jbig2.mak
-!include $(GLSRCDIR)\jasper.mak
 !include $(GLSRCDIR)\ldf_jb2.mak
 !include $(GLSRCDIR)\lwf_jp2.mak
-!include $(GLSRCDIR)\icclib.mak
+!include $(GLSRCDIR)\openjpeg.mak
+!include $(GLSRCDIR)\$(WHICH_CMS).mak
 !include $(GLSRCDIR)\ijs.mak
-!include $(GLSRCDIR)\devs.mak
-!include $(GLSRCDIR)\contrib.mak
+!include $(GLSRCDIR)\lcups.mak
+!include $(GLSRCDIR)\lcupsi.mak
+!include $(DEVSRCDIR)\devs.mak
+!include $(DEVSRCDIR)\contrib.mak
+!include $(CONTRIBDIR)\contrib.mak
 
 # Define the compilation rule for Windows devices.
 # This requires GL*_ to be defined, so it has to come after lib.mak.
@@ -139,7 +178,8 @@ $(gconfig__h): $(TOP_MAKEFILES)
 
 # The Windows Win32 platform
 
-mswin32__=$(GLOBJ)gp_mswin.$(OBJ) $(GLOBJ)gp_wgetv.$(OBJ) $(GLOBJ)gp_wpapr.$(OBJ) $(GLOBJ)gp_stdia.$(OBJ)
+mswin32__=$(GLOBJ)gp_mswin.$(OBJ) $(GLOBJ)gp_wgetv.$(OBJ) $(GLOBJ)gp_wpapr.$(OBJ) \
+ $(GLOBJ)gp_stdia.$(OBJ) $(GLOBJ)gp_wutf8.$(OBJ)
 mswin32_inc=$(GLD)nosync.dev $(GLD)winplat.dev
 
 $(GLGEN)mswin32_.dev:  $(mswin32__) $(ECHOGS_XE) $(mswin32_inc)
@@ -152,6 +192,12 @@ $(GLOBJ)gp_mswin.$(OBJ): $(GLSRC)gp_mswin.c $(AK) $(gp_mswin_h) \
  $(gx_h) $(gp_h) $(gpcheck_h) $(gpmisc_h) $(gserrors_h) $(gsexit_h)
 	$(GLCCWIN) $(GLO_)gp_mswin.$(OBJ) $(C_) $(GLSRC)gp_mswin.c
 
+$(GLOBJ)gp_wutf8.$(OBJ): $(GLSRC)gp_wutf8.c $(windows__h)
+	$(GLCCWIN) $(GLO_)gp_wutf8.$(OBJ) $(C_) $(GLSRC)gp_wutf8.c
+
+$(AUX)gp_wutf8.$(OBJ): $(GLSRC)gp_wutf8.c $(windows__h)
+	$(GLCCAUX) $(AUXO_)gp_wutf8.$(OBJ) $(C_) $(GLSRC)gp_wutf8.c
+
 $(GLOBJ)gp_wgetv.$(OBJ): $(GLSRC)gp_wgetv.c $(AK) $(gscdefs_h)
 	$(GLCCWIN) $(GLO_)gp_wgetv.$(OBJ) $(C_) $(GLSRC)gp_wgetv.c
 
@@ -162,6 +208,27 @@ $(GLOBJ)gp_stdia.$(OBJ): $(GLSRC)gp_stdia.c $(AK)\
   $(stdio__h) $(time__h) $(unistd__h) $(gx_h) $(gp_h)
 	$(GLCCWIN) $(GLO_)gp_stdia.$(OBJ) $(C_) $(GLSRC)gp_stdia.c
 
+# The Metro platform
+!ifdef METRO
+METRO_OBJS=$(GLOBJ)winrtsup.$(OBJ) $(GLOBJ)gp_wutf8.$(OBJ)
+
+$(GLOBJ)winrtsup.$(OBJ): $(GLSRCDIR)/winrtsup.cpp
+	$(GLCCWIN) /EHsc $(GLO_)winrtsup.$(OBJ) $(C_) $(GLSRCDIR)/winrtsup.cpp
+!else
+METRO_OBJS=
+!endif
+
+
+metro__=$(GLOBJ)gp_mswin.$(OBJ) $(GLOBJ)gp_wgetv.$(OBJ) $(GLOBJ)gp_wpapr.$(OBJ)\
+  $(GLOBJ)gp_stdia.$(OBJ) $(METRO_OBJS)
+#$(GLOBJ)gp_wutf8.$(OBJ)
+metro_inc=$(GLD)nosync.dev $(GLD)winplat.dev
+
+$(GLGEN)metro_.dev:  $(metro__) $(ECHOGS_XE) $(metro_inc)
+	$(SETMOD) $(GLGEN)metro_ $(metro__)
+	$(ADDMOD) $(GLGEN)metro_ -include $(metro_inc)
+
+
 # Define MS-Windows handles (file system) as a separable feature.
 
 mshandle_=$(GLOBJ)gp_mshdl.$(OBJ)
@@ -171,7 +238,7 @@ $(GLD)mshandle.dev: $(ECHOGS_XE) $(mshandle_)
 
 $(GLOBJ)gp_mshdl.$(OBJ): $(GLSRC)gp_mshdl.c $(AK)\
  $(ctype__h) $(errno__h) $(stdio__h) $(string__h)\
- $(gserror_h) $(gsmemory_h) $(gstypes_h) $(gxiodev_h)
+ $(gsmemory_h) $(gstypes_h) $(gxiodev_h) $(gserrors_h)
 	$(GLCC) $(GLO_)gp_mshdl.$(OBJ) $(C_) $(GLSRC)gp_mshdl.c
 
 # Define MS-Windows printer (file system) as a separable feature.
@@ -183,7 +250,7 @@ $(GLD)msprinter.dev: $(ECHOGS_XE) $(msprinter_)
 
 $(GLOBJ)gp_msprn.$(OBJ): $(GLSRC)gp_msprn.c $(AK)\
  $(ctype__h) $(errno__h) $(stdio__h) $(string__h)\
- $(gserror_h) $(gsmemory_h) $(gstypes_h) $(gxiodev_h)
+ $(gsmemory_h) $(gstypes_h) $(gxiodev_h)
 	$(GLCCWIN) $(GLO_)gp_msprn.$(OBJ) $(C_) $(GLSRC)gp_msprn.c
 
 # Define MS-Windows polling as a separable feature

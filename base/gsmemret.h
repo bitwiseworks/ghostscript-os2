@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsmemret.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Interface to retrying memory allocator */
 
 #if !defined(gsmemret_INCLUDED)
@@ -48,9 +50,9 @@ struct gs_memory_retrying_s {
 
 /* Initialize a retrying memory manager. */
 int gs_memory_retrying_init(
-			    gs_memory_retrying_t * rmem, /* allocator to init */
-			    gs_memory_t * target	/* allocator to wrap */
-			    );
+                            gs_memory_retrying_t * rmem, /* allocator to init */
+                            gs_memory_t * target	/* allocator to wrap */
+                            );
 
 /* Release a retrying memory manager. */
 /* Note that this has no effect on the target. */
@@ -58,8 +60,8 @@ void gs_memory_retrying_release(gs_memory_retrying_t *rmem);
 
 /* Set the recovery closure of a retrying memory manager. */
 void gs_memory_retrying_set_recover(gs_memory_retrying_t *rmem,
-				    gs_memory_recover_proc_t recover_proc,
-				    void *recover_proc_data);
+                                    gs_memory_recover_proc_t recover_proc,
+                                    void *recover_proc_data);
 
 /* Get the target of a retrying memory manager. */
 gs_memory_t * gs_memory_retrying_target(const gs_memory_retrying_t *rmem);

@@ -2,12 +2,12 @@ LIBRARY GSDLL2 INITINSTANCE TERMINSTANCE
 DESCRIPTION	'Ghostscript DLL for eCS (OS/2)'
 DATA MULTIPLE NONSHARED
 EXPORTS
-   GSDLL_REVISION = _gsdll_revision		@1
-   GSDLL_INIT = _gsdll_init			@2
-   GSDLL_EXECUTE_BEGIN = _gsdll_execute_begin	@3
-   GSDLL_EXECUTE_CONT = _gsdll_execute_cont	@4
-   GSDLL_EXECUTE_END = _gsdll_execute_end	@5
-   GSDLL_EXIT = _gsdll_exit			@6
+   GSDLL_REVISION = _gsdll_revision
+   GSDLL_INIT = _gsdll_init
+   GSDLL_EXECUTE_BEGIN = _gsdll_execute_begin
+   GSDLL_EXECUTE_CONT = _gsdll_execute_cont
+   GSDLL_EXECUTE_END = _gsdll_execute_end
+   GSDLL_EXIT = _gsdll_exit
    GSAPI_REVISION = _gsapi_revision
    GSAPI_NEW_INSTANCE = _gsapi_new_instance
    GSAPI_DELETE_INSTANCE = _gsapi_delete_instance
@@ -22,6 +22,7 @@ EXPORTS
    GSAPI_SET_STDIO = _gsapi_set_stdio
    GSAPI_SET_POLL = _gsapi_set_poll
    GSAPI_SET_DISPLAY_CALLBACK = _gsapi_set_display_callback
+   GASPI_SET_ARG_ENCODING = _gsapi_set_arg_encoding
 
    _gsdll_revision
    _gsdll_init
@@ -43,3 +44,4 @@ EXPORTS
    _gsapi_set_stdio
    _gsapi_set_poll
    _gsapi_set_display_callback
+   _gsapi_set_arg_encoding

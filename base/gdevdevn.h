@@ -1,20 +1,25 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
-/*$Id: gdevdevn.h 9071 2008-09-04 15:46:56Z leonardo $ */
+
 /* Include file for common DeviceN process color model devices. */
 
 #ifndef gdevdevn_INCLUDED
 # define gdevdevn_INCLUDED
+
+/* See Comments in gdevtsep.c or gdevpsd.c as to the purpose of this */
+#define LIMIT_TO_ICC 1
 
 /*
  * Define the maximum number of spot colors supported by this device.
@@ -45,7 +50,8 @@
  *
  * To disable compression of encoded colorant values, change this definition.
  */
-#define USE_COMPRESSED_ENCODING (ARCH_SIZEOF_GX_COLOR_INDEX >= 8)
+#define USE_COMPRESSED_ENCODING 0
+/* #define USE_COMPRESSED_ENCODING (ARCH_SIZEOF_GX_COLOR_INDEX >= 8) */
 
 /*
  * Type definitions associated with the fixed color model names.
@@ -157,10 +163,10 @@ extern fixed_colorant_name DeviceCMYKComponents[];
 void gray_cs_to_devn_cm(gx_device * dev, int * map, frac gray, frac out[]);
 
 void rgb_cs_to_devn_cm(gx_device * dev, int * map,
-		const gs_imager_state *pis, frac r, frac g, frac b, frac out[]);
+                const gs_imager_state *pis, frac r, frac g, frac b, frac out[]);
 
-void cmyk_cs_to_devn_cm(gx_device * dev, int * map,
-		frac c, frac m, frac y, frac k, frac out[]);
+void cmyk_cs_to_devn_cm(gx_device * dev, const int * map,
+                frac c, frac m, frac y, frac k, frac out[]);
 
 /*
  * Possible values for the 'auto_spot_colors' parameter.
@@ -185,7 +191,7 @@ void cmyk_cs_to_devn_cm(gx_device * dev, int * map,
 
 /*
  * This routine will check to see if the color component name  match those
- * that are available amoung the current device's color colorants.  
+ * that are available amoung the current device's color colorants.
  *
  * Parameters:
  *   dev - pointer to device data structure.
@@ -211,8 +217,8 @@ int devn_get_color_comp_index(gx_device * dev,
 
 /* Utility routine for getting DeviceN parameters */
 int devn_get_params(gx_device * pdev, gs_param_list * plist,
-		    gs_devn_params * pdevn_params,
-		    equivalent_cmyk_color_params * pequiv_colors);
+                    gs_devn_params * pdevn_params,
+                    equivalent_cmyk_color_params * pequiv_colors);
 
 /*
  * Utility routine for handling DeviceN related parameters.  This routine
@@ -224,10 +230,10 @@ int devn_get_params(gx_device * pdev, gs_param_list * plist,
  * optional (it should be NULL if this feature is not used by the device).
  */
 int devn_printer_put_params(gx_device * pdev, gs_param_list * plist,
-			gs_devn_params * pdevn_params,
-			equivalent_cmyk_color_params * pequiv_colors);
+                        gs_devn_params * pdevn_params,
+                        equivalent_cmyk_color_params * pequiv_colors);
 
-/* 
+/*
  * Utility routine for handling DeviceN related parameters.  This routine
  * may modify the color_info, devn_params, and the * equiv_colors fields.
  * The pointer to the equivalent_cmyk_color_params is optional (it should be
@@ -237,8 +243,8 @@ int devn_printer_put_params(gx_device * pdev, gs_param_list * plist,
  * is left to the caller.
  */
 int devn_put_params(gx_device * pdev, gs_param_list * plist,
-			gs_devn_params * pdevn_params,
-			equivalent_cmyk_color_params * pequiv_colors);
+                        gs_devn_params * pdevn_params,
+                        equivalent_cmyk_color_params * pequiv_colors);
 
 /*
  * This routine will check to see if the color component name  match those
@@ -254,8 +260,30 @@ int devn_put_params(gx_device * pdev, gs_param_list * plist,
  * number if the name is found.  It returns a negative value if not found.
  */
 int check_pcm_and_separation_names(const gx_device * dev,
-		const gs_devn_params * pparams, const char * pname,
-		int name_size, int component_type);
+                const gs_devn_params * pparams, const char * pname,
+                int name_size, int component_type);
+
+/*
+ * This routine copies over the gs_devn_params from one device to another.
+   This is needed when we launch multi-threaded rendering for separation
+   devices
+ *
+ * Parameters :
+ *      psrcdev - pointer to source device.
+ *      pdesdev - pointer to destination device.
+ *
+ * Returns 0 if all allocations were fine.
+ */
+int devn_copy_params(gx_device * psrcdev, gx_device * pdesdev);
+
+/*
+ * This routine frees the gs_devn_params objects
+ *
+ * Parameters :
+ *      dev - pointer to device.
+ *
+ */
+void devn_free_params(gx_device *dev);
 
 /*
  * This routine will extract a specified set of bits from a buffer and pack
@@ -274,7 +302,7 @@ int check_pcm_and_separation_names(const gx_device * dev,
  *   Data in dest.
  */
 int repack_data(byte * source, byte * dest, int depth, int first_bit,
-		int bit_width, int npixel);
+                int bit_width, int npixel);
 
 /*
  * This utility routine calculates the number of bits required to store
@@ -290,7 +318,6 @@ int repack_data(byte * source, byte * dest, int depth, int first_bit,
  * Input values are not tested for validity.
  */
 int bpc_to_depth(int ncomp, int bpc);
-
 
 /*
  * We are encoding color values into a gx_color_index value.  This is being
@@ -383,19 +410,19 @@ typedef gx_color_index comp_bit_map_t;
 
 #define COMP_BIT_MAP_SIZE \
     ((GX_DEVICE_COLOR_MAX_COMPONENTS + COMP_BIT_MAP_ELEM_MASK) / \
-     						BITS_PER_COMP_BIT_MAP_ELEM)
+                                                BITS_PER_COMP_BIT_MAP_ELEM)
 
 /* Bit map list of colorants in the gx_color_index value */
 typedef comp_bit_map_elem_t comp_bit_map_t[COMP_BIT_MAP_SIZE];
 #define set_colorant_present(pbit_map, comp_list, comp_num)\
    (pbit_map)->comp_list[comp_num / BITS_PER_COMP_BIT_MAP_ELEM] |=\
-				(1 << (comp_num & COMP_BIT_MAP_ELEM_MASK))
+                                (1 << (comp_num & COMP_BIT_MAP_ELEM_MASK))
 #define clear_colorant_present(pbit_map, comp_list, comp_num)\
    (pbit_map)->comp_list[comp_num / BITS_PER_COMP_BIT_MAP_ELEM] &=\
-				~(1 << (comp_num & COMP_BIT_MAP_ELEM_MASK))
+                                ~(1 << (comp_num & COMP_BIT_MAP_ELEM_MASK))
 #define colorant_present(pbit_map, comp_list, comp_num)\
    ((pbit_map)->comp_list[comp_num / BITS_PER_COMP_BIT_MAP_ELEM] >>\
-				((comp_num & COMP_BIT_MAP_ELEM_MASK)) & 1)
+                                ((comp_num & COMP_BIT_MAP_ELEM_MASK)) & 1)
 /*
  * The compare bit map soutine is too complex for s simple macro.
  * So it is comditionally compiled using this switch.
@@ -432,6 +459,7 @@ typedef struct comp_bit_map_list_s {
  * gx_color_index value.
  */
 typedef struct compressed_color_list_s {
+    gs_memory_t * mem;   /* the allocator used for this structure */
     /*
      * The number of colorants for this level of the encoded color list.
      * Note:  Each sub level encodes one fewer colorants.
@@ -446,8 +474,8 @@ typedef struct compressed_color_list_s {
      * bit map but not both.
      */
     union {
-	struct compressed_color_list_s * sub_level_ptrs[NUM_ENCODE_LIST_ITEMS];
-	comp_bit_map_list_t comp_data[NUM_ENCODE_LIST_ITEMS];
+        struct compressed_color_list_s * sub_level_ptrs[NUM_ENCODE_LIST_ITEMS];
+        comp_bit_map_list_t comp_data[NUM_ENCODE_LIST_ITEMS];
     } u;
 } compressed_color_list_t;
 
@@ -465,7 +493,7 @@ typedef struct compressed_color_list_s {
  * value.
  */
 gx_color_index devn_encode_compressed_color(gx_device *pdev,
-	const gx_color_value colors[], gs_devn_params * pdevn_params);
+        const gx_color_value colors[], gs_devn_params * pdevn_params);
 
 /*
  * Decode a gx_color_index value back to a list of colorant values.  This
@@ -477,7 +505,7 @@ gx_color_index devn_encode_compressed_color(gx_device *pdev,
  * value.
  */
 int devn_decode_compressed_color(gx_device * dev, gx_color_index color,
-			gx_color_value * out, gs_devn_params * pdevn_params);
+                        gx_color_value * out, gs_devn_params * pdevn_params);
 
 /*
  * Unpack a row of 'encoded color' values.  These values are encoded as
@@ -490,19 +518,19 @@ int devn_decode_compressed_color(gx_device * dev, gx_color_index color,
  * about how we encode the color information into a gx_color_index value.
  */
 int devn_unpack_row(gx_device * dev, int num_comp, gs_devn_params * pdevn_params,
-					 int width, byte * in, byte * out);
+                                         int width, byte * in, byte * out);
 
 /*
  * Find the bit map for given bit map index.
  */
 comp_bit_map_list_t * find_bit_map(gx_color_index index,
-	       			compressed_color_list_t * pcomp_list);
+                                compressed_color_list_t * pcomp_list);
 
 /*
  * Allocate an list level element for our encode color list.
  */
 compressed_color_list_t * alloc_compressed_color_list_elem(gs_memory_t * mem,
-	       							int num_comps);
+                                                                int num_comps);
 
 /*
  * The elements of this array contain the number of bits used to encode a color
@@ -529,17 +557,16 @@ extern int comp_bit_factor[];
  * A routine for debugging the encoded color colorant list.  This routine
  * dumps the contents of the list.
  */
-void print_compressed_color_list(compressed_color_list_t * pcomp_list, int num_comp);
+void print_compressed_color_list(const gs_memory_t *mem, compressed_color_list_t * pcomp_list, int num_comp);
 
 /*
  * Free the elements of a compressed color list.
  */
-void free_compressed_color_list(gs_memory_t * mem,
-	       	compressed_color_list_t * pcomp_list);
+void free_compressed_color_list(compressed_color_list_t * pcomp_list);
 
 /*
  * Free a set of separation names
  */
-void free_separation_names(gs_memory_t * mem, gs_separations * pseparation);
+void free_separation_names(gs_memory_t *mem, gs_separations * pseparation);
 
 #endif		/* ifndef gdevdevn_INCLUDED */

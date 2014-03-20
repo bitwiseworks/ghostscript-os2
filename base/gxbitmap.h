@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxbitmap.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Definitions for stored bitmaps for Ghostscript */
 
 #ifndef gxbitmap_INCLUDED
@@ -44,7 +46,7 @@ typedef gs_bitmap_id gx_bitmap_id;
  * assumption is not true in some MSVC implementations, but even in those
  * implementations, the alignment is sufficient to satisfy the hardware.
  * See gsmemraw.h for more information about this.)
- * 
+ *
  * The padding requirement is that if the last data byte being operated on
  * is at offset B relative to the start of the scan line, bytes up to and
  * including offset ROUND_UP(B + 1, align_bitmap_mod) - 1 may be accessed,
@@ -127,11 +129,17 @@ typedef struct gx_const_tile_bitmap_s {
  * tiles.  Requirements:
  *      rep_shift < rep_width
  *      shift = (rep_shift * (size.y / rep_height)) % rep_width
+ *
+ * For the benefit of the planar device, we now have a num_planes field.
+ * For chunky data this should be set to 1. For planar data, the data pointer
+ * points to the first plane of data; subsequent planes of data follow
+ * immediately after this as if there were num_planes * height lines of data.
  */
 #define gx_strip_bitmap_common(data_type)\
-	gx_tile_bitmap_common(data_type);\
-	ushort rep_shift;\
-	ushort shift
+        gx_tile_bitmap_common(data_type);\
+        ushort rep_shift;\
+        ushort shift;\
+        int num_planes
 typedef struct gx_strip_bitmap_s {
     gx_strip_bitmap_common(byte);
 } gx_strip_bitmap;

@@ -1,20 +1,22 @@
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
+   All Rights Reserved.
+
+   This software is provided AS-IS with no warranty, either express or
+   implied.
+
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
+*/
+
 /*
     jbig2dec
-
-    Copyright (C) 2002-2005 Artifex Software, Inc.
-
-    This software is provided AS-IS with no warranty,
-    either express or implied.
-
-    This software is distributed under license and may not
-    be copied, modified or distributed except as expressly
-    authorized under the terms of the license contained in
-    the file LICENSE in this distribution.
-
-    For further licensing information refer to http://artifex.com/ or
-    contact Artifex Software, Inc., 7 Mt. Lassen Drive - Suite A-134,
-    San Rafael, CA  94903, U.S.A., +1(415)492-9861.
 */
+
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -55,9 +57,14 @@ static Jbig2Allocator jbig2_default_allocator =
 };
 
 void *
-jbig2_alloc (Jbig2Allocator *allocator, size_t size)
+jbig2_alloc (Jbig2Allocator *allocator, size_t size, size_t num)
 {
-  return allocator->alloc (allocator, size);
+  /* check for integer multiplication overflow */
+  int64_t check = ((int64_t)num)*((int64_t)size);
+  if (check != (int)check)
+    return NULL;
+  else
+    return allocator->alloc (allocator, (int)check);
 }
 
 void
@@ -67,9 +74,14 @@ jbig2_free (Jbig2Allocator *allocator, void *p)
 }
 
 void *
-jbig2_realloc (Jbig2Allocator *allocator, void *p, size_t size)
+jbig2_realloc (Jbig2Allocator *allocator, void *p, size_t size, size_t num)
 {
-  return allocator->realloc (allocator, p, size);
+  /* check for integer multiplication overflow */
+  int64_t check = ((int64_t)num)*((int64_t)size);
+  if (check != (int)check)
+    return NULL;
+  else
+    return allocator->realloc (allocator, p, (int)check);
 }
 
 static int
@@ -121,7 +133,7 @@ jbig2_ctx_new (Jbig2Allocator *allocator,
   if (error_callback == NULL)
       error_callback = &jbig2_default_error;
 
-  result = (Jbig2Ctx *)jbig2_alloc(allocator, sizeof(Jbig2Ctx));
+  result = (Jbig2Ctx*)jbig2_alloc(allocator, sizeof(Jbig2Ctx), 1);
   if (result == NULL) {
     error_callback(error_callback_data, "initial context allocation failed!",
                     JBIG2_SEVERITY_FATAL, -1);
@@ -142,12 +154,25 @@ jbig2_ctx_new (Jbig2Allocator *allocator,
 
   result->n_segments = 0;
   result->n_segments_max = 16;
-  result->segments = (Jbig2Segment **)jbig2_alloc(allocator, result->n_segments_max * sizeof(Jbig2Segment *));
+  result->segments = jbig2_new(result, Jbig2Segment*, result->n_segments_max);
+  if (result->segments == NULL) {
+    error_callback(error_callback_data, "initial segments allocation failed!",
+        JBIG2_SEVERITY_FATAL, -1);
+    jbig2_free(allocator, result);
+    return result;
+  }
   result->segment_index = 0;
 
   result->current_page = 0;
   result->max_page_index = 4;
-  result->pages = (Jbig2Page *)jbig2_alloc(allocator, result->max_page_index * sizeof(Jbig2Page));
+  result->pages = jbig2_new(result, Jbig2Page, result->max_page_index);
+  if (result->pages == NULL) {
+    error_callback(error_callback_data, "initial pages allocation failed!",
+        JBIG2_SEVERITY_FATAL, -1);
+    jbig2_free(allocator, result->segments);
+    jbig2_free(allocator, result);
+    return result;
+  }
   {
     int index;
     for (index = 0; index < result->max_page_index; index++) {
@@ -160,16 +185,33 @@ jbig2_ctx_new (Jbig2Allocator *allocator,
   return result;
 }
 
-int32_t
-jbig2_get_int32 (const byte *buf)
-{
-  return (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
-}
+#define get_uint16(bptr)\
+  (((bptr)[0] << 8) | (bptr)[1])
+#define get_int16(bptr)\
+  (((int)get_uint16(bptr) ^ 0x8000) - 0x8000)
 
 int16_t
-jbig2_get_int16 (const byte *buf)
-{
-  return (buf[0] << 8) | buf[1];
+jbig2_get_int16(const byte *bptr)
+{	
+    return get_int16(bptr);
+}
+
+uint16_t
+jbig2_get_uint16(const byte *bptr)
+{	
+    return get_uint16(bptr);
+}
+
+int32_t
+jbig2_get_int32(const byte *bptr)
+{	
+    return ((int32_t)get_int16(bptr) << 16) | get_uint16(bptr + 2);
+}
+
+uint32_t
+jbig2_get_uint32(const byte *bptr)
+{	
+    return ((uint32_t)get_uint16(bptr) << 16) | get_uint16(bptr + 2);
 }
 
 
@@ -198,7 +240,12 @@ jbig2_data_in (Jbig2Ctx *ctx, const unsigned char *data, size_t size)
       do
 	buf_size <<= 1;
       while (buf_size < size);
-      ctx->buf = (byte *)jbig2_alloc(ctx->allocator, buf_size);
+      ctx->buf = jbig2_new(ctx, byte, buf_size);
+      if (ctx->buf == NULL)
+      {
+          return jbig2_error(ctx, JBIG2_SEVERITY_FATAL, -1,
+              "failed to allocate ctx->buf in jbig2_data_in");
+      }
       ctx->buf_size = buf_size;
       ctx->buf_rd_ix = 0;
       ctx->buf_wr_ix = 0;
@@ -219,7 +266,12 @@ jbig2_data_in (Jbig2Ctx *ctx, const unsigned char *data, size_t size)
 	  do
 	    buf_size <<= 1;
 	  while (buf_size < ctx->buf_wr_ix - ctx->buf_rd_ix + size);
-	  buf = (byte *)jbig2_alloc(ctx->allocator, buf_size);
+	  buf = jbig2_new(ctx, byte, buf_size);
+      if (buf == NULL)
+      {
+          return jbig2_error(ctx, JBIG2_SEVERITY_FATAL, -1,
+              "failed to allocate buf in jbig2_data_in");
+      }
 	  memcpy(buf, ctx->buf + ctx->buf_rd_ix,
 		  ctx->buf_wr_ix - ctx->buf_rd_ix);
 	  jbig2_free(ctx->allocator, ctx->buf);
@@ -261,7 +313,7 @@ jbig2_data_in (Jbig2Ctx *ctx, const unsigned char *data, size_t size)
 	    {
 	      if (ctx->buf_wr_ix - ctx->buf_rd_ix < 13)
 		return 0;
-	      ctx->n_pages = jbig2_get_int32(ctx->buf + ctx->buf_rd_ix + 9);
+	      ctx->n_pages = jbig2_get_uint32(ctx->buf + ctx->buf_rd_ix + 9);
 	      ctx->buf_rd_ix += 13;
               if (ctx->n_pages == 1)
                 jbig2_error(ctx, JBIG2_SEVERITY_INFO, -1, "file header indicates a single page document");
@@ -296,8 +348,8 @@ jbig2_data_in (Jbig2Ctx *ctx, const unsigned char *data, size_t size)
 	  ctx->buf_rd_ix += header_size;
 
 	  if (ctx->n_segments == ctx->n_segments_max)
-	    ctx->segments = (Jbig2Segment **)jbig2_realloc(ctx->allocator,
-                ctx->segments, (ctx->n_segments_max <<= 2) * sizeof(Jbig2Segment *));
+              ctx->segments = jbig2_renew(ctx, ctx->segments, Jbig2Segment*,
+                  (ctx->n_segments_max <<= 2));
 
 	  ctx->segments[ctx->n_segments++] = segment;
 	  if (ctx->state == JBIG2_FILE_RANDOM_HEADERS)
@@ -386,8 +438,9 @@ typedef struct {
   size_t size;
 } Jbig2WordStreamBuf;
 
-static uint32_t
-jbig2_word_stream_buf_get_next_word(Jbig2WordStream *self, int offset)
+static int
+jbig2_word_stream_buf_get_next_word(Jbig2WordStream *self, int offset,
+  uint32_t *word)
 {
   Jbig2WordStreamBuf *z = (Jbig2WordStreamBuf *)self;
   const byte *data = z->data;
@@ -397,7 +450,7 @@ jbig2_word_stream_buf_get_next_word(Jbig2WordStream *self, int offset)
     result = (data[offset] << 24) | (data[offset + 1] << 16) |
       (data[offset + 2] << 8) | data[offset + 3];
   else if (offset >= z->size)
-    return 0;
+    return -1;
   else
     {
       int i;
@@ -406,13 +459,20 @@ jbig2_word_stream_buf_get_next_word(Jbig2WordStream *self, int offset)
       for (i = 0; i < z->size - offset; i++)
 	result |= data[offset + i] << ((3 - i) << 3);
     }
-  return result;
+  *word = result;
+  return 0;
 }
 
 Jbig2WordStream *
 jbig2_word_stream_buf_new(Jbig2Ctx *ctx, const byte *data, size_t size)
 {
-  Jbig2WordStreamBuf *result = (Jbig2WordStreamBuf *)jbig2_alloc(ctx->allocator, sizeof(Jbig2WordStreamBuf));
+  Jbig2WordStreamBuf *result = jbig2_new(ctx, Jbig2WordStreamBuf, 1);
+  if (result == NULL)
+  {
+      jbig2_error(ctx, JBIG2_SEVERITY_FATAL, -1,
+          "failed to allocate Jbig2WordStreamBuf in jbig2_word_stream_buf_new");
+      return NULL;
+  }
 
   result->super.get_next_word = jbig2_word_stream_buf_get_next_word;
   result->data = data;

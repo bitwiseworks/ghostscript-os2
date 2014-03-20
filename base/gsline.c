@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsline.c 10445 2009-12-04 00:33:04Z robin $ */
+
 /* Line parameter operators for Ghostscript library */
 #include "math_.h"
 #include "memory_.h"
@@ -48,7 +50,7 @@ int
 gs_setlinecap(gs_state * pgs, gs_line_cap cap)
 {
     if ((uint) cap > gs_line_cap_max)
-	return_error(gs_error_rangecheck);
+        return_error(gs_error_rangecheck);
     pgs_lp->start_cap = cap;
     pgs_lp->end_cap   = cap;
     pgs_lp->dash_cap  = cap;
@@ -60,7 +62,7 @@ int
 gs_setlinestartcap(gs_state * pgs, gs_line_cap cap)
 {
     if ((uint) cap > gs_line_cap_max)
-	return_error(gs_error_rangecheck);
+        return_error(gs_error_rangecheck);
     pgs_lp->start_cap = cap;
     return 0;
 }
@@ -70,7 +72,7 @@ int
 gs_setlineendcap(gs_state * pgs, gs_line_cap cap)
 {
     if ((uint) cap > gs_line_cap_max)
-	return_error(gs_error_rangecheck);
+        return_error(gs_error_rangecheck);
     pgs_lp->end_cap = cap;
     return 0;
 }
@@ -80,7 +82,7 @@ int
 gs_setlinedashcap(gs_state * pgs, gs_line_cap cap)
 {
     if ((uint) cap > gs_line_cap_max)
-	return_error(gs_error_rangecheck);
+        return_error(gs_error_rangecheck);
     pgs_lp->dash_cap = cap;
     return 0;
 }
@@ -99,7 +101,7 @@ int
 gs_setlinejoin(gs_state * pgs, gs_line_join join)
 {
     if ((uint) join > gs_line_join_max)
-	return_error(gs_error_rangecheck);
+        return_error(gs_error_rangecheck);
     pgs_lp->join = join;
     return 0;
 }
@@ -116,7 +118,7 @@ int
 gx_set_miter_limit(gx_line_params * plp, floatp limit)
 {
     if (limit < 1.0)
-	return_error(gs_error_rangecheck);
+        return_error(gs_error_rangecheck);
     plp->miter_limit = limit;
     /*
      * Compute the miter check value.  The supplied miter limit is an
@@ -127,13 +129,13 @@ gx_set_miter_limit(gx_line_params * plp, floatp limit)
      * Some C compilers can't handle this as a conditional expression....
      */
     {
-	double limit_squared = limit * limit;
+        double limit_squared = limit * limit;
 
-	if (limit_squared < 2.0001 && limit_squared > 1.9999)
-	    plp->miter_check = 1.0e6;
-	else
-	    plp->miter_check =
-		sqrt(limit_squared - 1) * 2 / (limit_squared - 2);
+        if (limit_squared < 2.0001 && limit_squared > 1.9999)
+            plp->miter_check = 1.0e6;
+        else
+            plp->miter_check =
+                sqrt(limit_squared - 1) * 2 / (limit_squared - 2);
     }
     return 0;
 }
@@ -153,7 +155,7 @@ gs_currentmiterlimit(const gs_state * pgs)
 /* setdash */
 int
 gx_set_dash(gx_dash_params * dash, const float *pattern, uint length,
-	    floatp offset, gs_memory_t * mem)
+            floatp offset, gs_memory_t * mem)
 {
     uint n = length;
     const float *dfrom = pattern;
@@ -165,50 +167,56 @@ gx_set_dash(gx_dash_params * dash, const float *pattern, uint length,
 
     /* Check the dash pattern. */
     while (n--) {
-	float elt = *dfrom++;
+        float elt = *dfrom++;
 
-	if (elt < 0)
-	    return_error(gs_error_rangecheck);
-	pattern_length += elt;
+        if (elt < 0)
+            return_error(gs_error_rangecheck);
+        pattern_length += elt;
     }
     if (length == 0) {		/* empty pattern */
-	dist_left = 0.0;
-	if (mem && ppat) {
-	    gs_free_object(mem, ppat, "gx_set_dash(old pattern)");
-	    ppat = 0;
-	}
+        dist_left = 0.0;
+        if (mem && ppat) {
+            gs_free_object(mem, ppat, "gx_set_dash(old pattern)");
+            ppat = 0;
+        }
     } else {
-	uint size = length * sizeof(float);
+        uint size = length * sizeof(float);
 
-	if (pattern_length == 0)
-	    return_error(gs_error_rangecheck);
-	/* Compute the initial index, ink_on, and distance left */
-	/* in the pattern, according to the offset. */
+        if (pattern_length == 0)
+            return_error(gs_error_rangecheck);
+        /* Compute the initial index, ink_on, and distance left */
+        /* in the pattern, according to the offset. */
 #define f_mod(a, b) ((a) - floor((a) / (b)) * (b))
-	if (length & 1) {	/* Odd and even repetitions of the pattern */
-	    /* have opposite ink values! */
-	    float length2 = pattern_length * 2;
+        if (length & 1) {	/* Odd and even repetitions of the pattern */
+            /* have opposite ink values! */
+            float length2 = pattern_length * 2;
 
-	    dist_left = f_mod(offset, length2);
-	    if (dist_left >= pattern_length)
-		dist_left -= pattern_length, ink = !ink;
-	} else
-	    dist_left = f_mod(offset, pattern_length);
-	while ((dist_left -= pattern[index]) >= 0 &&
-	       (dist_left > 0 || pattern[index] != 0)
-	    )
-	    ink = !ink, index++;
-	if (mem) {
-	    if (ppat == 0)
-		ppat = (float *)gs_alloc_bytes(mem, size,
-					       "gx_set_dash(pattern)");
-	    else if (length != dash->pattern_size)
-		ppat = gs_resize_object(mem, ppat, size,
-					"gx_set_dash(pattern)");
-	    if (ppat == 0)
-		return_error(gs_error_VMerror);
-	}
-	memcpy(ppat, pattern, length * sizeof(float));
+            dist_left = f_mod(offset, length2);
+            /* Rounding errors can leave dist_left > length2 */
+            dist_left = f_mod(dist_left, length2);
+            if (dist_left >= pattern_length)
+                dist_left -= pattern_length, ink = !ink;
+        } else {
+            dist_left = f_mod(offset, pattern_length);
+            /* Rounding errors can leave dist_left > length */
+            dist_left = f_mod(dist_left, pattern_length);
+        }
+        while ((dist_left -= pattern[index]) >= 0 &&
+               (dist_left > 0 || pattern[index] != 0)
+            )
+            ink = !ink, index++;
+        if (mem) {
+            if (ppat == 0)
+                ppat = (float *)gs_alloc_bytes(mem, size,
+                                               "gx_set_dash(pattern)");
+            else if (length != dash->pattern_size)
+                ppat = gs_resize_object(mem, ppat, size,
+                                        "gx_set_dash(pattern)");
+            if (ppat == 0)
+                return_error(gs_error_VMerror);
+        }
+        if (ppat != pattern)
+            memcpy(ppat, pattern, length * sizeof(float));
     }
     dash->pattern = ppat;
     dash->pattern_size = length;
@@ -223,7 +231,7 @@ int
 gs_setdash(gs_state * pgs, const float *pattern, uint length, floatp offset)
 {
     return gx_set_dash(&pgs_lp->dash, pattern, length, offset,
-		       pgs->memory);
+                       pgs->memory);
 }
 
 /* currentdash */
@@ -257,9 +265,9 @@ int
 gs_imager_setflat(gs_imager_state * pis, floatp flat)
 {
     if (flat <= 0.2)
-	flat = 0.2;
+        flat = 0.2;
     else if (flat > 100)
-	flat = 100;
+        flat = 100;
     pis->flatness = flat;
     return 0;
 }
@@ -319,7 +327,7 @@ int
 gs_setcurvejoin(gs_state * pgs, int join)
 {
     if (join < -1 || join > gs_line_join_max)
-	return_error(gs_error_rangecheck);
+        return_error(gs_error_rangecheck);
     pgs_lp->curve_join = join;
     return 0;
 }
@@ -357,7 +365,7 @@ int
 gx_set_dot_length(gx_line_params * plp, floatp length, bool absolute)
 {
     if (length < 0)
-	return_error(gs_error_rangecheck);
+        return_error(gs_error_rangecheck);
     plp->dot_length = length;
     plp->dot_length_absolute = absolute;
     return 0;
@@ -385,7 +393,7 @@ int
 gs_setdotorientation(gs_state *pgs)
 {
     if (is_xxyy(&pgs->ctm) || is_xyyx(&pgs->ctm))
-	return gs_currentmatrix(pgs, &pgs_lp->dot_orientation);
+        return gs_currentmatrix(pgs, &pgs_lp->dot_orientation);
     return_error(gs_error_rangecheck);
 }
 

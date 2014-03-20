@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxiclass.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Define image rendering algorithm classes */
 
 #ifndef gxiclass_INCLUDED
@@ -44,7 +46,7 @@ typedef struct gx_device_s gx_device;
  */
 #define irender_proc(proc)\
   int proc(gx_image_enum *penum, const byte *buffer, int data_x,\
-	   uint w, int h, gx_device *dev)
+           uint w, int h, gx_device *dev)
 typedef irender_proc((*irender_proc_t));
 
 /*

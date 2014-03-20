@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: scommon.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Definitions common to stream clients and implementors */
 
 #ifndef scommon_INCLUDED
@@ -20,6 +22,7 @@
 #include "gsmemory.h"
 #include "gstypes.h"		/* for gs_string */
 #include "gsstype.h"		/* for extern_st */
+#include "stdint_.h"         /* for int64_t */
 
 /*
  * There are three major structures involved in the stream package.
@@ -32,6 +35,15 @@
 #ifndef stream_DEFINED
 #  define stream_DEFINED
 typedef struct stream_s stream;
+#endif
+
+/* We really want our offset type to be 64 bit for large file support
+ * but this allows a particular port to specficy a prefered data type
+ */
+#ifdef GS_OFFSET_T
+typedef GS_OFFSET_T gs_offset_t;
+#else
+typedef int64_t gs_offset_t;
 #endif
 
 /*
@@ -157,11 +169,11 @@ stream_proc_report_error(s_no_report_error);
  */
 #define STREAM_MAX_ERROR_STRING 79
 #define stream_state_common\
-	const stream_template *template;\
-	gs_memory_t *memory;\
-	stream_proc_report_error((*report_error));\
+        const stream_template *templat;\
+        gs_memory_t *memory;\
+        stream_proc_report_error((*report_error));\
         int min_left; /* required bytes for lookahead */ \
-	char error_string[STREAM_MAX_ERROR_STRING + 1]
+        char error_string[STREAM_MAX_ERROR_STRING + 1]
 struct stream_state_s {
     stream_state_common;
 };

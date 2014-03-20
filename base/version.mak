@@ -10,16 +10,15 @@
 #  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
 #  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
 #
-# $Id: version.mak 10732 2010-02-10 18:17:48Z giles $
 # Makefile fragment containing the current revision identification.
 
 # Major and minor version numbers.
 # MINOR0 is different from MINOR only if MINOR is a single digit.
-GS_VERSION_MAJOR=8
-GS_VERSION_MINOR=71
-GS_VERSION_MINOR0=71
+GS_VERSION_MAJOR=9
+GS_VERSION_MINOR=10
+GS_VERSION_MINOR0=10
 # Revision date: year x 10000 + month x 100 + day.
-GS_REVISIONDATE=20100210
+GS_REVISIONDATE=20130830
 # Derived values
 GS_VERSION=$(GS_VERSION_MAJOR)$(GS_VERSION_MINOR0)
 GS_DOT_VERSION=$(GS_VERSION_MAJOR).$(GS_VERSION_MINOR0)

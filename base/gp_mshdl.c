@@ -1,39 +1,41 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gp_mshdl.c 8250 2007-09-25 13:31:24Z giles $ */
+
 /* %handle% IODevice */
 #include "errno_.h"
 #include "stdio_.h"
 #include "string_.h"
 #include "ctype_.h"
 #include <io.h>
-#include "gserror.h"
 #include "gstypes.h"
 #include "gsmemory.h"		/* for gxiodev.h */
 #include "gxiodev.h"
+#include "gserrors.h"
 
 /* The MS-Windows handle IODevice */
 
 /* This allows an MS-Windows file handle to be passed in to
  * Ghostscript as %handle%NNNNNNNN where NNNNNNNN is the hexadecimal
- * value of the handle.  
- * The typical use is for another program to create a pipe, 
- * pass the write end into Ghostscript using 
+ * value of the handle.
+ * The typical use is for another program to create a pipe,
+ * pass the write end into Ghostscript using
  *  -sOutputFile="%handle%NNNNNNNN"
  * so that Ghostscript printer output can be captured by the
  * other program.  The handle would be created with CreatePipe().
- * If Ghostscript is not a DLL, the pipe will have to be inheritable 
+ * If Ghostscript is not a DLL, the pipe will have to be inheritable
  * by the Ghostscript process.
  */
 
@@ -62,50 +64,50 @@ const gx_io_device gs_iodev_handle = {
  *   The OS file handle on success.
  *   INVALID_HANDLE_VALUE on failure.
  *
- * This allows the caller to create an OS pipe and give us a 
+ * This allows the caller to create an OS pipe and give us a
  * handle to the write end of the pipe.
- * If we are called as an EXE, the OS file handle must be 
+ * If we are called as an EXE, the OS file handle must be
  * inherited by Ghostscript.
  * Pipes aren't supported under Win32s.
  */
-static long 
+static long
 get_os_handle(const char *name)
 {
     ulong hfile;	/* This must be as long as the longest handle. */
-			/* This is correct for Win32, maybe wrong for Win64. */
+                        /* This is correct for Win32, maybe wrong for Win64. */
     int i, ch;
 
     for (i = 0; (ch = name[i]) != 0; ++i)
-	if (!isxdigit(ch))
-	    return (long)INVALID_HANDLE_VALUE;
+        if (!isxdigit(ch))
+            return (long)INVALID_HANDLE_VALUE;
     if (sscanf(name, "%lx", &hfile) != 1)
-	return (long)INVALID_HANDLE_VALUE;
-    return (long)hfile; 
+        return (long)INVALID_HANDLE_VALUE;
+    return (long)hfile;
 }
 
 static int
 mswin_handle_fopen(gx_io_device * iodev, const char *fname, const char *access,
-	   FILE ** pfile, char *rfname, uint rnamelen)
+           FILE ** pfile, char *rfname, uint rnamelen)
 {
     int fd;
     long hfile;	/* Correct for Win32, may be wrong for Win64 */
     errno = 0;
 
     if ((hfile = get_os_handle(fname)) == (long)INVALID_HANDLE_VALUE)
-	return_error(gs_fopen_errno_to_code(EBADF));
+        return_error(gs_fopen_errno_to_code(EBADF));
 
     /* associate a C file handle with an OS file handle */
     fd = _open_osfhandle((long)hfile, 0);
     if (fd == -1)
-	return_error(gs_fopen_errno_to_code(EBADF));
+        return_error(gs_fopen_errno_to_code(EBADF));
 
     /* associate a C file stream with C file handle */
     *pfile = fdopen(fd, (char *)access);
     if (*pfile == NULL)
-	return_error(gs_fopen_errno_to_code(errno));
+        return_error(gs_fopen_errno_to_code(errno));
 
     if (rfname != NULL)
-	strcpy(rfname, fname);
+        strcpy(rfname, fname);
     return 0;
 }
 

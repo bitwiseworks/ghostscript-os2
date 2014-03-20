@@ -1,13 +1,12 @@
 % Draw all glyphs from the AFM
 %
-% expects AFM to be the file for the font 
+% expects AFM to be the file for the font
 %
 % For example:
 %
 %    gswin32c -q -c "/AFM (/artifex/urwfonts_new/z003034l.afm) (r) file def" -f drawafm.ps
 %
 % --------------------------------------------------------------------
-% $Id: drawafm.ps 6300 2005-12-28 19:56:24Z giles $
 %
 /S 1000 string def		% scratch string
 /FONTSIZE 350 def
@@ -28,12 +27,12 @@
 /skiptokens {
   true 3 1 roll
   { token { pop } { not () exit } ifelse } repeat
-  exch 
+  exch
 } bind def
 
 % --------------------------------------------------------------------
 % Find the /FontName line and load that font
-/FontName searchtoken 
+/FontName searchtoken
 token not {
   (OOPS: /FontName line didn't have a name following) = flush quit
 } if
@@ -71,9 +70,9 @@ findfont FONTSIZE scalefont setfont
       [ exch
       4 {
         token not {
-	  (OOPS: C line missing Metrics value) = flush quit
-	} if
-	exch
+          (OOPS: C line missing Metrics value) = flush quit
+        } if
+        exch
       } repeat
       pop		% discard remaining paramters
       ] /Metrics exch def

@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsbitops.h 9997 2009-08-15 03:02:03Z alexcher $ */
+
 /* Interface for bitmap operations */
 
 #ifndef gsbitops_INCLUDED
@@ -70,7 +72,7 @@
   sample_load8_(value, sptr, sbit, sbpv)\
   case 3:\
     value = ((sbit) ? ((*(sptr) & 0xf) << 8) | (sptr)[1] :\
-	      (*(sptr) << 4) | ((sptr)[1] >> 4));\
+              (*(sptr) << 4) | ((sptr)[1] >> 4));\
     break;
 #define sample_load12(value, sptr, sbit, sbpv)\
   sample_load12_(value, sptr, sbit, sbpv)\
@@ -149,12 +151,12 @@
 #define sample_load_next_any(value, sptr, sbit, sbpv)\
   sample_load_any(value, sptr, sbit, sbpv);\
   sample_next(sptr, sbit, sbpv)
-  
+
 /* Declare variables for storing. */
 #define sample_store_declare(dptr, dbit, dbbyte)\
   byte *dptr;\
   int dbit;\
-  byte dbbyte			/* maybe should be uint? */
+  byte dbbyte                   /* maybe should be uint? */
 #define sample_store_declare_setup(dptr, dbit, dbbyte, ptr, bitno, dbpv)\
   byte *dptr = (ptr);\
   int sample_store_setup(dbit, bitno, dbpv);\
@@ -168,6 +170,12 @@
 /* Prepare for storing by preloading any partial byte. */
 #define sample_store_preload(dbbyte, dptr, dbit, dbpv)\
   dbbyte = ((dbit) ? (byte)(*(dptr) & (0xff00 >> (dbit))) : 0)
+
+/* Reset (do the same as sample_store_declare, without the declare) */
+#define sample_store_reset(dptr, dbit, dbbyte, ptr, bitno, dbpv)\
+  dptr = (ptr);\
+  dbit = (bitno);\
+  sample_store_preload(dbbyte, dptr, dbit, dbpv)
 
 /* Store a value and increment the pointer. */
 #define sample_store_next8_(value, dptr, dbit, dbpv, dbbyte)\
@@ -269,14 +277,14 @@
 #  define mono_fill_make_pattern(byt) (uint)((uint)(byt) * 0x01010101)
 #endif
 void bits_fill_rectangle(byte * dest, int dest_bit, uint raster,
-		      mono_fill_chunk pattern, int width_bits, int height);
+                      mono_fill_chunk pattern, int width_bits, int height);
 void bits_fill_rectangle_masked(byte * dest, int dest_bit, uint raster,
-		      mono_fill_chunk pattern, mono_fill_chunk src_mask,
-		      int width_bits, int height);
+                      mono_fill_chunk pattern, mono_fill_chunk src_mask,
+                      int width_bits, int height);
 
 /* Replicate a bitmap horizontally in place. */
 void bits_replicate_horizontally(byte * data, uint width, uint height,
-	       uint raster, uint replicated_width, uint replicated_raster);
+               uint raster, uint replicated_width, uint replicated_raster);
 
 /* Replicate a bitmap vertically in place. */
 void bits_replicate_vertically(byte * data, uint height, uint raster,
@@ -295,13 +303,13 @@ void bits_compress_scaled(const byte * src, int srcx, uint width,
 
 /* Extract a plane from a pixmap. */
 typedef struct bits_plane_s {
-    union bpd_ {	/* Bit planes must be aligned. */
-	byte *write;
-	const byte *read;
+    union bpd_ {        /* Bit planes must be aligned. */
+        byte *write;
+        const byte *read;
     } data;
     int raster;
     int depth;
-    int x;			/* starting x */
+    int x;                      /* starting x */
 } bits_plane_t;
 int bits_extract_plane(const bits_plane_t *dest /*write*/,
     const bits_plane_t *source /*read*/, int shift, int width, int height);
@@ -316,6 +324,15 @@ void bytes_fill_rectangle(byte * dest, uint raster,
 
 /* Copy a rectangle of bytes. */
 void bytes_copy_rectangle(byte * dest, uint dest_raster,
+    const byte * src, uint src_raster, int width_bytes, int height);
+
+/* Check if a rectangle of bytes are a constant value. Returns 0..255 (the
+   constant value) if it is constant, or -1 otherwise. */
+int bytes_rectangle_is_const(const byte * src, uint src_raster, int width_bytes, int height);
+
+/* Copy a rectangle of bytes, ensuring that any padding bits at the end
+ * of each dest_raster line are zeroed. */
+void bytes_copy_rectangle_zero_padding(byte * dest, uint dest_raster,
     const byte * src, uint src_raster, int width_bytes, int height);
 
 #endif /* gsbitops_INCLUDED */

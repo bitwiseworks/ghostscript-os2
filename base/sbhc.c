@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: sbhc.c 8250 2007-09-25 13:31:24Z giles $ */
+
 /* Bounded Huffman code filters */
 #include "memory_.h"
 #include "stdio_.h"
@@ -40,11 +42,11 @@ s_BHCE_init(register stream_state * st)
     stream_BHCE_state *const ss = (stream_BHCE_state *) st;
     hce_code *encode = ss->encode.codes =
     (hce_code *) gs_alloc_byte_array(st->memory,
-				     ss->definition.num_values,
-				     sizeof(hce_code), "BHCE encode");
+                                     ss->definition.num_values,
+                                     sizeof(hce_code), "BHCE encode");
 
     if (encode == 0)
-	return ERRC;
+        return ERRC;
 /****** WRONG ******/
     hc_make_encoding(encode, &ss->definition);
     return s_BHCE_reinit(st);
@@ -62,7 +64,7 @@ s_BHCE_release(stream_state * st)
 /* Process a buffer. */
 static int
 s_BHCE_process(stream_state * st, stream_cursor_read * pr,
-	       stream_cursor_write * pw, bool last)
+               stream_cursor_write * pw, bool last)
 {
     stream_BHCE_state *const ss = (stream_BHCE_state *) st;
     const byte *p = pr->ptr;
@@ -81,65 +83,65 @@ s_BHCE_process(stream_state * st, stream_cursor_read * pr,
 
     hce_load_state();
     while (p < rlimit && q < wlimit) {
-	uint value = *++p;
-	const hce_code *cp;
+        uint value = *++p;
+        const hce_code *cp;
 
-	if (value >= num_values) {
-	    status = ERRC;
-	    break;
-	}
-	if (value == zero_value) {	/* Accumulate a run of zeros. */
-	    ++zeros;
-	    if (zeros != zero_max)
-		continue;
-	    /* We've scanned the longest run we can encode. */
-	    cp = &encode[zeros - 2 + zero_runs];
-	    zeros = 0;
-	    hc_put_code((stream_hc_state *) ss, q, cp);
-	    continue;
-	}
-	/* Check whether we need to put out a zero run. */
-	if (zeros > 0) {
-	    --p;
-	    cp = (zeros == 1 ? &encode[0] :
-		  &encode[zeros - 2 + zero_runs]);
-	    zeros = 0;
-	    hc_put_code((stream_hc_state *) ss, q, cp);
-	    continue;
-	}
-	cp = &encode[value];
-	hc_put_code((stream_hc_state *) ss, q, cp);
+        if (value >= num_values) {
+            status = ERRC;
+            break;
+        }
+        if (value == zero_value) {	/* Accumulate a run of zeros. */
+            ++zeros;
+            if (zeros != zero_max)
+                continue;
+            /* We've scanned the longest run we can encode. */
+            cp = &encode[zeros - 2 + zero_runs];
+            zeros = 0;
+            hc_put_code((stream_hc_state *) ss, q, cp);
+            continue;
+        }
+        /* Check whether we need to put out a zero run. */
+        if (zeros > 0) {
+            --p;
+            cp = (zeros == 1 ? &encode[0] :
+                  &encode[zeros - 2 + zero_runs]);
+            zeros = 0;
+            hc_put_code((stream_hc_state *) ss, q, cp);
+            continue;
+        }
+        cp = &encode[value];
+        hc_put_code((stream_hc_state *) ss, q, cp);
     }
     if (q >= wlimit)
-	status = 1;
+        status = 1;
     wlimit = pw->limit;
     if (last && status == 0) {
-	if (zeros > 0) {	/* Put out a final run of zeros. */
-	    const hce_code *cp = (zeros == 1 ? &encode[0] :
-				  &encode[zeros - 2 + zero_runs]);
+        if (zeros > 0) {	/* Put out a final run of zeros. */
+            const hce_code *cp = (zeros == 1 ? &encode[0] :
+                                  &encode[zeros - 2 + zero_runs]);
 
-	    if (!hce_bits_available(cp->code_length))
-		status = 1;
-	    else {
-		hc_put_code((stream_hc_state *) ss, q, cp);
-		zeros = 0;
-	    }
-	}
-	if (ss->EndOfData) {	/* Put out the EOD code if we have room. */
-	    const hce_code *cp = &encode[num_values - 1];
+            if (!hce_bits_available(cp->code_length))
+                status = 1;
+            else {
+                hc_put_code((stream_hc_state *) ss, q, cp);
+                zeros = 0;
+            }
+        }
+        if (ss->EndOfData) {	/* Put out the EOD code if we have room. */
+            const hce_code *cp = &encode[num_values - 1];
 
-	    if (!hce_bits_available(cp->code_length))
-		status = 1;
-	    else
-		hc_put_code((stream_hc_state *) ss, q, cp);
-	} else {
-	    if (q >= wlimit)
-		status = 1;
-	}
-	if (!status) {
-	    q = hc_put_last_bits((stream_hc_state *) ss, q);
-	    goto ns;
-	}
+            if (!hce_bits_available(cp->code_length))
+                status = 1;
+            else
+                hc_put_code((stream_hc_state *) ss, q, cp);
+        } else {
+            if (q >= wlimit)
+                status = 1;
+        }
+        if (!status) {
+            q = hc_put_last_bits((stream_hc_state *) ss, q);
+            goto ns;
+        }
     }
     hce_store_state();
   ns:pr->ptr = p;
@@ -178,11 +180,11 @@ s_BHCD_init(register stream_state * st)
     min(hcd_initial_bits, ss->definition.num_counts);
     uint dsize = hc_sizeof_decoding(&ss->definition, initial_bits);
     hcd_code *decode = ss->decode.codes =
-	(hcd_code *) gs_alloc_byte_array(st->memory, dsize,
-					 sizeof(hcd_code), "BHCD decode");
+        (hcd_code *) gs_alloc_byte_array(st->memory, dsize,
+                                         sizeof(hcd_code), "BHCD decode");
 
     if (decode == 0)
-	return ERRC;
+        return ERRC;
 /****** WRONG ******/
     hc_make_decoding(decode, &ss->definition, initial_bits);
     st->min_left = 1;
@@ -201,7 +203,7 @@ s_BHCD_release(stream_state * st)
 /* Process a buffer. */
 static int
 s_BHCD_process(stream_state * st, stream_cursor_read * pr,
-	       stream_cursor_write * pw, bool last)
+               stream_cursor_write * pw, bool last)
 {
     stream_BHCD_state *const ss = (stream_BHCD_state *) st;
 
@@ -216,58 +218,58 @@ s_BHCD_process(stream_state * st, stream_cursor_read * pr,
 
     bhcd_load_state();
   z:for (; zeros > 0; --zeros) {
-	if (q >= wlimit) {
-	    status = 1;
-	    goto out;
-	}
-	*++q = 0;
+        if (q >= wlimit) {
+            status = 1;
+            goto out;
+        }
+        *++q = 0;
     }
     for (;;) {
-	const hcd_code *cp;
-	int clen;
+        const hcd_code *cp;
+        int clen;
 
-	hcd_ensure_bits(initial_bits, x1);
-	cp = &decode[hcd_peek_var_bits(initial_bits)];
+        hcd_ensure_bits(initial_bits, x1);
+        cp = &decode[hcd_peek_var_bits(initial_bits)];
       w1:if (q >= wlimit) {
-	    status = 1;
-	    break;
-	}
-	if ((clen = cp->code_length) > initial_bits) {
-	    if (!hcd_bits_available(clen)) {	/* We don't have enough bits for */
-		/* all possible codes that begin this way, */
-		/* but we might have enough for */
-		/* the next code. */
+            status = 1;
+            break;
+        }
+        if ((clen = cp->code_length) > initial_bits) {
+            if (!hcd_bits_available(clen)) {	/* We don't have enough bits for */
+                /* all possible codes that begin this way, */
+                /* but we might have enough for */
+                /* the next code. */
 /****** NOT IMPLEMENTED YET ******/
-		break;
-	    }
-	    clen -= initial_bits;
-	    hcd_skip_bits(initial_bits);
-	    hcd_ensure_bits(clen, out);		/* can't exit */
-	    cp = &decode[cp->value + hcd_peek_var_bits(clen)];
-	    hcd_skip_bits(cp->code_length);
-	} else {
-	    hcd_skip_bits(clen);
-	}
-	if (cp->value >= zero_runs) {
-	    if (cp->value == eod) {
-		status = EOFC;
-		goto out;
-	    }
-	    /* This code represents a run of zeros, */
-	    /* not a single output value. */
-	    zeros = cp->value - zero_runs + 2;
-	    goto z;
-	}
-	*++q = cp->value;
-	continue;
-	/* We don't have enough bits for all possible */
-	/* codes, but we might have enough for */
-	/* the next code. */
+                break;
+            }
+            clen -= initial_bits;
+            hcd_skip_bits(initial_bits);
+            hcd_ensure_bits(clen, out);		/* can't exit */
+            cp = &decode[cp->value + hcd_peek_var_bits(clen)];
+            hcd_skip_bits(cp->code_length);
+        } else {
+            hcd_skip_bits(clen);
+        }
+        if (cp->value >= zero_runs) {
+            if (cp->value == eod) {
+                status = EOFC;
+                goto out;
+            }
+            /* This code represents a run of zeros, */
+            /* not a single output value. */
+            zeros = cp->value - zero_runs + 2;
+            goto z;
+        }
+        *++q = cp->value;
+        continue;
+        /* We don't have enough bits for all possible */
+        /* codes, but we might have enough for */
+        /* the next code. */
       x1:cp = &decode[(bits & ((1 << bits_left) - 1)) <<
-		     (initial_bits - bits_left)];
-	if ((clen = cp->code_length) <= bits_left)
-	    goto w1;
-	break;
+                     (initial_bits - bits_left)];
+        if ((clen = cp->code_length) <= bits_left)
+            goto w1;
+        break;
     }
   out:bhcd_store_state();
     pw->ptr = q;

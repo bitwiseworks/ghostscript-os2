@@ -1,23 +1,25 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gzspotan.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* State and interface definitions for a spot analyzer device. */
 
 /*
- * A spot analyzer device performs an analyzis while handling an output 
+ * A spot analyzer device performs an analyzis while handling an output
  * of the trapezoid fill algorithm for 2 purposes :
- * a glyph grid fitting, and 
+ * a glyph grid fitting, and
  * a glyph antialiased rendering any number of alpha bits.
  * Currently we only implement a vertical stem recognition for the grid fitting.
  */
@@ -107,9 +109,9 @@ struct gx_device_spot_analyzer_s {
 extern_st(st_device_spot_analyzer);
 #define public_st_device_spot_analyzer() /* When GC is invoked, only the buffer links are valid. */\
     gs_public_st_suffix_add4_final(st_device_spot_analyzer, gx_device_spot_analyzer,\
-	    "gx_device_spot_analyzer", device_spot_analyzer_enum_ptrs,\
-	    device_spot_analyzer_reloc_ptrs, gx_device_finalize, st_device,\
-	    trap_buffer, trap_buffer_last, cont_buffer, cont_buffer_last)
+            "gx_device_spot_analyzer", device_spot_analyzer_enum_ptrs,\
+            device_spot_analyzer_reloc_ptrs, gx_device_finalize, st_device,\
+            trap_buffer, trap_buffer_last, cont_buffer, cont_buffer_last)
 
 /* -------------- Interface methods ----------------------------- */
 
@@ -124,7 +126,7 @@ void gx_san_begin(gx_device_spot_analyzer *padev);
 
 /* Store a tarpezoid. */
 /* Assumes an Y-band scanning order with increasing X inside a band. */
-int gx_san_trap_store(gx_device_spot_analyzer *padev, 
+int gx_san_trap_store(gx_device_spot_analyzer *padev,
     fixed ybot, fixed ytop, fixed xlbot, fixed xrbot, fixed xltop, fixed xrtop,
     const segment *l, const segment *r, int dir_l, int dir_r);
 
@@ -132,9 +134,9 @@ int gx_san_trap_store(gx_device_spot_analyzer *padev,
 void gx_san_end(const gx_device_spot_analyzer *padev);
 
 /* Generate stems. */
-int gx_san_generate_stems(gx_device_spot_analyzer *padev, 
-		bool overall_hints, void *client_data,
-		int (*handler)(void *client_data, gx_san_sect *ss));
+int gx_san_generate_stems(gx_device_spot_analyzer *padev,
+                bool overall_hints, void *client_data,
+                int (*handler)(void *client_data, gx_san_sect *ss));
 
 /* -------------- Other external symbols ------------------------ */
 

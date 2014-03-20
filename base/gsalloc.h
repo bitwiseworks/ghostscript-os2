@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsalloc.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Memory allocator extensions for standard allocator */
 
 #ifndef gsalloc_INCLUDED
@@ -28,14 +30,14 @@ typedef struct gs_ref_memory_s gs_ref_memory_t;
  * Define a structure and interface for GC-related allocator state.
  */
 typedef struct gs_memory_gc_status_s {
-	/* Set by client */
+        /* Set by client */
     long vm_threshold;		/* GC interval */
     long max_vm;		/* maximum allowed allocation */
     int *psignal;		/* if not NULL, store signal_value */
-				/* here if we go over the vm_threshold */
+                                /* here if we go over the vm_threshold */
     int signal_value;		/* value to store in *psignal */
     bool enabled;		/* auto GC enabled if true */
-	/* Set by allocator */
+        /* Set by allocator */
     long requested;		/* amount of last failing request */
 } gs_memory_gc_status_t;
 void gs_memory_gc_status(const gs_ref_memory_t *, gs_memory_gc_status_t *);
@@ -50,6 +52,12 @@ void gs_memory_set_vm_reclaim(gs_ref_memory_t * mem, bool enabled);
  * or local).  Does not initialize global or space.
  */
 gs_ref_memory_t *ialloc_alloc_state(gs_memory_t *, uint);
+
+/*
+ * Function to free a gs_ref_memory_t allocated by ialloc_alloc_state. ONLY
+ * USEFUL FOR ERROR CLEANUP IMMEDIATELY AFTER ALLOCATION!
+ */
+void ialloc_free_state(gs_ref_memory_t *);
 
 /*
  * Add a chunk to an externally controlled allocator.  Such allocators

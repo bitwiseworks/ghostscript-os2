@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxoprect.c 8250 2007-09-25 13:31:24Z giles $ */
+
 /* generic (very slow) overprint fill rectangle implementation */
 
 #include "memory_.h"
@@ -23,7 +25,6 @@
 #include "gxgetbit.h"
 #include "gxoprect.h"
 #include "gsbitops.h"
-
 
 /*
  * Unpack a scanline for a depth < 8. In this case we know the depth is
@@ -167,7 +168,6 @@ pack_scanline_ge8(
     }
 }
 
-
 /*
  * Perform the fill rectangle operation for a non-separable color encoding
  * that requires overprint support. This situation requires that colors be
@@ -187,7 +187,9 @@ pack_scanline_ge8(
 int
 gx_overprint_generic_fill_rectangle(
     gx_device *             tdev,
+    bool                    blendspot,
     gx_color_index          drawn_comps,
+    ushort                  k_value,
     int                     x,
     int                     y,
     int                     w,
@@ -259,7 +261,7 @@ gx_overprint_generic_fill_rectangle(
      *
      *  - Data should be returned in the depth of the process color
      *    model. Though this depth could be specified explicitly, there
-     *    is little reason to do so. 
+     *    is little reason to do so.
      *
      *  - Though overprint is much more easily implemented with planar
      *    data, there is no planar version of the copy_color method to
@@ -317,12 +319,31 @@ gx_overprint_generic_fill_rectangle(
             gx_color_index  comps;
             int             j;
             gx_color_value  dest_cvals[GX_DEVICE_COLOR_MAX_COMPONENTS];
-        
+
             if ((code = dev_proc(tdev, decode_color)(tdev, *cp, dest_cvals)) < 0)
                 break;
-            for (j = 0, comps = drawn_comps; comps != 0; ++j, comps >>= 1) {
-                if ((comps & 0x1) != 0)
-                    dest_cvals[j] = src_cvals[j];
+            if (k_value > 0) {
+                /* Have to run through all 3 components */
+                for (j = 0, comps = drawn_comps; j < 3; j++, comps >>= 1) {
+                    if ((comps & 0x1) != 0)
+                        dest_cvals[j] = src_cvals[j];
+                    else {
+                        int temp = (dest_cvals[j] * (256 - k_value));
+                        dest_cvals[j] = temp >> 8;
+                    }
+                }
+            } else {
+                if (blendspot) {
+                    for (j = 0, comps = drawn_comps; comps != 0; ++j, comps >>= 1) {
+                        if ((comps & 0x1) != 0)
+                            dest_cvals[j] = src_cvals[j];
+                    }
+                } else {
+                    for (j = 0, comps = drawn_comps; comps != 0; ++j, comps >>= 1) {
+                        if ((comps & 0x1) != 0)
+                            dest_cvals[j] = src_cvals[j];
+                    }
+                }
             }
             *cp = dev_proc(tdev, encode_color)(tdev, dest_cvals);
         }
@@ -344,8 +365,6 @@ gx_overprint_generic_fill_rectangle(
 
     return code;
 }
-
-
 
 /*
  * Replication of 2 and 4 bit patterns to fill a mem_mono_chunk.
@@ -403,7 +422,6 @@ replicate_color(int depth, mono_fill_chunk color)
 
     return color;
 }
-
 
 /*
  * Perform the fill rectangle operation for a separable color encoding
@@ -525,10 +543,10 @@ gx_overprint_sep_fill_rectangle_1(
     return code;
 }
 
-
 int
 gx_overprint_sep_fill_rectangle_2(
     gx_device *             tdev,
+    bool                    blendspot,
     gx_color_index          retain_mask,    /* already swapped */
     int                     x,
     int                     y,
@@ -594,10 +612,23 @@ gx_overprint_sep_fill_rectangle_2(
                                                    0 );
         if (code < 0)
             break;
-        for (i = 0, j = 0; i < byte_w; i++, cp++) {
-            *cp = (*cp & pmask[j]) | pcolor[j];
-            if (++j == byte_depth)
-                j = 0;
+        if (blendspot) {
+            /* We need to blend the CMYK colorants as we are simulating
+               the overprint of a spot colorant with its equivalent CMYK
+               colorants */
+            for (i = 0, j = 0; i < byte_w; i++, cp++) {
+                int temp = (255-*cp) * (255-pcolor[j]);
+                temp = temp >> 8;
+                *cp = (255-temp);
+                if (++j == byte_depth)
+                    j = 0;
+            }
+        } else {
+            for (i = 0, j = 0; i < byte_w; i++, cp++) {
+                *cp = (*cp & pmask[j]) | pcolor[j];
+                if (++j == byte_depth)
+                    j = 0;
+            }
         }
         code = dev_proc(tdev, copy_color)( tdev,
                                            gb_buff,
@@ -613,4 +644,3 @@ gx_overprint_sep_fill_rectangle_2(
 
     return code;
 }
-

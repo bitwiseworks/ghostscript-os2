@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsmemret.c 8250 2007-09-25 13:31:24Z giles $ */
+
 /* Retrying memory allocator */
 
 #include "gx.h"
@@ -84,15 +86,17 @@ no_recover_proc(gs_memory_retrying_t *rmem, void *proc_data)
 /* Initialize a gs_memory_retrying_t */
 int				/* -ve error code or 0 */
 gs_memory_retrying_init(
-		      gs_memory_retrying_t * rmem,	/* allocator to init */
-		      gs_memory_t * target	/* allocator to wrap */
+                      gs_memory_retrying_t * rmem,	/* allocator to init */
+                      gs_memory_t * target	/* allocator to wrap */
 )
 {
     rmem->stable_memory = 0;
     rmem->procs = retrying_procs;
     rmem->target = target;
     rmem->gs_lib_ctx = target->gs_lib_ctx;
-    rmem->non_gc_memory = (gs_memory_t *)rmem;
+    rmem->non_gc_memory = (gs_memory_t *)rmem;				  /* WRONG: not necessarily non_gc since */
+                                                                          /* the target may be GC memory */
+    rmem->thread_safe_memory = (gs_memory_t *)target->thread_safe_memory; /* WRONG: this won't retry */
     gs_memory_retrying_set_recover(rmem, no_recover_proc, NULL);
     return 0;
 }
@@ -100,8 +104,8 @@ gs_memory_retrying_init(
 /* Set the recovery closure of a retrying memory manager. */
 void
 gs_memory_retrying_set_recover(gs_memory_retrying_t *rmem,
-			       gs_memory_recover_proc_t recover_proc,
-			       void *recover_proc_data)
+                               gs_memory_recover_proc_t recover_proc,
+                               void *recover_proc_data)
 {
     rmem->recover_proc = recover_proc;
     rmem->recover_proc_data = recover_proc_data;
@@ -113,7 +117,7 @@ void
 gs_memory_retrying_release(gs_memory_retrying_t *rmem)
 {
     gs_memory_free_all((gs_memory_t *)rmem, FREE_ALL_STRUCTURES,
-		       "gs_memory_retrying_release");
+                       "gs_memory_retrying_release");
 }
 
 /* ---------- Accessors ------------- */
@@ -133,24 +137,24 @@ gs_memory_retrying_target(const gs_memory_retrying_t *rmem)
  */
 
 #define DO_FORWARD(call_target)\
-	gs_memory_retrying_t * const rmem = (gs_memory_retrying_t *)mem;\
-	gs_memory_t *const target = rmem->target;\
+        gs_memory_retrying_t * const rmem = (gs_memory_retrying_t *)mem;\
+        gs_memory_t *const target = rmem->target;\
 \
-	call_target
+        call_target
 
 #define RETURN_RETRYING(result_type, call_target)\
-	gs_memory_retrying_t * const rmem = (gs_memory_retrying_t *)mem;\
-	gs_memory_t *const target = rmem->target;\
-	result_type temp;\
-	gs_memory_recover_status_t retry = RECOVER_STATUS_RETRY_OK;\
+        gs_memory_retrying_t * const rmem = (gs_memory_retrying_t *)mem;\
+        gs_memory_t *const target = rmem->target;\
+        result_type temp;\
+        gs_memory_recover_status_t retry = RECOVER_STATUS_RETRY_OK;\
 \
-	for (;;) {\
-	    temp = call_target;\
-	    if (temp != 0 || retry != RECOVER_STATUS_RETRY_OK)\
-		break;\
-	    retry = rmem->recover_proc(rmem, rmem->recover_proc_data);\
-	}\
-	return temp
+        for (;;) {\
+            temp = call_target;\
+            if (temp != 0 || retry != RECOVER_STATUS_RETRY_OK)\
+                break;\
+            retry = rmem->recover_proc(rmem, rmem->recover_proc_data);\
+        }\
+        return temp
 
 /* Procedures */
 static void
@@ -162,7 +166,7 @@ gs_forward_free_all(gs_memory_t * mem, uint free_mask, client_name_t cname)
     /* Only free the structures and the allocator itself. */
     rmem->target = 0;
     if (free_mask & FREE_ALL_ALLOCATOR)
-	gs_free_object(target, rmem, cname);
+        gs_free_object(target, rmem, cname);
 }
 static void
 gs_forward_consolidate_free(gs_memory_t * mem)
@@ -173,88 +177,88 @@ static byte *
 gs_retrying_alloc_bytes(gs_memory_t * mem, uint size, client_name_t cname)
 {
     RETURN_RETRYING(
-		    byte *,
-		    target->procs.alloc_bytes(target, size, cname)
-		    );
+                    byte *,
+                    target->procs.alloc_bytes(target, size, cname)
+                    );
 }
 static byte *
 gs_retrying_alloc_bytes_immovable(gs_memory_t * mem, uint size,
-				client_name_t cname)
+                                client_name_t cname)
 {
     RETURN_RETRYING(
-		    byte *,
-		    target->procs.alloc_bytes_immovable(target, size, cname)
-		    );
+                    byte *,
+                    target->procs.alloc_bytes_immovable(target, size, cname)
+                    );
 }
 static void *
 gs_retrying_alloc_struct(gs_memory_t * mem, gs_memory_type_ptr_t pstype,
-		       client_name_t cname)
+                       client_name_t cname)
 {
     RETURN_RETRYING(
-		    void *,
-		    target->procs.alloc_struct(target, pstype, cname)
-		    );
+                    void *,
+                    target->procs.alloc_struct(target, pstype, cname)
+                    );
 }
 static void *
 gs_retrying_alloc_struct_immovable(gs_memory_t * mem,
-			   gs_memory_type_ptr_t pstype, client_name_t cname)
+                           gs_memory_type_ptr_t pstype, client_name_t cname)
 {
     RETURN_RETRYING(
-		    void *,
-		    target->procs.alloc_struct_immovable(target, pstype, cname)
-		    );
+                    void *,
+                    target->procs.alloc_struct_immovable(target, pstype, cname)
+                    );
 }
 static byte *
 gs_retrying_alloc_byte_array(gs_memory_t * mem, uint num_elements, uint elt_size,
-			   client_name_t cname)
+                           client_name_t cname)
 {
     RETURN_RETRYING(
-		    byte *,
-		    target->procs.alloc_byte_array(target, num_elements,
-						   elt_size, cname)
-		    );
+                    byte *,
+                    target->procs.alloc_byte_array(target, num_elements,
+                                                   elt_size, cname)
+                    );
 }
 static byte *
 gs_retrying_alloc_byte_array_immovable(gs_memory_t * mem, uint num_elements,
-				     uint elt_size, client_name_t cname)
+                                     uint elt_size, client_name_t cname)
 {
     RETURN_RETRYING(
-		    byte *,
-		    target->procs.alloc_byte_array_immovable(target,
-							num_elements, elt_size,
-							cname)
-		    );
+                    byte *,
+                    target->procs.alloc_byte_array_immovable(target,
+                                                        num_elements, elt_size,
+                                                        cname)
+                    );
 }
 static void *
 gs_retrying_alloc_struct_array(gs_memory_t * mem, uint num_elements,
-			   gs_memory_type_ptr_t pstype, client_name_t cname)
+                           gs_memory_type_ptr_t pstype, client_name_t cname)
 {
     RETURN_RETRYING(
-		    void *,
-		    target->procs.alloc_struct_array(target, num_elements,
-						     pstype, cname)
-		    );
+                    void *,
+                    target->procs.alloc_struct_array(target, num_elements,
+                                                     pstype, cname)
+                    );
 }
 static void *
 gs_retrying_alloc_struct_array_immovable(gs_memory_t * mem, uint num_elements,
-			   gs_memory_type_ptr_t pstype, client_name_t cname)
+                           gs_memory_type_ptr_t pstype, client_name_t cname)
 {
     RETURN_RETRYING(
-		    void *,
-		    target->procs.alloc_struct_array_immovable(target,
-							num_elements, pstype,
-						        cname)
-		    );
+                    void *,
+                    target->procs.alloc_struct_array_immovable(target,
+                                                        num_elements, pstype,
+                                                        cname)
+                    );
 }
 static void *
 gs_retrying_resize_object(gs_memory_t * mem, void *obj, uint new_num_elements,
-			client_name_t cname)
+                        client_name_t cname)
 {
     RETURN_RETRYING(
-		    void *,
-		    target->procs.resize_object(target, obj, new_num_elements,
-						cname)
-		    );
+                    void *,
+                    target->procs.resize_object(target, obj, new_num_elements,
+                                                cname)
+                    );
 }
 static uint
 gs_forward_object_size(gs_memory_t * mem, const void *ptr)
@@ -275,48 +279,48 @@ static byte *
 gs_retrying_alloc_string(gs_memory_t * mem, uint nbytes, client_name_t cname)
 {
     RETURN_RETRYING(
-		    byte *,
-		    target->procs.alloc_string(target, nbytes, cname)
-		    );
+                    byte *,
+                    target->procs.alloc_string(target, nbytes, cname)
+                    );
 }
 static byte *
 gs_retrying_alloc_string_immovable(gs_memory_t * mem, uint nbytes,
-				 client_name_t cname)
+                                 client_name_t cname)
 {
     RETURN_RETRYING(
-		    byte *,
-		    target->procs.alloc_string_immovable(target, nbytes, cname)
-		    );
+                    byte *,
+                    target->procs.alloc_string_immovable(target, nbytes, cname)
+                    );
 }
 static byte *
 gs_retrying_resize_string(gs_memory_t * mem, byte * data, uint old_num,
-			uint new_num,
-			client_name_t cname)
+                        uint new_num,
+                        client_name_t cname)
 {
     RETURN_RETRYING(
-		    byte *,
-		    target->procs.resize_string(target, data, old_num, new_num,
-						cname)
-		    );
+                    byte *,
+                    target->procs.resize_string(target, data, old_num, new_num,
+                                                cname)
+                    );
 }
 static void
 gs_forward_free_string(gs_memory_t * mem, byte * data, uint nbytes,
-		      client_name_t cname)
+                      client_name_t cname)
 {
     DO_FORWARD(target->procs.free_string(target, data, nbytes, cname));
 }
 static int
 gs_retrying_register_root(gs_memory_t * mem, gs_gc_root_t * rp,
-			gs_ptr_type_t ptype, void **up, client_name_t cname)
+                        gs_ptr_type_t ptype, void **up, client_name_t cname)
 {
     RETURN_RETRYING(
-		    int,
-		    target->procs.register_root(target, rp, ptype, up, cname)
-		    );
+                    int,
+                    target->procs.register_root(target, rp, ptype, up, cname)
+                    );
 }
 static void
 gs_forward_unregister_root(gs_memory_t * mem, gs_gc_root_t * rp,
-			  client_name_t cname)
+                          client_name_t cname)
 {
     DO_FORWARD(target->procs.unregister_root(target, rp, cname));
 }
@@ -324,24 +328,24 @@ static gs_memory_t *
 gs_retrying_stable(gs_memory_t * mem)
 {
     if (!mem->stable_memory) {
-	gs_memory_retrying_t * const rmem = (gs_memory_retrying_t *)mem;
-	gs_memory_t *stable = gs_memory_stable(rmem->target);
+        gs_memory_retrying_t * const rmem = (gs_memory_retrying_t *)mem;
+        gs_memory_t *stable = gs_memory_stable(rmem->target);
 
-	if (stable == rmem->target)
-	    mem->stable_memory = mem;
-	else {
-	    gs_memory_retrying_t *retrying_stable = (gs_memory_retrying_t *)
-		gs_alloc_bytes(stable, sizeof(*rmem), "gs_retrying_stable");
+        if (stable == rmem->target)
+            mem->stable_memory = mem;
+        else {
+            gs_memory_retrying_t *retrying_stable = (gs_memory_retrying_t *)
+                gs_alloc_bytes(stable, sizeof(*rmem), "gs_retrying_stable");
 
-	    if (retrying_stable) {
-		int code = gs_memory_retrying_init(retrying_stable, stable);
+            if (retrying_stable) {
+                int code = gs_memory_retrying_init(retrying_stable, stable);
 
-		if (code < 0)
-		    gs_free_object(stable, retrying_stable, "gs_retrying_stable");
-		else
-		    mem->stable_memory = (gs_memory_t *)retrying_stable;
-	    }
-	}
+                if (code < 0)
+                    gs_free_object(stable, retrying_stable, "gs_retrying_stable");
+                else
+                    mem->stable_memory = (gs_memory_t *)retrying_stable;
+            }
+        }
     }
     return mem->stable_memory;
 }
@@ -349,6 +353,10 @@ static void
 gs_forward_status(gs_memory_t * mem, gs_memory_status_t * pstat)
 {
     DO_FORWARD(target->procs.status(target, pstat));
+    /* Report NOT thread safe even though it _might_ be thread safe if the underlying */
+    /* allocator is thread safe AND the 'recover' proc is thread safe, but we don't   */
+    /* have any info on the recover proc's thread safety.                             */
+    pstat->is_thread_safe = false;
 }
 static void
 gs_forward_enable_free(gs_memory_t * mem, bool enable)

@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2008 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gp_unix_cache.c 9014 2008-08-21 22:55:00Z giles $ */
+
 /* Generic POSIX persistent-cache implementation for Ghostscript */
 
 #include "stdio_.h"
@@ -79,7 +81,7 @@ static char *gp_cache_prefix(void)
     if (plen >= 1 && prefix[0] == '~') {
         char *home, *path;
         int hlen = 0;
-	unsigned int pathlen = 0;
+        unsigned int pathlen = 0;
         gp_file_name_combine_result result;
 
         if (gp_getenv("HOME", (char *)NULL, &hlen) < 0) {
@@ -102,6 +104,7 @@ static char *gp_cache_prefix(void)
                 prefix = path;
             } else {
                 dlprintf1("file_name_combine failed with code %d\n", result);
+                free(path);
             }
             free(home);
         }
@@ -214,14 +217,14 @@ static int gp_cache_loaditem(FILE *file, gp_cache_entry *item, gp_cache_alloc al
     unsigned char *filekey;
     int len, keylen;
 
-    fread(&version, 1, 1, file);
+    (void)fread(&version, 1, 1, file);
     if (version != GP_CACHE_VERSION) {
 #ifdef DEBUG_CACHE
         dlprintf2("pcache file version mismatch (%d vs expected %d)\n", version, GP_CACHE_VERSION);
 #endif
         return -1;
     }
-    fread(&keylen, 1, sizeof(keylen), file);
+    (void)fread(&keylen, 1, sizeof(keylen), file);
     if (keylen != item->keylen) {
 #ifdef DEBUG_CACHE
         dlprintf2("pcache file has correct hash but wrong key length (%d vs %d)\n",
@@ -234,7 +237,7 @@ static int gp_cache_loaditem(FILE *file, gp_cache_entry *item, gp_cache_alloc al
         dprintf("pcache: couldn't allocate file key!\n");
         return -1;
     }
-    fread(filekey, 1, keylen, file);
+    (void)fread(filekey, 1, keylen, file);
     if (memcmp(filekey, item->key, keylen)) {
 #ifdef DEBUG_CACHE
         dlprintf("pcache file has correct hash but doesn't match the full key\n");
@@ -246,7 +249,7 @@ static int gp_cache_loaditem(FILE *file, gp_cache_entry *item, gp_cache_alloc al
     }
     free(filekey);
 
-    fread(&len, 1, sizeof(len), file);
+    (void)fread(&len, 1, sizeof(len), file);
 #ifdef DEBUG_CACHE
     dlprintf2("key matches file with version %d, data length %d\n", version, len);
 #endif
@@ -322,7 +325,6 @@ gp_cache_write_entry(FILE *file, gp_cache_entry *item)
     return 0;
 }
 
-
 /* insert a buffer under a (type, key) pair */
 int gp_cache_insert(int type, byte *key, int keylen, void *buffer, int buflen)
 {
@@ -343,7 +345,7 @@ int gp_cache_insert(int type, byte *key, int keylen, void *buffer, int buflen)
         outfn[len-1] = '\0';
     }
 
-    in = fopen(infn, "r");
+    in = gp_fopen(infn, "r");
     if (in == NULL) {
         dlprintf1("pcache: unable to open '%s'\n", infn);
         free(prefix);
@@ -351,7 +353,7 @@ int gp_cache_insert(int type, byte *key, int keylen, void *buffer, int buflen)
         free(outfn);
         return -1;
     }
-    out = fopen(outfn, "w");
+    out = gp_fopen(outfn, "w");
     if (out == NULL) {
         dlprintf1("pcache: unable to open '%s'\n", outfn);
         fclose(in);
@@ -377,7 +379,8 @@ int gp_cache_insert(int type, byte *key, int keylen, void *buffer, int buflen)
 
     /* save it to disk */
     path = gp_cache_itempath(prefix, &item);
-    file = fopen(path, "wb");
+    file = gp_fopen(path, "wb");
+    free(path);
     if (file != NULL) {
         gp_cache_saveitem(file, &item);
         fclose(file);
@@ -435,7 +438,7 @@ int gp_cache_query(int type, byte* key, int keylen, void **buffer,
         outfn[len-1] = '\0';
     }
 
-    in = fopen(infn, "r");
+    in = gp_fopen(infn, "r");
     if (in == NULL) {
         dlprintf1("pcache: unable to open '%s'\n", infn);
         free(prefix);
@@ -443,7 +446,7 @@ int gp_cache_query(int type, byte* key, int keylen, void **buffer,
         free(outfn);
         return -1;
     }
-    out = fopen(outfn, "w");
+    out = gp_fopen(outfn, "w");
     if (out == NULL) {
         dlprintf1("pcache: unable to open '%s'\n", outfn);
         fclose(in);
@@ -466,7 +469,8 @@ int gp_cache_query(int type, byte* key, int keylen, void **buffer,
 
     /* look for it on the disk */
     path = gp_cache_itempath(prefix, &item);
-    file = fopen(path, "rb");
+    file = gp_fopen(path, "rb");
+    free(path);
     if (file != NULL) {
         hit = gp_cache_loaditem(file, &item, alloc, userdata);
         fclose(file);

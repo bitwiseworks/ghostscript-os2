@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: sfilter.h 9992 2009-08-14 04:12:58Z alexcher $ */
+
 /* Definitions for simple Ghostscript streams */
 /* Requires scommon.h; should require strimpl.h only if any templates */
 /* are referenced, but some compilers always require strimpl.h. */
@@ -53,12 +55,12 @@ typedef struct stream_exD_state_s {
     int binary;			/* 1=binary, 0=hex, -1=don't know yet */
     int lenIV;			/* # of initial decoded bytes to skip */
     stream_PFBD_state *pfb_state;	/* state of underlying */
-				/* PFBDecode stream, if any */
+                                /* PFBDecode stream, if any */
     bool keep_spaces;           /* PS skips spaces after eexec, PDF doesn't */
     /* The following change dynamically. */
     int odd;			/* odd digit */
     long hex_left;		/* # of encoded chars to process as hex */
-				/* if binary == 0 */
+                                /* if binary == 0 */
     int skip;			/* # of decoded bytes to skip */
     bool is_leading_space;      /* handle the space as leading space */
 } stream_exD_state;

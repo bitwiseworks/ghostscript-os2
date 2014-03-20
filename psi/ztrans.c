@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
 
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: ztrans.c 10200 2009-10-21 03:50:46Z mvrhel $ */
+
 /* Transparency operators */
 #include "string_.h"
 #include "memory_.h"
@@ -45,16 +47,16 @@ set_float_value(i_ctx_t *i_ctx_p, int (*set_value)(gs_state *, floatp))
     int code;
 
     if (real_param(op, &value) < 0)
-	return_op_typecheck(op);
+        return_op_typecheck(op);
     if ((code = set_value(igs, value)) < 0)
-	return code;
+        return code;
     pop(1);
     return 0;
 }
 
 static int
 current_float_value(i_ctx_t *i_ctx_p,
-		    float (*current_value)(const gs_state *))
+                    float (*current_value)(const gs_state *))
 {
     os_ptr op = osp;
 
@@ -65,17 +67,17 @@ current_float_value(i_ctx_t *i_ctx_p,
 
 static int
 enum_param(const gs_memory_t *mem, const ref *pnref,
-	   const char *const names[])
+           const char *const names[])
 {
     const char *const *p;
     ref nsref;
 
     name_string_ref(mem, pnref, &nsref);
     for (p = names; *p; ++p)
-	if (r_size(&nsref) == strlen(*p) &&
-	    !memcmp(*p, nsref.value.const_bytes, r_size(&nsref))
-	    )
-	    return p - names;
+        if (r_size(&nsref) == strlen(*p) &&
+            !memcmp(*p, nsref.value.const_bytes, r_size(&nsref))
+            )
+            return p - names;
     return_error(e_rangecheck);
 }
 
@@ -94,9 +96,9 @@ zsetblendmode(i_ctx_t *i_ctx_p)
 
     check_type(*op, t_name);
     if ((code = enum_param(imemory, op, blend_mode_names)) < 0 ||
-	(code = gs_setblendmode(igs, code)) < 0
-	)
-	return code;
+        (code = gs_setblendmode(igs, code)) < 0
+        )
+        return code;
     pop(1);
     return 0;
 }
@@ -111,7 +113,7 @@ zcurrentblendmode(i_ctx_t *i_ctx_p)
     int code = name_enter_string(imemory, mode_name, &nref);
 
     if (code < 0)
-	return code;
+        return code;
     push(1);
     *op = nref;
     return 0;
@@ -177,7 +179,7 @@ rect_param(gs_rect *prect, os_ptr op)
     int code = num_params(op, 4, coords);
 
     if (code < 0)
-	return code;
+        return code;
     prect->p.x = coords[0], prect->p.y = coords[1];
     prect->q.x = coords[2], prect->q.y = coords[3];
     return 0;
@@ -185,16 +187,16 @@ rect_param(gs_rect *prect, os_ptr op)
 
 static int
 mask_op(i_ctx_t *i_ctx_p,
-	int (*mask_proc)(gs_state *, gs_transparency_channel_selector_t))
+        int (*mask_proc)(gs_state *, gs_transparency_channel_selector_t))
 {
     int csel;
     int code = int_param(osp, 1, &csel);
 
     if (code < 0)
-	return code;
+        return code;
     code = mask_proc(igs, csel);
     if (code >= 0)
-	pop(1);
+        pop(1);
     return code;
 
 }
@@ -214,35 +216,26 @@ zbegintransparencygroup(i_ctx_t *i_ctx_p)
     check_dict_read(*dop);
     gs_trans_group_params_init(&params);
     if ((code = dict_bool_param(dop, "Isolated", false, &params.Isolated)) < 0 ||
-	(code = dict_bool_param(dop, "Knockout", false, &params.Knockout)) < 0 ||
-	(code = dict_bool_param(dop, ".image_with_SMask", false, &params.image_with_SMask)) < 0
-	)
-	return code;
+        (code = dict_bool_param(dop, "Knockout", false, &params.Knockout)) < 0 ||
+        (code = dict_bool_param(dop, ".image_with_SMask", false, &params.image_with_SMask)) < 0
+        )
+        return code;
     code = rect_param(&bbox, op);
     if (code < 0)
-	return code;
+        return code;
     /* If the CS is not given in the transparency group dict, set to NULL   */
     /* so that the transparency code knows to inherit from the parent layer */
     if (dict_find_string(dop, "CS", &dummy) <= 0) {
-	params.ColorSpace = NULL;
+        params.ColorSpace = NULL;
     } else {
-	/* the PDF interpreter set the colorspace, so use it */
-	params.ColorSpace = gs_currentcolorspace(igs);
+        /* the PDF interpreter set the colorspace, so use it */
+        params.ColorSpace = gs_currentcolorspace(igs);
     }
     code = gs_begin_transparency_group(igs, &params, &bbox);
     if (code < 0)
-	return code;
+        return code;
     pop(5);
     return code;
-}
-
-/* - .discardtransparencygroup - */
-static int
-zdiscardtransparencygroup(i_ctx_t *i_ctx_p)
-{
-    if (gs_current_transparency_type(igs) != TRANSPARENCY_STATE_Group)
-	return_error(e_rangecheck);
-    return gs_discard_transparency_layer(igs);
 }
 
 /* - .endtransparencygroup - */
@@ -265,46 +258,46 @@ zbegintransparencymaskgroup(i_ctx_t *i_ctx_p)
     gs_rect bbox;
     int code;
     static const char *const subtype_names[] = {
-	GS_TRANSPARENCY_MASK_SUBTYPE_NAMES, 0
+        GS_TRANSPARENCY_MASK_SUBTYPE_NAMES, 0
     };
 
     check_type(*dop, t_dictionary);
     check_dict_read(*dop);
     if (dict_find_string(dop, "Subtype", &pparam) <= 0)
-	return_error(e_rangecheck);
+        return_error(e_rangecheck);
     if ((code = enum_param(imemory, pparam, subtype_names)) < 0)
-	return code;
+        return code;
     gs_trans_mask_params_init(&params, code);
     params.replacing = true;
     if ((code = dict_floats_param(imemory, dop, "Background",
-		    cs_num_components(gs_currentcolorspace(i_ctx_p->pgs)),
-				  params.Background, NULL)) < 0)
-	return code;
+                    cs_num_components(gs_currentcolorspace(i_ctx_p->pgs)),
+                                  params.Background, NULL)) < 0)
+        return code;
     else if (code > 0)
-	params.Background_components = code;
+        params.Background_components = code;
     if ((code = dict_floats_param(imemory, dop, "GrayBackground",
-		    1, &params.GrayBackground, NULL)) < 0)
-	return code;
+                    1, &params.GrayBackground, NULL)) < 0)
+        return code;
     if (dict_find_string(dop, "TransferFunction", &pparam) > 0) {
-	gs_function_t *pfn = ref_function(pparam);
+        gs_function_t *pfn = ref_function(pparam);
 
-	if (pfn == 0 || pfn->params.m != 1 || pfn->params.n != 1)
-	    return_error(e_rangecheck);
-	params.TransferFunction = tf_using_function;
-	params.TransferFunction_data = pfn;
+        if (pfn == 0 || pfn->params.m != 1 || pfn->params.n != 1)
+            return_error(e_rangecheck);
+        params.TransferFunction = tf_using_function;
+        params.TransferFunction_data = pfn;
     }
     code = rect_param(&bbox, op);
     if (code < 0)
-	return code;
+        return code;
     /* Is the colorspace set for this mask ? */
     if (op[-5].value.boolval) {
-		params.ColorSpace = gs_currentcolorspace(igs);
+                params.ColorSpace = gs_currentcolorspace(igs);
     } else {
-	params.ColorSpace = NULL;
+        params.ColorSpace = NULL;
     }
     code = gs_begin_transparency_mask(igs, &params, &bbox, false);
     if (code < 0)
-	return code;
+        return code;
     pop(6);
     return code;
 }
@@ -319,13 +312,12 @@ zbegintransparencymaskimage(i_ctx_t *i_ctx_p)
     gs_color_space *gray_cs = gs_cspace_new_DeviceGray(imemory);
 
     if (!gray_cs)
-	return_error(e_VMerror);
-    params.ColorSpace = gray_cs;	/* per PDF spec, Image SMask is alway DeviceGray */
+        return_error(e_VMerror);
     gs_trans_mask_params_init(&params, TRANSPARENCY_MASK_Luminosity);
     code = gs_begin_transparency_mask(igs, &params, &bbox, true);
     if (code < 0)
-	return code;
-    rc_decrement(gray_cs, "zbegintransparencymaskimage");
+        return code;
+    rc_decrement_cs(gray_cs, "zbegintransparencymaskimage");
     return code;
 }
 
@@ -339,15 +331,6 @@ tf_using_function(floatp in_val, float *out, void *proc_data)
     return gs_function_evaluate(pfn, &in, out);
 }
 
-/* - .discardtransparencymask - */
-static int
-zdiscardtransparencymask(i_ctx_t *i_ctx_p)
-{
-    if (gs_current_transparency_type(igs) != TRANSPARENCY_STATE_Mask)
-	return_error(e_rangecheck);
-    return gs_discard_transparency_layer(igs);
-}
-
 /* <mask#> .endtransparencymask - */
 static int
 zendtransparencymask(i_ctx_t *i_ctx_p)
@@ -359,8 +342,8 @@ zendtransparencymask(i_ctx_t *i_ctx_p)
 
 /* <dict> .image3x - */
 static int mask_dict_param(const gs_memory_t *mem, os_ptr,
-			    image_params *, const char *, int,
-			    gs_image3x_mask_t *);
+                            image_params *, const char *, int,
+                            gs_image3x_mask_t *);
 static int
 zimage3x(i_ctx_t *i_ctx_p)
 {
@@ -369,43 +352,44 @@ zimage3x(i_ctx_t *i_ctx_p)
     ref *pDataDict;
     image_params ip_data;
     int num_components =
-	gs_color_space_num_components(gs_currentcolorspace(igs));
+        gs_color_space_num_components(gs_currentcolorspace(igs));
     int ignored;
     int code;
 
     check_type(*op, t_dictionary);
     check_dict_read(*op);
+    memset(&image, 0, sizeof(gs_image3x_t));
     gs_image3x_t_init(&image, NULL);
     if (dict_find_string(op, "DataDict", &pDataDict) <= 0)
-	return_error(e_rangecheck);
+        return_error(e_rangecheck);
     if ((code = pixel_image_params(i_ctx_p, pDataDict,
-		   (gs_pixel_image_t *)&image, &ip_data,
-		   16, false, gs_currentcolorspace(igs))) < 0 ||
-	(code = dict_int_param(pDataDict, "ImageType", 1, 1, 0, &ignored)) < 0
-	)
-	return code;
+                   (gs_pixel_image_t *)&image, &ip_data,
+                   16, false, gs_currentcolorspace(igs))) < 0 ||
+        (code = dict_int_param(pDataDict, "ImageType", 1, 1, 0, &ignored)) < 0
+        )
+        return code;
     /*
      * We have to process the masks in the reverse order, because they
      * insert their DataSource before the one(s) for the DataDict.
      */
     if ((code = mask_dict_param(imemory, op, &ip_data,
-				"ShapeMaskDict", num_components,
-				&image.Shape)) < 0 ||
-	(code = mask_dict_param(imemory, op, &ip_data,
-				"OpacityMaskDict", num_components,
-				&image.Opacity)) < 0
-	)
-	return code;
+                                "ShapeMaskDict", num_components,
+                                &image.Shape)) < 0 ||
+        (code = mask_dict_param(imemory, op, &ip_data,
+                                "OpacityMaskDict", num_components,
+                                &image.Opacity)) < 0
+        )
+        return code;
     return zimage_setup(i_ctx_p, (gs_pixel_image_t *)&image,
-			&ip_data.DataSource[0],
-			image.CombineWithColor, 1);
+                        &ip_data.DataSource[0],
+                        image.CombineWithColor, 1);
 }
 
 /* Get one soft-mask dictionary parameter. */
 static int
 mask_dict_param(const gs_memory_t *mem, os_ptr op,
 image_params *pip_data, const char *dict_name,
-		int num_components, gs_image3x_mask_t *pixm)
+                int num_components, gs_image3x_mask_t *pixm)
 {
     ref *pMaskDict;
     image_params ip_mask;
@@ -413,31 +397,31 @@ image_params *pip_data, const char *dict_name,
     int code, mcode;
 
     if (dict_find_string(op, dict_name, &pMaskDict) <= 0)
-	return 1;
+        return 1;
     if ((mcode = code = data_image_params(mem, pMaskDict, &pixm->MaskDict,
-					  &ip_mask, false, 1, 16, false)) < 0 ||
-	(code = dict_int_param(pMaskDict, "ImageType", 1, 1, 0, &ignored)) < 0 ||
-	(code = dict_int_param(pMaskDict, "InterleaveType", 1, 3, -1,
-			       &pixm->InterleaveType)) < 0 ||
-	(code = dict_floats_param(mem, op, "Matte", num_components,
-				  pixm->Matte, NULL)) < 0
-	)
-	return code;
+                                          &ip_mask, false, 1, 16, false, false)) < 0 ||
+        (code = dict_int_param(pMaskDict, "ImageType", 1, 1, 0, &ignored)) < 0 ||
+        (code = dict_int_param(pMaskDict, "InterleaveType", 1, 3, -1,
+                               &pixm->InterleaveType)) < 0 ||
+        (code = dict_floats_param(mem, op, "Matte", num_components,
+                                  pixm->Matte, NULL)) < 0
+        )
+        return code;
     pixm->has_Matte = code > 0;
     /*
      * The MaskDict must have a DataSource iff InterleaveType == 3.
      */
     if ((pip_data->MultipleDataSources && pixm->InterleaveType != 3) ||
-	ip_mask.MultipleDataSources ||
-	mcode != (pixm->InterleaveType != 3)
-	)
-	return_error(e_rangecheck);
+        ip_mask.MultipleDataSources ||
+        mcode != (pixm->InterleaveType != 3)
+        )
+        return_error(e_rangecheck);
     if (pixm->InterleaveType == 3) {
-	/* Insert the mask DataSource before the data DataSources. */
-	memmove(&pip_data->DataSource[1], &pip_data->DataSource[0],
-		(countof(pip_data->DataSource) - 1) *
-		sizeof(pip_data->DataSource[0]));
-	pip_data->DataSource[0] = ip_mask.DataSource[0];
+        /* Insert the mask DataSource before the data DataSources. */
+        memmove(&pip_data->DataSource[1], &pip_data->DataSource[0],
+                (countof(pip_data->DataSource) - 1) *
+                sizeof(pip_data->DataSource[0]));
+        pip_data->DataSource[0] = ip_mask.DataSource[0];
     }
     return 0;
 }
@@ -452,7 +436,7 @@ zpushpdf14devicefilter(i_ctx_t *i_ctx_p)
     os_ptr op = osp;
 
     check_type(*op, t_integer);
-    code = gs_push_pdf14trans_device(igs);
+    code = gs_push_pdf14trans_device(igs, false);
     if (code < 0)
         return code;
     pop(1);
@@ -464,7 +448,7 @@ zpushpdf14devicefilter(i_ctx_t *i_ctx_p)
 static int
 zpoppdf14devicefilter(i_ctx_t *i_ctx_p)
 {
-    return gs_pop_pdf14trans_device(igs);
+    return gs_pop_pdf14trans_device(igs, false);
 }
 
 /* This is used to communicate to the transparency compositor
@@ -489,7 +473,7 @@ static int
 zpopextendedgstate(i_ctx_t *i_ctx_p)
 {
     int code;
-    code = gs_pop_transparency_state(igs);
+    code = gs_pop_transparency_state(igs, false);
     return(code);
 }
 
@@ -511,11 +495,9 @@ const op_def ztrans1_op_defs[] = {
 };
 const op_def ztrans2_op_defs[] = {
     {"5.begintransparencygroup", zbegintransparencygroup},
-    {"0.discardtransparencygroup", zdiscardtransparencygroup},
     {"0.endtransparencygroup", zendtransparencygroup},
     {"5.begintransparencymaskgroup", zbegintransparencymaskgroup},
     {"5.begintransparencymaskimage", zbegintransparencymaskimage},
-    {"0.discardtransparencymask", zdiscardtransparencymask},
     {"1.endtransparencymask", zendtransparencymask},
     {"1.image3x", zimage3x},
     {"1.pushpdf14devicefilter", zpushpdf14devicefilter},

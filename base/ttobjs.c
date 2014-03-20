@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: ttobjs.c 10554 2009-12-26 01:13:12Z alexcher $ */
+
 
 /* Changes after FreeType: cut out the TrueType instruction interpreter. */
 
@@ -19,7 +21,7 @@
  *
  *  ttobjs.c                                                     1.0
  *
- *    Objects manager.        
+ *    Objects manager.
  *
  *  Copyright 1996-1998 by
  *  David Turner, Robert Wilhelm, and Werner Lemberg.
@@ -44,8 +46,6 @@
 #ifdef TT_EXTEND_ENGINE
 #endif
 
-
-
 /*******************************************************************
  *                                                                 *
  *                     CODERANGE FUNCTIONS                         *
@@ -60,8 +60,8 @@
  *  Description :  Switch to a new code range (updates Code and IP).
  *
  *  Input  :  exec    target execution context
- *            range   new execution code range       
- *            IP      new IP in new code range       
+ *            range   new execution code range
+ *            IP      new IP in new code range
  *
  *  Output :  SUCCESS on success.  FAILURE on error (no code range).
  *
@@ -70,7 +70,6 @@
   TT_Error  Goto_CodeRange( PExecution_Context  exec, Int  range, Int  IP )
   {
     PCodeRange  cr;
-
 
     if ( range < 1 || range > 3 )
       return TT_Err_Bad_Argument;
@@ -103,7 +102,7 @@
  *
  *  Input  :  exec    target execution context
  *
- *  Output :  
+ *  Output :
  *
  *  Note   : The pointer must be unset after used to avoid pending pointers
  *           while a garbager invokation.
@@ -115,7 +114,7 @@
     exec->code = 0;
     exec->codeSize = 0;
   }
-  
+
 /*******************************************************************
  *
  *  Function    :  Get_CodeRange
@@ -125,7 +124,7 @@
  *                 'range' is out of current bounds.
  *
  *  Input  :  exec    target execution context
- *            range   new execution code range       
+ *            range   new execution code range
  *
  *  Output :  Pointer to the code range record.  NULL on failure.
  *
@@ -138,7 +137,6 @@
     else                /* arrays start with 1 in Pascal, and with 0 in C */
       return &exec->codeRangeTable[range - 1];
   }
-
 
 /*******************************************************************
  *
@@ -169,7 +167,6 @@
     return TT_Err_Ok;
   }
 
-
 /*******************************************************************
  *
  *  Function    :  Clear_CodeRange
@@ -196,8 +193,6 @@
     return TT_Err_Ok;
   }
 
-
-
 /*******************************************************************
  *                                                                 *
  *                EXECUTION CONTEXT ROUTINES                       *
@@ -205,12 +200,11 @@
  *                                                                 *
  *******************************************************************/
 
-
 #define FREE(ptr) { mem->free(mem, ptr, "ttobjs.c"); ptr = NULL; }
 #define ALLOC_ARRAY(ptr, old_count, count, type) \
-	(old_count >= count ? 0 : \
-	  !(free_aux(mem, ptr),   \
-	    ptr = mem->alloc_bytes(mem, (count) * sizeof(type), "ttobjs.c"))) 
+        (old_count >= count ? 0 : \
+          !(free_aux(mem, ptr),   \
+            ptr = mem->alloc_bytes(mem, (count) * sizeof(type), "ttobjs.c")))
 #define SETMAX(a, b) a = (a > b ? a : b)
 
 static int free_aux(ttfMemory *mem, void *ptr)
@@ -329,7 +323,7 @@ static int free_aux(ttfMemory *mem, void *ptr)
         ALLOC_ARRAY( exec->twilight.touch, exec->twilight.n_points, n_twilight, Byte )                   ||
         /* reserve twilight zone */
 
-        ALLOC_ARRAY( exec->pts.contours, exec->n_contours, face->maxContours, UShort ) 
+        ALLOC_ARRAY( exec->pts.contours, exec->n_contours, face->maxContours, UShort )
         /* reserve contours array */
       )
      goto Fail_Memory;
@@ -349,7 +343,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
     return TT_Err_Out_Of_Memory;
  }
 
-
 /*******************************************************************
  *
  *  Function    :  Context_Load
@@ -360,7 +353,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
                         PInstance           ins )
  {
    Int  i;
-
 
    exec->current_face = ins->face;
 
@@ -392,7 +384,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
 
    return TT_Err_Ok;
  }
-
 
 /*******************************************************************
  *
@@ -426,7 +417,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
    return TT_Err_Ok;
  }
 
-
 /*******************************************************************
  *
  *  Function    :  Context_Run
@@ -437,7 +427,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
                         Bool                debug )
  {
    TT_Error  error;
-
 
    if ( ( error = Goto_CodeRange( exec, TT_CodeRange_Glyph, 0 ) ) )
      return error;
@@ -466,16 +455,15 @@ static int free_aux(ttfMemory *mem, void *ptr)
 
    if ( !debug ) {
      error = RunIns( exec );
-     Unset_CodeRange(exec);    
+     Unset_CodeRange(exec);
      return error;
    } else
      return TT_Err_Ok;
  }
 
-
   const TGraphicsState  Default_GraphicsState =
   {
-    0, 0, 0, 
+    0, 0, 0,
     { 0x4000, 0 },
     { 0x4000, 0 },
     { 0x4000, 0 },
@@ -483,8 +471,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
     TRUE, 68, 0, 0, 9, 3,
     0, FALSE, 2, 1, 1, 1
   };
-
-
 
 /*******************************************************************
  *                                                                 *
@@ -513,7 +499,7 @@ static int free_aux(ttfMemory *mem, void *ptr)
     if ( !_instance )
       return TT_Err_Ok;
     if ( !ins->face ) {
-      /* This may happen while closing a high level device, when allocator runs out of memory. 
+      /* This may happen while closing a high level device, when allocator runs out of memory.
          A test case is 01_001.pdf with pdfwrite and a small vmthreshold.
       */
       return TT_Err_Out_Of_Memory;
@@ -534,7 +520,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
 
     return TT_Err_Ok;
   }
-
 
 /*******************************************************************
  *
@@ -571,10 +556,10 @@ static int free_aux(ttfMemory *mem, void *ptr)
     ins->numIDefs = maxp->maxInstructionDefs;
     ins->countIDefs = 0;
     if (maxp->maxInstructionDefs > 255)
-	maxp->maxInstructionDefs = 255;  /* Bug 689960 */
+        maxp->maxInstructionDefs = 255;  /* Bug 689960 */
     memset(ins->IDefPtr, (Byte)ins->numIDefs, sizeof(ins->IDefPtr));
     if (ins->numFDefs < 50)
-	ins->numFDefs = 50; /* Bug 687858 */
+        ins->numFDefs = 50; /* Bug 687858 */
     ins->cvtSize  = face->cvtSize;
 
     ins->metrics.pointSize    = 10 * 64;     /* default pointsize  = 10pts */
@@ -682,7 +667,7 @@ static int free_aux(ttfMemory *mem, void *ptr)
         goto Fin;
 
       error = RunIns( exec );
-      Unset_CodeRange(exec);    
+      Unset_CodeRange(exec);
     }
     else
       error = TT_Err_Ok;
@@ -694,7 +679,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
 
     return error;
   }
-
 
 /*******************************************************************
  *
@@ -798,7 +782,7 @@ static int free_aux(ttfMemory *mem, void *ptr)
         goto Fin;
 
       error = RunIns( exec );
-      Unset_CodeRange(exec);    
+      Unset_CodeRange(exec);
     }
     else
       error = TT_Err_Ok;
@@ -815,7 +799,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
     return error;
   }
 
-
 /*******************************************************************
  *                                                                 *
  *                         FACE  FUNCTIONS                         *
@@ -831,7 +814,7 @@ static int free_aux(ttfMemory *mem, void *ptr)
  *
  *  Input  :  _face   typeless pointer to the face object to destroy
  *
- *  Output :  Error code.                       
+ *  Output :  Error code.
  *
  ******************************************************************/
 
@@ -853,7 +836,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
     return TT_Err_Ok;
   }
 
-
 /*******************************************************************
  *
  *  Function    :  Face_Create
@@ -873,7 +855,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
 #define LOAD_( table ) \
           ( error = Load_TrueType_##table (face) )
 
-
   TT_Error  Face_Create( PFace  face)
   {
     TT_Error      error;
@@ -886,7 +867,7 @@ static int free_aux(ttfMemory *mem, void *ptr)
          /*LOAD_(CMap)                        ||*/
          LOAD_(CVT)                         ||
          /*LOAD_(Horizontal_Header)           ||*/
-         LOAD_(Programs)                    
+         LOAD_(Programs)
          /*LOAD_(HMTX)                        ||*/
          /*LOAD_(Gasp)                        ||*/
          /*LOAD_(Names)                       ||*/
@@ -902,9 +883,6 @@ static int free_aux(ttfMemory *mem, void *ptr)
     Face_Destroy( face );
     return error;
   }
-
-
-
 
 /*******************************************************************
  *
@@ -943,4 +921,3 @@ static int free_aux(ttfMemory *mem, void *ptr)
  {
    return MulDiv_Round( y, metrics->y_scale1, metrics->y_scale2 );
  }
-

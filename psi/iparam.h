@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: iparam.h 9043 2008-08-28 22:48:19Z giles $ */
+
 /* Definitions and interface for interpreter parameter list implementations */
 /* Requires ialloc.h, istack.h */
 
@@ -44,13 +46,13 @@ typedef struct iparam_loc_s {
     gs_ref_memory_t *ref_memory; /* a properly typed copy of memory */\
     union {\
       struct {	/* reading */\
-	int (*read)(iparam_list *, const ref *, iparam_loc *);\
-	ref policies;	/* policy dictionary or null */\
-	bool require_all;	/* if true, require all params to be known */\
+        int (*read)(iparam_list *, const ref *, iparam_loc *);\
+        ref policies;	/* policy dictionary or null */\
+        bool require_all;	/* if true, require all params to be known */\
       } r;\
       struct {		/* writing */\
-	int (*write)(iparam_list *, const ref *, const ref *);\
-	ref wanted;		/* desired keys or null */\
+        int (*write)(iparam_list *, const ref *, const ref *);\
+        ref wanted;		/* desired keys or null */\
       } w;\
     } u;\
     int (*enumerate)(iparam_list *, gs_param_enumerator_t *, gs_param_key_t *, ref_type *);\
@@ -89,19 +91,19 @@ typedef struct stack_param_list_s {
  * the commit procedure will return an e_undefined error.
  */
 int dict_param_list_read(dict_param_list *, const ref * /*t_dictionary */ ,
-			 const ref *, bool, gs_ref_memory_t *);
+                         const ref *, bool, gs_ref_memory_t *);
 int dict_param_list_write(dict_param_list *, ref * /*t_dictionary */ ,
-			  const ref *, gs_ref_memory_t *);
+                          const ref *, gs_ref_memory_t *);
 int array_indexed_param_list_read(dict_param_list *, const ref * /*t_*array */ ,
-				  const ref *, bool, gs_ref_memory_t *);
+                                  const ref *, bool, gs_ref_memory_t *);
 int array_indexed_param_list_write(dict_param_list *, ref * /*t_*array */ ,
-				   const ref *, gs_ref_memory_t *);
+                                   const ref *, gs_ref_memory_t *);
 int array_param_list_read(array_param_list *, ref *, uint,
-			  const ref *, bool, gs_ref_memory_t *);
+                          const ref *, bool, gs_ref_memory_t *);
 int stack_param_list_read(stack_param_list *, ref_stack_t *, uint,
-			  const ref *, bool, gs_ref_memory_t *);
+                          const ref *, bool, gs_ref_memory_t *);
 int stack_param_list_write(stack_param_list *, ref_stack_t *,
-			   const ref *, gs_ref_memory_t *);
+                           const ref *, gs_ref_memory_t *);
 
 #define iparam_list_release(plist)\
   gs_free_object((plist)->memory, (plist)->results, "iparam_list_release")

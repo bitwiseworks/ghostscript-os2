@@ -1,19 +1,18 @@
-%    Copyright (C) 1994, 1995, 1996, 1997, 1998 Aladdin Enterprises.  All rights reserved.
-% 
+% Copyright (C) 2001-2012 Artifex Software, Inc.
+% All Rights Reserved.
+%
 % This software is provided AS-IS with no warranty, either express or
 % implied.
-% 
+%
 % This software is distributed under license and may not be copied,
 % modified or distributed except as expressly authorized under the terms
 % of the license contained in the file LICENSE in this distribution.
-% 
-% For more information about licensing, please refer to
-% http://www.ghostscript.com/licensing/. For information on
-% commercial licensing, go to http://www.artifex.com/licensing/ or
-% contact Artifex Software, Inc., 101 Lucas Valley Road #110,
-% San Rafael, CA  94903, U.S.A., +1(415)492-9861.
+%
+% Refer to licensing information at http://www.artifex.com or contact
+% Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+% CA  94903, U.S.A., +1(415)492-9861, for further information.
+%
 
-% $Id: pdf2dsc.ps 8546 2008-02-25 05:48:45Z alexcher $
 % pdf2dsc.ps
 % read pdf file and produce DSC "index" file.
 %
@@ -63,9 +62,9 @@ systemdict /.setsafe known { .setsafe } if
 % scan through for media sizes, keep them in the dictionary
    FirstPage 1 LastPage {
       pdfgetpage /MediaBox pget pop   % MediaBox is a required attribute
-      aload pop 
+      aload pop
       3 -1 roll sub 3 1 roll exch sub exch
-      2 array astore 
+      2 array astore
       aload 3 1 roll 10 string cvs exch 10 string cvs
       (x) 3 -1 roll concatstrings concatstrings cvn
       MediaTypes 3 1 roll exch put
@@ -91,13 +90,13 @@ systemdict /.setsafe known { .setsafe } if
    if
    % This is really supposed to be sorted by frequency of usage...
    (%%DocumentMedia: )
-   MediaTypes { 
+   MediaTypes {
       exch pop
       1 index puts
       (y) puts dup 1 get DSCstring cvs puts
-      (x) puts dup 0 get DSCstring cvs puts 
+      (x) puts dup 0 get DSCstring cvs puts
       ( ) puts dup 0 get DSCstring cvs puts
-      ( ) puts 1 get DSCstring cvs puts 
+      ( ) puts 1 get DSCstring cvs puts
       ( 70 white ()\n) puts
       pop (%%+ )
    } forall
@@ -116,7 +115,7 @@ systemdict /.setsafe known { .setsafe } if
    DSCfile PDFname write==only
    ( \(r\) file { DELAYSAFER { .setsafe } if } stopped pop\n) puts
    ( pdfopen begin\n) puts
-   ( copy_trailer_attrs\n) puts
+   ( process_trailer_attrs\n) puts
    (%%EndSetup\n) puts
 
    /.hasPageLabels false def % see "Page Labels" in the PDF Reference
@@ -222,9 +221,9 @@ systemdict /.setsafe known { .setsafe } if
        dup pdfgetpage
        dup /MediaBox pget pop
          (%%PageMedia: y) puts
-	 aload pop 3 -1 roll sub DSCstring cvs puts
-	 (x) puts exch sub DSCstring cvs puts
-	 (\n) puts
+         aload pop 3 -1 roll sub DSCstring cvs puts
+         (x) puts exch sub DSCstring cvs puts
+         (\n) puts
        dup /CropBox pget {
          (%%PageBoundingBox: ) puts
          {DSCfile exch write=only ( ) puts} forall

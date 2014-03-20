@@ -1,22 +1,33 @@
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
+   All Rights Reserved.
+
+   This software is provided AS-IS with no warranty, either express or
+   implied.
+
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
+*/
+
 /*
     jbig2dec
-
-    Copyright (C) 2002 Artifex Software, Inc.
-
-    This software is distributed under license and may not
-    be copied, modified or distributed except as expressly
-    authorized under the terms of the license contained in
-    the file LICENSE in this distribution.
-
-    For further licensing information refer to http://artifex.com/ or
-    contact Artifex Software, Inc., 7 Mt. Lassen Drive - Suite A-134,
-    San Rafael, CA  94903, U.S.A., +1(415)492-9861.
 */
+
 
 /* library internals */
 
 typedef uint8_t byte;
-typedef int bool;
+
+#define bool int
+
+#ifdef __cplusplus
+#define template template_C
+#define new new_C
+#endif
 
 #ifndef TRUE
 #define TRUE 1
@@ -53,7 +64,7 @@ struct _Jbig2Ctx {
   Jbig2FileState state;
 
   uint8_t file_header_flags;
-  int32_t n_pages;
+  uint32_t n_pages;
 
   int n_segments_max;
   Jbig2Segment **segments;
@@ -67,25 +78,31 @@ struct _Jbig2Ctx {
   Jbig2Page *pages;
 };
 
+uint32_t
+jbig2_get_uint32(const byte *bptr);
+
 int32_t
 jbig2_get_int32 (const byte *buf);
+
+uint16_t
+jbig2_get_uint16(const byte *bptr);
 
 int16_t
 jbig2_get_int16 (const byte *buf);
 
 /* dynamic memory management */
 void *
-jbig2_alloc (Jbig2Allocator *allocator, size_t size);
+jbig2_alloc (Jbig2Allocator *allocator, size_t size, size_t num);
 
 void
 jbig2_free (Jbig2Allocator *allocator, void *p);
 
 void *
-jbig2_realloc (Jbig2Allocator *allocator, void *p, size_t size);
+jbig2_realloc (Jbig2Allocator *allocator, void *p, size_t size, size_t num);
 
-#define jbig2_new(ctx, t, size) ((t *)jbig2_alloc(ctx->allocator, (size) * sizeof(t)))
+#define jbig2_new(ctx, t, size) ((t *)jbig2_alloc(ctx->allocator, size, sizeof(t)))
 
-#define jbig2_renew(ctx, p, t, size) ((t *)jbig2_realloc(ctx->allocator, (p), (size) * sizeof(t)))
+#define jbig2_renew(ctx, p, t, size) ((t *)jbig2_realloc(ctx->allocator, (p), size, sizeof(t)))
 
 int
 jbig2_error (Jbig2Ctx *ctx, Jbig2Severity severity, int32_t seg_idx,
@@ -167,7 +184,7 @@ int jbig2_halftone_region(Jbig2Ctx *ctx, Jbig2Segment *segment,
 typedef struct _Jbig2WordStream Jbig2WordStream;
 
 struct _Jbig2WordStream {
-  uint32_t (*get_next_word) (Jbig2WordStream *self, int offset);
+  int (*get_next_word) (Jbig2WordStream *self, int offset, uint32_t *word);
 };
 
 Jbig2WordStream *

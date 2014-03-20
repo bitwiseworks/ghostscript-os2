@@ -20,7 +20,7 @@
  *   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111
  *   U.S.A.
  */
- 
+
 /* Copyright (C) 1989, 2000 Aladdin Enterprises.  All rights reserved.
 
    This program may also be distributed as part of AFPL Ghostscript, under the
@@ -98,25 +98,43 @@ struct gx_device_bjc_printer_s {
     float greenGamma;
     float blueGamma;
     struct {
-	int red;
-	int green;
-	int blue;
+        int red;
+        int green;
+        int blue;
     } paperColor;                      /* paper color for color correction */
+    /* Global variables from gdevbjca moved here */
+    int bjc_j; /* =0 */
+    int bjc_k; /* =31 */
+    int bjc_treshold[1024];
+    bool FloydSteinbergDirectionForward;
+    int *FloydSteinbergErrorsC;
+    int *FloydSteinbergErrorsM;
+    int *FloydSteinbergErrorsY;
+    int *FloydSteinbergErrorsK;
+    int *FloydSteinbergErrorsG;
+    int FloydSteinbergC;
+    int FloydSteinbergM;
+    int FloydSteinbergY;
+    int FloydSteinbergK;
+    int FloydSteinbergG;
+    int bjc_gamma_tableC[256];
+    int bjc_gamma_tableM[256];
+    int bjc_gamma_tableY[256];
 };
 
 typedef struct gx_device_bjc_printer_s gx_device_bjc_printer;
 
 #define bjc_device_margins_body(dtype, procs, dname, w10, h10, xdpi, ydpi, lo, to, lm, bm, rm, tm, ncomp, depth, mg, mc, dg, dc, print_page)\
-	std_device_full_body_type(dtype, &procs, dname, &st_device_printer,\
-	  (int)((long)(w10) * (xdpi) / 10),\
-	  (int)((long)(h10) * (ydpi) / 10),\
-	  xdpi, ydpi,\
-	  ncomp, depth, mg, mc, dg, dc,\
-	  -(lo) * (xdpi), -(to) * (ydpi),\
-	  (lm) * 72.0, (bm) * 72.0,\
-	  (rm) * 72.0, (tm) * 72.0\
-	),\
-	prn_device_body_rest_(print_page)
+        std_device_full_body_type(dtype, &procs, dname, &st_device_printer,\
+          (int)((long)(w10) * (xdpi) / 10),\
+          (int)((long)(h10) * (ydpi) / 10),\
+          xdpi, ydpi,\
+          ncomp, depth, mg, mc, dg, dc,\
+          -(lo) * (xdpi), -(to) * (ydpi),\
+          (lm) * 72.0, (bm) * 72.0,\
+          (rm) * 72.0, (tm) * 72.0\
+        ),\
+        prn_device_body_rest_(print_page)
 
 #define bjc_device_margins(procs, dname, w10, h10, xdpi, ydpi, lo, to, lm, bm, rm, tm, ncomp, depth, mg, mc, dg, dc, print_page, def_ink)\
 { bjc_device_margins_body(gx_device_bjc_printer, procs, dname,\
@@ -140,22 +158,19 @@ typedef struct gx_device_bjc_printer_s gx_device_bjc_printer;
     {  (int) 255,           /* White  paper  */        \
        (int) 255,           /*               */        \
        (int) 255 }          /*               */        \
-};
-
+}
 
 #define bjc_device(procs, dname, w10, h10, xdpi, ydpi, lm, bm, rm, tm, ncomp, depth, mg, mc, dg, dc, print_page, def_ink)\
   bjc_device_margins(procs, dname, w10, h10, xdpi, ydpi,\
     lm, tm, lm, bm, rm, tm, ncomp, depth, mg, mc, dg, dc, print_page, def_ink)
 
-
 #define bjc_cmyk_param_procs(v_prn_open, v_prn_output_page, v_prn_close, \
                  p_map_color_rgb, p_map_cmyk_color, \
-		 v_prn_get_params, v_prn_put_params)\
+                 v_prn_get_params, v_prn_put_params)\
    {v_prn_open, NULL, NULL, v_prn_output_page, v_prn_close,\
     NULL, p_map_color_rgb, NULL, NULL, NULL, NULL, NULL, NULL,\
     v_prn_get_params, v_prn_put_params,\
     p_map_cmyk_color, NULL, NULL, NULL, gx_page_device_get_page_device}
-
 
 /* There are the definitions of commands for the Canon BJC printers. */
 
@@ -212,19 +227,21 @@ bool bjc_invert_cmyk_bytes(byte *rowC,byte *rowM, byte *rowY, byte *rowK, uint r
 uint bjc_compress(const byte *row, uint raster, byte *compressed);
 
 int  FloydSteinbergInitG(gx_device_printer * pdev);
-void FloydSteinbergDitheringG(byte *row, byte *dithered, uint width, uint raster, bool limit_extr);
+void FloydSteinbergDitheringG(gx_device_bjc_printer *dev,
+                              byte *row, byte *dithered, uint width, uint raster, bool limit_extr);
 void FloydSteinbergCloseG(gx_device_printer *pdev);
 
 int  FloydSteinbergForwardCut(int error, int *Errors, int i, byte *dithered, byte bitmask);
 int  FloydSteinbergBckwardCut(int error, int *Errors, int i, byte *dithered, byte bitmask);
 int  FloydSteinbergInitC(gx_device_printer * pdev);
-void FloydSteinbergDitheringC(byte *row, byte *dithered, uint width, uint raster,
+void FloydSteinbergDitheringC(gx_device_bjc_printer *dev,
+                              byte *row, byte *dithered, uint width, uint raster,
                               bool limit_extr, bool composeK);
 void FloydSteinbergCloseC(gx_device_printer *pdev);
 
-void bjc_build_gamma_table(float gamma, char color);
+void bjc_build_gamma_table(gx_device_bjc_printer *dev, float gamma, char color);
 void bjc_rgb_to_cmy (byte r, byte g, byte b, int *c, int *m, int *y);
 void bjc_rgb_to_gray(byte r, byte g, byte b, int *k);
-uint bjc_rand(void);
-void bjc_init_tresh(int rnd);
+uint bjc_rand(gx_device_bjc_printer *dev);
+void bjc_init_tresh(gx_device_bjc_printer *dev, int rnd);
 #endif				/* gdevbjc_INCLUDED */

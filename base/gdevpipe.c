@@ -1,23 +1,24 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gdevpipe.c 8250 2007-09-25 13:31:24Z giles $ */
+
 /* %pipe% IODevice */
 #include "errno_.h"
 #include "pipe_.h"
 #include "stdio_.h"
 #include "string_.h"
-#include "gserror.h"
 #include "gserrors.h"
 #include "gstypes.h"
 #include "gsmemory.h"		/* for gxiodev.h */
@@ -40,7 +41,7 @@ const gx_io_device gs_iodev_pipe = {
 
 static int
 pipe_fopen(gx_io_device * iodev, const char *fname, const char *access,
-	   FILE ** pfile, char *rfname, uint rnamelen)
+           FILE ** pfile, char *rfname, uint rnamelen)
 {
     errno = 0;
     /*
@@ -48,16 +49,16 @@ pipe_fopen(gx_io_device * iodev, const char *fname, const char *access,
      * mode, even though pipes are not positionable.  Detect this here.
      */
     if (strchr(access, '+'))
-	return_error(gs_error_invalidfileaccess);
+        return_error(gs_error_invalidfileaccess);
     /*
      * The OSF/1 1.3 library doesn't include const in the
      * prototype for popen, so we have to break const here.
      */
     *pfile = popen((char *)fname, (char *)access);
     if (*pfile == NULL)
-	return_error(gs_fopen_errno_to_code(errno));
+        return_error(gs_fopen_errno_to_code(errno));
     if (rfname != NULL)
-	strcpy(rfname, fname);
+        strcpy(rfname, fname);
     return 0;
 }
 

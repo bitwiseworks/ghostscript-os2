@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxpcolor.h 9925 2009-08-02 23:16:26Z alexcher $ */
+
 /* Pattern color and tile structures and procedures */
 /* Requires gsmatrix.h, gxcolor2.h, gxdcolor.h */
 
@@ -25,6 +27,8 @@
 #include "gxpcache.h"
 #include "gxblend.h"
 #include "gxcpath.h"
+#include "gxdcolor.h"
+#include "gxiclass.h"
 
 #define RAW_PATTERN_DUMP 0
 
@@ -44,57 +48,57 @@ struct gs_pattern_type_s {
     int PatternType;
     struct pp_ {
 
-	/*
-	 * Define whether a Pattern uses the base color space in its color
-	 * space, requiring setcolor to provide values for the base color
-	 * space.  Currently this is true for uncolored PatternType 1
-	 * patterns, false for all others.
-	 */
+        /*
+         * Define whether a Pattern uses the base color space in its color
+         * space, requiring setcolor to provide values for the base color
+         * space.  Currently this is true for uncolored PatternType 1
+         * patterns, false for all others.
+         */
 
 #define pattern_proc_uses_base_space(proc)\
   bool proc(const gs_pattern_template_t *)
 
-	pattern_proc_uses_base_space((*uses_base_space));
+        pattern_proc_uses_base_space((*uses_base_space));
 
-	/*
-	 * Make an instance of a Pattern.
-	 */
+        /*
+         * Make an instance of a Pattern.
+         */
 
 #define pattern_proc_make_pattern(proc)\
   int proc(gs_client_color *, const gs_pattern_template_t *,\
-	   const gs_matrix *, gs_state *, gs_memory_t *)
+           const gs_matrix *, gs_state *, gs_memory_t *)
 
-	pattern_proc_make_pattern((*make_pattern));
+        pattern_proc_make_pattern((*make_pattern));
 
-	/*
-	 * Get the template from a Pattern instance.
-	 */
+        /*
+         * Get the template from a Pattern instance.
+         */
 
 #define pattern_proc_get_pattern(proc)\
   const gs_pattern_template_t *proc(const gs_pattern_instance_t *)
 
-	pattern_proc_get_pattern((*get_pattern));
+        pattern_proc_get_pattern((*get_pattern));
 
-	/*
-	 * Remap a Pattern color to a device color.
-	 * cs_proc_remap_color is defined in gxcspace.h.
-	 */
+        /*
+         * Remap a Pattern color to a device color.
+         * cs_proc_remap_color is defined in gxcspace.h.
+         */
 
 #define pattern_proc_remap_color(proc)\
   cs_proc_remap_color(proc)
 
-	pattern_proc_remap_color((*remap_color));
+        pattern_proc_remap_color((*remap_color));
 
-	/*
-	 * Perform any special actions required when a pattern instance
-	 * is made the current color "color" (i.e.: at setcolor time).
-	 * This is primarily useful for PatternType2 patterns, where the
-	 * pattern instance specifies a color space.
-	 */
+        /*
+         * Perform any special actions required when a pattern instance
+         * is made the current color "color" (i.e.: at setcolor time).
+         * This is primarily useful for PatternType2 patterns, where the
+         * pattern instance specifies a color space.
+         */
 #define pattern_proc_set_color(proc)\
   int proc(const gs_client_color *, gs_state *)
 
-	pattern_proc_set_color((*set_color));
+        pattern_proc_set_color((*set_color));
 
     } procs;
 };
@@ -104,15 +108,15 @@ struct gs_pattern_type_s {
  * the use of gs_pattern*_init implementations, not clients.
  */
 void gs_pattern_common_init(gs_pattern_template_t *,
-			    const gs_pattern_type_t *);
+                            const gs_pattern_type_t *);
 
 /*
  * Do the generic work for makepattern: allocate the instance and the
  * saved graphics state, and fill in the common members.
  */
 int gs_make_pattern_common(gs_client_color *, const gs_pattern_template_t *,
-			   const gs_matrix *, gs_state *, gs_memory_t *,
-			   gs_memory_type_ptr_t);
+                           const gs_matrix *, gs_state *, gs_memory_t *,
+                           gs_memory_type_ptr_t);
 
 /* Declare the freeing procedure for Pattern instances. */
 extern rc_free_proc(rc_free_pattern_instance);
@@ -126,8 +130,8 @@ extern const gs_color_space_type gs_color_space_type_Pattern;
  * device color type.
  */
 extern const gx_device_color_type_t
-    gx_dc_pattern,
-    gx_dc_pure_masked, gx_dc_binary_masked, gx_dc_colored_masked;
+    gx_dc_pattern, gx_dc_pure_masked, gx_dc_binary_masked, 
+    gx_dc_colored_masked, gx_dc_devn_masked;
 
 #ifndef gx_dc_type_pattern
 #define gx_dc_type_pattern (&gx_dc_pattern)
@@ -146,7 +150,6 @@ extern dev_color_proc_read(gx_dc_pattern_read);
  */
 extern dev_color_proc_get_nonzero_comps(gx_dc_pattern_get_nonzero_comps);
 
-
 /* Used for keeping a buffer of the pattern that containes an alpha channel
   in a planar form.  Since we must be going from the pdf14 compositor through
   the pattern accumulator and then back to a pdf14 compositor it makes sense
@@ -156,31 +159,32 @@ typedef struct gx_pattern_trans_s gx_pattern_trans_t;
 
 struct gx_pattern_trans_s {
 
-    const gx_device *pdev14; 
+    const gx_device *pdev14;
     byte *transbytes;
+    gs_memory_t *mem;
+    gx_pattern_trans_t *fill_trans_buffer;  /* buffer to fill */
     gs_int_rect rect;
     int rowstride;
     int planestride;
     int n_chan; /* number of pixel planes including alpha */
     bool has_shape;  /* extra plane inserted */
-    int width;
+    int width; /* Complete plane width/height; rect may be a subset of this */
     int height;
     const pdf14_nonseparable_blending_procs_t *blending_procs;
     bool is_additive;
     gs_blend_mode_t blending_mode;
-    void (* pat_trans_fill)(int xmin, int ymin, int xmax, int ymax, int px, int py, const gx_color_tile *ptile,
-            gx_pattern_trans_t *fill_trans_buffer);
+    gs_int_rect *dirty;
+    void (* pat_trans_fill)(int xmin, int ymin, int xmax, int ymax, int px,
+                            int py, const gx_color_tile *ptile,
+                            gx_pattern_trans_t *fill_trans_buffer);
+    int (* image_render)(gx_image_enum * penum, const byte * buffer,
+                            int data_x, uint w, int h, gx_device * dev);
 };
 
-
-
 #define private_st_pattern_trans() /* in gxpcmap.c */\
-gs_private_st_ptrs2(st_pattern_trans, gx_pattern_trans_t, "gx_pattern_trans",\
-		    pattern_trans_enum_ptrs, pattern_trans_reloc_ptrs,\
-		    pdev14, transbytes);
-
-
-
+gs_private_st_ptrs3(st_pattern_trans, gx_pattern_trans_t, "gx_pattern_trans",\
+                    pattern_trans_enum_ptrs, pattern_trans_reloc_ptrs,\
+                    pdev14, transbytes, fill_trans_buffer)
 /*
  * Define a color tile, an entry in the rendered Pattern cache (and
  * eventually in the colored halftone cache).  Note that the depth is
@@ -198,6 +202,7 @@ struct gx_color_tile_s {
     /* for use in selective cache purging. */
     gs_uid uid;
     /* ------ The following are the cache 'value'. ------ */
+    int bits_used;              /* The number of bits this uses in the cache */
     /* Note that if tbits and tmask both have data != 0, */
     /* both must have the same rep_shift. */
 /****** NON-ZERO shift VALUES ARE NOT SUPPORTED YET. ******/
@@ -214,11 +219,18 @@ struct gx_color_tile_s {
     gx_device_clist *cdev;	/* not NULL if the graphics is a command list. */
     byte is_simple;		/* true if xstep/ystep = tile size */
     byte has_overlap;           /* true if step size is smaller than bounding box */
-    byte is_dummy;		/* if true, the device manages the pattern, 
+    byte is_dummy;		/* if true, the device manages the pattern,
                                    and the content of the tile is empty. */
     byte pad[2];		/* structure members alignment. */
     /* The following is neither key nor value. */
     uint index;			/* the index of the tile within */
+    bool trans_group_popped;    /* Used to avoid multiple group pops in image mask fills */
+    bool is_planar;             /* Has to be stored here due to the device 
+                                   change that can occur when the tile is 
+                                   created and when it is written in the clist
+                                   when we are writing to a transparency 
+                                   device which, is not planar but the target
+                                   is */
     /* the cache (for GC) */
 };
 
@@ -279,51 +291,68 @@ typedef struct gx_device_pattern_accum_s {
     instance, bits, mask, transbuff)
 
 /* Allocate a pattern accumulator. */
-gx_device_forward * gx_pattern_accum_alloc(gs_memory_t * mem, 
-		       gs_memory_t * stoarge_memory, 
-		       gs_pattern1_instance_t *pinst, client_name_t cname);
+gx_device_forward * gx_pattern_accum_alloc(gs_memory_t * mem,
+                       gs_memory_t * stoarge_memory,
+                       gs_pattern1_instance_t *pinst, client_name_t cname);
+
+/* Given the size of a new pattern tile, free entries from the cache until  */
+/* enough space is available (or nothing left to free).			    */
+/* This will allow 1 oversized entry					    */
+void gx_pattern_cache_ensure_space(gs_imager_state * pis, int needed);
+
+void gx_pattern_cache_update_used(gs_imager_state *pis, ulong used);
+
+/* Update cache tile space */
+void gx_pattern_cache_update_space(gs_imager_state * pis, int64_t used);
 
 /* Add an accumulated pattern to the cache. */
 /* Note that this does not free any of the data in the accumulator */
 /* device, but it may zero out the bitmap_memory pointers to prevent */
 /* the accumulated bitmaps from being freed when the device is closed. */
 int gx_pattern_cache_add_entry(gs_imager_state *, gx_device_forward *,
-			       gx_color_tile **);
+                               gx_color_tile **);
 /* Add a dummy Pattern cache entry.  Stubs a pattern tile for interpreter when
    device handles high level patterns. */
 int gx_pattern_cache_add_dummy_entry(gs_imager_state *pis, gs_pattern1_instance_t *pinst,
-				int depth);
+                                int depth);
 
 /* Get entry for reading a pattern from clist. */
 int gx_pattern_cache_get_entry(gs_imager_state * pis, gs_id id, gx_color_tile ** pctile);
 
-
 /* Look up a pattern color in the cache. */
 bool gx_pattern_cache_lookup(gx_device_color *, const gs_imager_state *,
-			     gx_device *, gs_color_select_t);
+                             gx_device *, gs_color_select_t);
 
 /* Purge selected entries from the pattern cache. */
 void gx_pattern_cache_winnow(gx_pattern_cache *,
-			     bool (*)(gx_color_tile *, void *),
-			     void *);
+                             bool (*)(gx_color_tile *, void *),
+                             void *);
 
 bool gx_pattern_tile_is_clist(gx_color_tile *ptile);
 
 dev_proc_open_device(pattern_clist_open_device);
 
 /* Code to fill a pdf14 transparency rectangles with a pattern trans buffer object */
-
-int gx_trans_pattern_fill_rect(int xmin, int ymin, int xmax, int ymax, gx_color_tile *ptile, 
-                               gx_pattern_trans_t *fill_trans_buffer, gs_int_point phase);
+int gx_trans_pattern_fill_rect(int xmin, int ymin, int xmax, int ymax,
+                               gx_color_tile *ptile,
+                               gx_pattern_trans_t *fill_trans_buffer,
+                               gs_int_point phase, gx_device *dev,
+                               const gx_device_color * pdevc);
 
 gx_pattern_trans_t* new_pattern_trans_buff(gs_memory_t *mem);
 
-void tile_rect_trans_simple(int xmin, int ymin, int xmax, int ymax, int px, int py, const gx_color_tile *ptile,
-                        gx_pattern_trans_t *fill_trans_buffer);
+void tile_rect_trans_simple(int xmin, int ymin, int xmax, int ymax, int px,
+                            int py, const gx_color_tile *ptile,
+                            gx_pattern_trans_t *fill_trans_buffer);
 
-/* This is used for the case when we may have overlapping tiles.  We need to get better detection for this as 
+/* This is used for the case when we may have overlapping tiles.
+   We need to get better detection for this as
    it would be best to avoid doing it if not needed. */
-void tile_rect_trans_blend(int xmin, int ymin, int xmax, int ymax, int px, int py, const gx_color_tile *ptile,
-                        gx_pattern_trans_t *fill_trans_buffer);
+void tile_rect_trans_blend(int xmin, int ymin, int xmax, int ymax, int px,
+                           int py, const gx_color_tile *ptile,
+                            gx_pattern_trans_t *fill_trans_buffer);
+
+/* File a colored pattern with white */
+int gx_erase_colored_pattern(gs_state *pgs);
 
 #endif /* gxpcolor_INCLUDED */

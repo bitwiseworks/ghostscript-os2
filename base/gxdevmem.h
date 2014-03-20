@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxdevmem.h 9968 2009-08-10 23:29:24Z henrys $ */
+
 /* Structure and procedures for memory devices */
 /* Requires gxdevice.h */
 
@@ -106,28 +108,28 @@ struct gx_device_memory_s {
     gs_const_string palette;	/* RGB triples */
     /* Following is only used for 24-bit color. */
     struct _c24 {
-	gx_color_index rgb;	/* cache key */
-	bits32 rgbr, gbrg, brgb;	/* cache value */
+        gx_color_index rgb;	/* cache key */
+        bits32 rgbr, gbrg, brgb;	/* cache value */
     } color24;
     /* Following is only used for 40-bit color. */
     struct _c40 {
-	gx_color_index abcde;	/* cache key */
-	bits32 abcd, bcde, cdea, deab, eabc;	/* cache value */
+        gx_color_index abcde;	/* cache key */
+        bits32 abcd, bcde, cdea, deab, eabc;	/* cache value */
     } color40;
     /* Following is only used for 48-bit color. */
     struct _c48 {
-	gx_color_index abcdef;	/* cache key */
-	bits32 abcd, cdef, efab;	/* cache value */
+        gx_color_index abcdef;	/* cache key */
+        bits32 abcd, cdef, efab;	/* cache value */
     } color48;
     /* Following is only used for 56-bit color. */
     struct _c56 {
-	gx_color_index abcdefg;	/* cache key */
-	bits32 abcd, bcde, cdef, defg, efga, fgab, gabc;	/* cache value */
+        gx_color_index abcdefg;	/* cache key */
+        bits32 abcd, bcde, cdef, defg, efga, fgab, gabc;	/* cache value */
     } color56;
     /* Following is only used for 64-bit color. */
     struct _c64 {
-	gx_color_index abcdefgh;	/* cache key */
-	bits32 abcd, efgh;	/* cache value */
+        gx_color_index abcdefgh;	/* cache key */
+        bits32 abcd, efgh;	/* cache value */
     } color64;
     /* Following are only used for alpha buffers. */
     /* The client initializes those marked with $; */
@@ -139,6 +141,8 @@ struct gx_device_memory_s {
     int mapped_height;		/* # of Y values mapped to buffer */
     int mapped_start;		/* local Y value corresponding to mapped_y */
     gx_color_index save_color;	/* last (only) color displayed */
+    const gx_drawing_color *save_hl_color;
+                                /* last (only) hl color displayed */
     /* Following are used only for planar devices. */
     int plane_depth;		/* if non-zero, depth of all planes */
     int band_y; /* Debug purpose only. */
@@ -151,25 +155,25 @@ extern_st(st_device_memory);
     gx_device_finalize)
 #define st_device_memory_max_ptrs (st_device_forward_max_ptrs + 2)
 #define mem_device_init_private\
-	0,			/* raster */\
-	(byte *)0,		/* base */\
-	0,			/* bitmap_memory */\
-	true,			/* foreign_bits (default) */\
-	0,			/* line_pointer_memory */\
-	true,			/* foreign_line_pointers (default) */\
-	0,			/* num_planes (default) */\
-	{ { 0 } },		/* planes (only used for planar) */\
-	{ identity_matrix_body },	/* initial matrix (filled in) */\
-	(byte **)0,		/* line_ptrs (filled in by mem_open) */\
-	{ (byte *)0, 0 },	/* palette (filled in for color) */\
-	{ gx_no_color_index },	/* color24 */\
-	{ gx_no_color_index },	/* color40 */\
-	{ gx_no_color_index },	/* color48 */\
-	{ gx_no_color_index },	/* color56 */\
-	{ gx_no_color_index },	/* color64 */\
-	{ 0, 0 }, 0,		/* scale, log2_alpha_bits */\
-	0, 0, 0, 0,		/* mapped_* */\
-	gx_no_color_index	/* save_color */
+        0,			/* raster */\
+        (byte *)0,		/* base */\
+        0,			/* bitmap_memory */\
+        true,			/* foreign_bits (default) */\
+        0,			/* line_pointer_memory */\
+        true,			/* foreign_line_pointers (default) */\
+        0,			/* num_planes (default) */\
+        { { 0 } },		/* planes (only used for planar) */\
+        { identity_matrix_body },	/* initial matrix (filled in) */\
+        (byte **)0,		/* line_ptrs (filled in by mem_open) */\
+        { (byte *)0, 0 },	/* palette (filled in for color) */\
+        { gx_no_color_index },	/* color24 */\
+        { gx_no_color_index },	/* color40 */\
+        { gx_no_color_index },	/* color48 */\
+        { gx_no_color_index },	/* color56 */\
+        { gx_no_color_index },	/* color64 */\
+        { 0, 0 }, 0,		/* scale, log2_alpha_bits */\
+        0, 0, 0, 0,		/* mapped_* */\
+        gx_no_color_index	/* save_color */
 
 /*
  * Memory devices may have special setup requirements.  In particular, it
@@ -179,13 +183,13 @@ extern_st(st_device_memory);
  */
 /* bits only */
 int gdev_mem_bits_size(const gx_device_memory *mdev, int width,
-			 int height, ulong *size);
+                         int height, ulong *size);
 /* line pointers only */
 ulong gdev_mem_line_ptrs_size(const gx_device_memory *mdev, int width,
-			      int height);
+                              int height);
 /* bits + line pointers */
 int gdev_mem_data_size(const gx_device_memory *mdev, int width,
-			 int height, ulong *size);
+                         int height, ulong *size);
 
 #define gdev_mem_bitmap_size(mdev, size)\
   gdev_mem_data_size(mdev, (mdev)->width, (mdev)->height, size)
@@ -195,7 +199,7 @@ int gdev_mem_data_size(const gx_device_memory *mdev, int width,
  * compute the maximum height.
  */
 int gdev_mem_max_height(const gx_device_memory * dev, int width, ulong size,
-		bool page_uses_transparency);
+                bool page_uses_transparency);
 
 /*
  * Compute the standard raster (data bytes per line) similarly.
@@ -210,7 +214,7 @@ const gx_device_memory *gdev_mem_device_for_bits(int);
 /* Determine the word-oriented memory device for a given depth. */
 const gx_device_memory *gdev_mem_word_device_for_bits(int);
 
-/* 
+/*
  * Make a memory device.  The following 4 procedures will be
  * deprecated, use gs_make_mem_*_copydevice() below, for future
  * changes.
@@ -222,19 +226,19 @@ const gx_device_memory *gdev_mem_word_device_for_bits(int);
 /* 0 if it should propagate this property from its target, or */
 /* -1 if it should not be a page device. */
 void gs_make_mem_mono_device(gx_device_memory * mdev, gs_memory_t * mem,
-			     gx_device * target);
+                             gx_device * target);
 void gs_make_mem_device(gx_device_memory * mdev,
-			const gx_device_memory * mdproto,
-			gs_memory_t * mem, int page_device,
-			gx_device * target);
+                        const gx_device_memory * mdproto,
+                        gs_memory_t * mem, int page_device,
+                        gx_device * target);
 void gs_make_mem_abuf_device(gx_device_memory * adev, gs_memory_t * mem,
-			     gx_device * target,
-			     const gs_log2_scale_point * pscale,
-			     int alpha_bits, int mapped_x);
+                             gx_device * target,
+                             const gs_log2_scale_point * pscale,
+                             int alpha_bits, int mapped_x, bool devn);
 void gs_make_mem_alpha_device(gx_device_memory * adev, gs_memory_t * mem,
-			      gx_device * target, int alpha_bits);
+                              gx_device * target, int alpha_bits);
 
-/* 
+/*
  * Create memory devices with copydevice.  For now the destructor is
  * simply: gx_device_retain(mdev, false).
  */
@@ -249,7 +253,7 @@ int gs_make_mem_device_with_copydevice(gx_device_memory ** mdev,
                                        int page_device,
                                        gx_device * target);
 
-/* 
+/*
  * TODO replace gs_make_mem_abuf_device, gs_make_mem_alpha_device with
  * procedures that use copydevice.
  */
@@ -274,8 +278,8 @@ int gdev_mem_open_scan_lines(gx_device_memory *mdev, int setup_height);
  * setup_height.
  */
 int gdev_mem_set_line_ptrs(gx_device_memory *mdev,
-			   byte *base, int raster, byte **line_ptrs,
-			   int setup_height);
+                           byte *base, int raster, byte **line_ptrs,
+                           int setup_height);
 
 /* Define whether a monobit memory device is inverted (black=1). */
 void gdev_mem_mono_set_inverted(gx_device_memory * mdev, bool black_is_1);
@@ -285,5 +289,8 @@ bool gs_device_is_memory(const gx_device *);
 
 /* Test whether a device is an alpha-buffering device. */
 bool gs_device_is_abuf(const gx_device *);
+
+/* Check for getting the antialiasing bit depth */
+int alpha_buffer_bits(gs_state * pgs);
 
 #endif /* gxdevmem_INCLUDED */

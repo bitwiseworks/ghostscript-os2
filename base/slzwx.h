@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: slzwx.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Definitions for LZW filters */
 /* Requires strimpl.h */
 
@@ -34,20 +36,20 @@ typedef struct stream_LZW_state_s {
     /* The following are updated dynamically. */
     uint bits;			/* buffer for input bits */
     int bits_left;		/* Decode: # of valid bits left, [0..7] */
-				/* (low-order bits if !FirstBitLowOrder, */
-				/* high-order bits if FirstBitLowOrder) */
+                                /* (low-order bits if !FirstBitLowOrder, */
+                                /* high-order bits if FirstBitLowOrder) */
     int bytes_left;		/* # of bytes left in current block */
-				/* (arbitrary large # if not GIF) */
+                                /* (arbitrary large # if not GIF) */
     union _lzt {
-	lzw_decode *decode;
-	lzw_encode_table *encode;
+        lzw_decode *decode;
+        lzw_encode_table *encode;
     } table;
     uint next_code;		/* next code to be assigned */
     int code_size;		/* current # of bits per code */
     int prev_code;		/* previous code recognized or assigned */
     uint prev_len;		/* length of prev_code */
     int copy_code;		/* code whose string is being */
-				/* copied, -1 if none */
+                                /* copied, -1 if none */
     uint copy_len;		/* length of copy_code */
     int copy_left;		/* amount of string left to copy */
     bool first;			/* true if no output yet */

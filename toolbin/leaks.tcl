@@ -1,21 +1,20 @@
 #!/usr/bin/tclsh
 
-#    Copyright (C) 1997, 2000 Aladdin Enterprises.  All rights reserved.
-# 
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
+#
 # This software is provided AS-IS with no warranty, either express or
 # implied.
-# 
+#
 # This software is distributed under license and may not be copied,
 # modified or distributed except as expressly authorized under the terms
 # of the license contained in the file LICENSE in this distribution.
-# 
-# For more information about licensing, please refer to
-# http://www.ghostscript.com/licensing/. For information on
-# commercial licensing, go to http://www.artifex.com/licensing/ or
-# contact Artifex Software, Inc., 101 Lucas Valley Road #110,
-# San Rafael, CA  94903, U.S.A., +1(415)492-9861.
+#
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 
-# $Id: leaks.tcl 6300 2005-12-28 19:56:24Z giles $
 
 # This tool helps detect memory leaks in a -ZA trace from Ghostscript.
 # It reads a memory trace from stdin and prints unmatched allocations on
@@ -74,6 +73,7 @@ proc add0-1 {il addr} [info body add0+0]
 proc read_trace {{fname %stdin}} {
     global A lines next
     set n $next
+    set i 0
     if {$fname == "%stdin"} {
 	set in stdin
     } else {
@@ -82,10 +82,11 @@ proc read_trace {{fname %stdin}} {
     # Skip to the first "allocated" line.  See below for why we bother
     # checking for EOF.
     while {[gets $in l] >= 0} {
+        incr i
 	if [regexp "memory allocated" $l] break
 	incr n
     }
-    if {$n == 0} {
+    if {$i == 0} {
 	puts stderr "Empty input file!"
 	if {$fname != "%stdin"} {close $in}
 	exit

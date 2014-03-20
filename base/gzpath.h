@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/*$Id: gzpath.h 8265 2007-10-02 07:31:58Z ken $ */
+
 /* Structure and internal procedure definitions for paths */
 /* Requires gxfixed.h */
 
@@ -37,17 +39,18 @@ typedef enum {
     s_line,
     s_line_close,
     s_curve,
-    s_dash /* only for internal use of the stroking algorithm */
+    s_dash, /* only for internal use of the stroking algorithm */
+    s_gap
 } segment_type;
 
 /* Define the common structure for all segments. */
 #define segment_common\
-	segment *prev;\
-	segment *next;\
-	ushort /*segment_type*/ type;\
-	ushort /*segment_notes*/ notes;\
-	gs_fixed_point pt;		/* initial point for starts, */\
-				/* final point for others */
+        segment *prev;\
+        segment *next;\
+        ushort /*segment_type*/ type;\
+        ushort /*segment_notes*/ notes;\
+        gs_fixed_point pt;		/* initial point for starts, */\
+                                /* final point for others */
 
 /* Forward declarations for structure types */
 #ifndef segment_DEFINED
@@ -152,7 +155,7 @@ struct subpath_s {
 /* the start of the next subpath. */
 gx_path_rectangular_type
 gx_subpath_is_rectangular(const subpath * pstart, gs_fixed_rect * pbox,
-			  const subpath ** ppnext);
+                          const subpath ** ppnext);
 
 #define gx_subpath_is_rectangle(pstart, pbox, ppnext)\
   (gx_subpath_is_rectangular(pstart, pbox, ppnext) != prt_none)
@@ -180,7 +183,6 @@ int gx_subdivide_curve(gx_path *, int, curve_segment *, segment_notes);
  * to spare; also, we must be able to compute 1/2^(3*k) by table lookup.
  */
 #define k_sample_max min((size_of(int) * 8 - 1) / 3, 10)
-
 
 /*
  * The path state flags reflect the most recent operation on the path
@@ -258,8 +260,8 @@ typedef enum {
 typedef struct gx_path_segments_s {
     rc_header rc;
     struct psc_ {
-	subpath *subpath_first;
-	subpath *subpath_current;
+        subpath *subpath_first;
+        subpath *subpath_current;
     } contents;
 } gx_path_segments;
 
@@ -283,6 +285,7 @@ typedef enum {
 typedef struct gx_path_procs_s {
     int (*add_point)(gx_path *, fixed, fixed);
     int (*add_line)(gx_path *, fixed, fixed, segment_notes);
+    int (*add_gap)(gx_path *, fixed, fixed, segment_notes);
     int (*add_curve)(gx_path *, fixed, fixed, fixed, fixed, fixed, fixed, segment_notes);
     int (*close_subpath)(gx_path *, segment_notes);
     byte (*state_flags)(gx_path *, byte);
@@ -307,12 +310,12 @@ struct gx_path_s {
     gs_memory_t *memory;
     gx_path_allocation_t allocation;	/* how this path was allocated */
     gx_path_segments *segments;
-    segment *last_charpath_segment; /* Used only by pdfwrite at present, 
-				     * last segment added by a charpath operation 
-				     */
+    segment *last_charpath_segment; /* Used only by pdfwrite at present,
+                                     * last segment added by a charpath operation
+                                     */
     gs_fixed_rect bbox;		/* bounding box (in device space) */
     segment *box_last;		/* bbox incorporates segments */
-				/* up to & including this one */
+                                /* up to & including this one */
 #define first_subpath segments->contents.subpath_first	/* (hack) */
 #define current_subpath segments->contents.subpath_current	/* (ditto) */
     /*
@@ -372,9 +375,10 @@ extern_st(st_path_enum);
 
 /* Macros equivalent to a few heavily used procedures. */
 /* Be aware that these macros may evaluate arguments more than once. */
-#define gx_path_current_point_inline(ppath,ppt)\
- ( !path_position_valid(ppath) ? gs_note_error(gs_error_nocurrentpoint) :\
-   ((ppt)->x = ppath->position.x, (ppt)->y = ppath->position.y, 0) )
+#define gx_path_current_point_inline(pgs,ppt)\
+ ( !pgs->current_point_valid ? gs_note_error(gs_error_nocurrentpoint) :\
+   ((ppt)->x = float2fixed_rounded(pgs->current_point.x), \
+   (ppt)->y = float2fixed_rounded(pgs->current_point.y), 0) )
 
 /* An iterator of flattened segments for a minotonic curve. */
 typedef struct gx_flattened_iterator_s gx_flattened_iterator;
@@ -392,19 +396,19 @@ struct gx_flattened_iterator_s {
     fixed lx0, ly0, lx1, ly1;
 };
 
-bool gx_flattened_iterator__init(gx_flattened_iterator *this, 
-	    fixed x0, fixed y0, const curve_segment *pc, int k);
-bool gx_flattened_iterator__init_line(gx_flattened_iterator *this, 
-	    fixed x0, fixed y0, fixed x1, fixed y1);
+bool gx_flattened_iterator__init(gx_flattened_iterator *this,
+            fixed x0, fixed y0, const curve_segment *pc, int k);
+bool gx_flattened_iterator__init_line(gx_flattened_iterator *this,
+            fixed x0, fixed y0, fixed x1, fixed y1);
 void gx_flattened_iterator__switch_to_backscan(gx_flattened_iterator *this, bool not_first);
 int  gx_flattened_iterator__next(gx_flattened_iterator *this);
 int  gx_flattened_iterator__prev(gx_flattened_iterator *this);
 
-bool curve_coeffs_ranged(fixed x0, fixed x1, fixed x2, fixed x3, 
-		    fixed y0, fixed y1, fixed y2, fixed y3, 
-		    fixed *ax, fixed *bx, fixed *cx, 
-		    fixed *ay, fixed *by, fixed *cy, 
-		    int k);
+bool curve_coeffs_ranged(fixed x0, fixed x1, fixed x2, fixed x3,
+                    fixed y0, fixed y1, fixed y2, fixed y3,
+                    fixed *ax, fixed *bx, fixed *cx,
+                    fixed *ay, fixed *by, fixed *cy,
+                    int k);
 
 bool gx_check_fixed_diff_overflow(fixed v0, fixed v1);
 bool gx_check_fixed_sum_overflow(fixed v0, fixed v1);

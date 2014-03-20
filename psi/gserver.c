@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gserver.c 9043 2008-08-28 22:48:19Z giles $ */
+
 /* Server front end for Ghostscript, replacing gs.c. */
 #include "memory_.h"
 #include "string_.h"
@@ -23,6 +25,7 @@
 #include "ostack.h"
 #include "store.h"
 #include "gspaint.h"		/* for gs_erasepage */
+#include "gp.h"
 
 /*
  * This file provides a very simple procedural interface to the Ghostscript
@@ -52,7 +55,7 @@
  */
 
 int gs_server_initialize(int fno_stdin, int fno_stdout, int fno_stderr,
-			 const char *init_str);
+                         const char *init_str);
 
 /*
  * Execute a string containing PostScript code.  The effects of this code
@@ -74,8 +77,8 @@ int gs_server_initialize(int fno_stdin, int fno_stdout, int fno_stderr,
  */
 
 int gs_server_run_string(const char *str, int *exit_code_ptr,
-			 char *errstr, int errstr_max_len,
-			 int *errstr_len_ptr);
+                         char *errstr, int errstr_max_len,
+                         int *errstr_len_ptr);
 
 /*
  * Run a sequence of files containing PostScript code.  If permanent is 0,
@@ -88,8 +91,8 @@ int gs_server_run_string(const char *str, int *exit_code_ptr,
  */
 
 int gs_server_run_files(const char **file_names, int permanent,
-			int *exit_code_ptr, char *errstr,
-			int errstr_max_len, int *errstr_len_ptr);
+                        int *exit_code_ptr, char *errstr,
+                        int errstr_max_len, int *errstr_len_ptr);
 
 /*
  * Terminate Ghostscript.  Ghostscript will release all memory and close
@@ -123,35 +126,35 @@ main(int argc, char *argv[])
     int errlen;
     static const char *fnames[] =
     {"golfer.eps", 0};
-    FILE *cin = fopen("stdin.tmp", "w+");
+    FILE *cin = gp_fopen("stdin.tmp", "w+");
     int sout = open("stdout.tmp", O_WRONLY | O_CREAT | O_TRUNC,
-		    S_IREAD | S_IWRITE);
+                    S_IREAD | S_IWRITE);
     int serr = open("stderr.tmp", O_WRONLY | O_CREAT | O_TRUNC,
-		    S_IREAD | S_IWRITE);
+                    S_IREAD | S_IWRITE);
 
     code = gs_server_initialize(fileno(cin), sout, serr,
-				"/fubar 42 def");
+                                "/fubar 42 def");
     fprintf(stdout, "init: code %d\n", code);
     if (code < 0)
-	goto x;
+        goto x;
     code = gs_server_run_string("fubar == flush", &exit_code,
-				errstr, emax, &errlen);
+                                errstr, emax, &errlen);
     fprintf(stdout, "print: code %d\n", code);
     if (code < 0)
-	goto x;
+        goto x;
     code = gs_server_run_files(fnames, 0, &exit_code,
-			       errstr, emax, &errlen);
+                               errstr, emax, &errlen);
     fprintf(stdout, "golfer: code %d\n", code);
     if (code < 0)
-	goto x;
+        goto x;
     errlen = 0;
     code = gs_server_run_string("fubar 0 div", &exit_code,
-				errstr, emax, &errlen);
+                                errstr, emax, &errlen);
     errstr[errlen] = 0;
     fprintf(stdout, "0 div: code %d object %s\n", code, errstr);
     errlen = 0;
     code = gs_server_run_string("xxx", &exit_code,
-				errstr, emax, &errlen);
+                                errstr, emax, &errlen);
     errstr[errlen] = 0;
     fprintf(stdout, "undef: code %d object %s\n", code, errstr);
   x:code = gs_server_terminate();
@@ -178,7 +181,7 @@ static void errstr_report(ref *, char *, int, int *);
 
 int
 gs_server_initialize(int fno_stdin, int fno_stdout, int fno_stderr,
-		     const char *init_str)
+                     const char *init_str)
 {
     int code, exit_code;	/* discard exit_code for now */
     int errstr_len;		/* discard */
@@ -187,34 +190,34 @@ gs_server_initialize(int fno_stdin, int fno_stdout, int fno_stderr,
     /* Establish C-compatible files for stdout and stderr. */
     c_stdin = fdopen(fno_stdin, "r");
     if (c_stdin == NULL)
-	return -1;
+        return -1;
     c_stdout = fdopen(fno_stdout, "w");
     if (c_stdout == NULL)
-	return -1;
+        return -1;
     c_stderr = fdopen(fno_stderr, "w");
     if (c_stderr == NULL)
-	return -1;
+        return -1;
     /* Initialize the Ghostscript interpreter. */
     if ((code = gs_init0(c_stdin, c_stdout, c_stderr, 0)) < 0 ||
-	(code = gs_init1()) < 0 ||
-	(code = gs_init2()) < 0
-	)
-	return code;
+        (code = gs_init1()) < 0 ||
+        (code = gs_init2()) < 0
+        )
+        return code;
     code = gs_server_run_string("/QUIET true def /NOPAUSE true def",
-				&exit_code,
-				(char *)0, 0, &errstr_len);
+                                &exit_code,
+                                (char *)0, 0, &errstr_len);
     if (code < 0)
-	return code;
+        return code;
     return (init_str == NULL ? 0 :
-	    gs_server_run_string(init_str, &exit_code,
-				 (char *)0, 0, &errstr_len));
+            gs_server_run_string(init_str, &exit_code,
+                                 (char *)0, 0, &errstr_len));
 }
 
 /* Run a string. */
 
 int
 gs_server_run_string(const char *str, int *exit_code_ptr,
-		     char *errstr, int errstr_max_len, int *errstr_len_ptr)
+                     char *errstr, int errstr_max_len, int *errstr_len_ptr)
 {
     ref error_object;
     int code;
@@ -222,8 +225,8 @@ gs_server_run_string(const char *str, int *exit_code_ptr,
     make_tasv(&error_object, t_string, 0, 0, bytes, 0);
     code = gs_run_string(str, 0, exit_code_ptr, &error_object);
     if (code < 0)
-	errstr_report(&error_object, errstr, errstr_max_len,
-		      errstr_len_ptr);
+        errstr_report(&error_object, errstr, errstr_max_len,
+                      errstr_len_ptr);
     return code;
 }
 
@@ -238,15 +241,15 @@ gs_server_run_files(const char **file_names, int permanent,
     const char **pfn;
 
     if (!permanent)
-	job_begin();
+        job_begin();
     make_tasv(&error_object, t_string, 0, 0, bytes, 0);
     for (pfn = file_names; *pfn != NULL && code == 0; pfn++)
-	code = gs_run_file(*pfn, 0, exit_code_ptr, &error_object);
+        code = gs_run_file(*pfn, 0, exit_code_ptr, &error_object);
     if (!permanent)
-	job_end();
+        job_end();
     if (code < 0)
-	errstr_report(&error_object, errstr, errstr_max_len,
-		      errstr_len_ptr);
+        errstr_report(&error_object, errstr, errstr_max_len,
+                      errstr_len_ptr);
     return code;
 }
 
@@ -277,10 +280,10 @@ job_begin()
     extern gs_state *igs;
 
     if ((code = gs_erasepage(igs)) < 0)
-	return code;
+        return code;
     code = zsave(osp);
     if (code == 0)
-	job_save = *osp--;
+        job_save = *osp--;
     return code;
 }
 
@@ -298,17 +301,17 @@ job_end()
 
 static void
 errstr_report(ref * perror_object, char *errstr, int errstr_max_len,
-	      int *errstr_len_ptr)
+              int *errstr_len_ptr)
 {
     int code = obj_cvs(perror_object, (byte *) errstr,
-		       (uint) errstr_max_len, (uint *) errstr_len_ptr,
-		       false);
+                       (uint) errstr_max_len, (uint *) errstr_len_ptr,
+                       false);
 
     if (code < 0) {
-	const char *ustr = "[unprintable]";
-	int len = min(strlen(ustr), errstr_max_len);
+        const char *ustr = "[unprintable]";
+        int len = min(strlen(ustr), errstr_max_len);
 
-	memcpy(errstr, ustr, len);
-	*errstr_len_ptr = len;
+        memcpy(errstr, ustr, len);
+        *errstr_len_ptr = len;
     }
 }

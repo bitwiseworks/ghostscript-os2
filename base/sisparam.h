@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: sisparam.h 8529 2008-02-17 23:25:47Z leonardo $ */
+
 /* Generic image scaling stream definitions */
 /* Requires strimpl.h */
 
@@ -45,22 +47,42 @@
 #define MAX_ISCALE_SUPPORT (1 << LOG2_MAX_ISCALE_SUPPORT)
 
 /* Define image scaling stream parameters. */
+/* We juggle 3 concepts here. Firstly, we are conceptually dealing with an
+ * Entire image (say 256x256) - this size is EntireWidthIn by EntireHeightIn,
+ * and would scale to be EntireWidthOut by EntireHeightOut.
+ * Of this, because of the clist, we may only get data for a section of this
+ * (say 32x32) - this size is WidthIn by HeightIn, and would scale
+ * to be WidthOut by HeightOut.
+ * Finally, we may actually only be rendering a smaller 'patch' of this
+ * due to restriction by a clip path etc (say 16x16) - this size is
+ * PatchWidthIn by PatchHeightIn, and would scale to be PatchWidthOut by
+ * PatchHeightOut.
+ */
 typedef struct stream_image_scale_params_s {
-    int Colors;			/* >= 1 */
+    int spp_decode;		/* >= 1 */
+    int spp_interp;             /* If we do CM first, may not equal spp_decode */
+                                /* 0 < MaxValueIn < 1 << BitsPerComponentIn */
+    int PatchWidthIn, PatchHeightIn;	/* The sizes we need to render > 0 */
+    int PatchWidthOut, PatchHeightOut;	/* The sizes we need to render > 0 */
     int BitsPerComponentIn;	/* bits per input value, 8 or 16 */
     uint MaxValueIn;		/* max value of input component, */
-				/* 0 < MaxValueIn < 1 << BitsPerComponentIn */
-    int WidthIn, HeightIn;	/* > 0 */
     int BitsPerComponentOut;	/* bits per output value, 8 or 16 */
     uint MaxValueOut;		/* max value of output component, */
-				/* 0 < MaxValueOut < 1 << BitsPerComponentOut*/
+                                /* 0 < MaxValueOut < 1 << BitsPerComponentOut*/
+    int WidthIn, HeightIn;	/* The sizes for which we get data > 0 */
     int WidthOut, HeightOut;	/* > 0 */
     bool ColorPolarityAdditive;	/* needed by SpecialDownScale filter */
-    int src_y_offset;		/* Offset of the subimage in the source image. */
+    int src_y_offset;		/* Offset of the subimage (data) in the source image. */
     int EntireWidthIn;		/* Height of entire input image. */
     int EntireHeightIn;		/* Height of entire input image. */
     int EntireWidthOut;		/* Height of entire output image. */
     int EntireHeightOut;	/* Height of entire output image. */
+    bool early_cm;              /* If this is set, then we will perform
+                                   color managment before interpolating */
+    int LeftMarginIn;
+    int LeftMarginOut;
+    int TopMargin;
+    int Active;
 } stream_image_scale_params_t;
 
 /* Define a generic image scaling stream state. */

@@ -1,5 +1,4 @@
 %!
-% $Id: FAPIconfig-FCO 6998 2006-08-18 04:42:11Z ray $
 % This is configuration file for FAPI client.
 
 /FontPath             () % A default directory for FAPI-handled font files path in FAPIfontmap.

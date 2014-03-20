@@ -1,23 +1,27 @@
-#  Copyright (C) 2001-2006 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: ijs.mak 8022 2007-06-05 22:23:38Z giles $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
+#
 # makefile for ijs client library code.
 # Users of this makefile must define the following:
-#	IJSSRCDIR - the icclib source directory
+#	IJSSRCDIR - the ijs source directory
 #	IJSEXECTYPE - which process control code to use
 #		in spawning the server. currently
 #		'unix' and 'win' are supported.
 #	BINDIR - where to put the executible examples
+#	SHARE_IJS - 0 to compile the library, 1 to share
+#	IJS_NAME - if SHARE_IJS = 1, the name of the shared library
 
 # This partial makefile compiles the IJS client library for use in
 # Ghostscript.
@@ -53,15 +57,24 @@ IJSDEP=$(AK)
 
 ijslib_=$(IJSOBJ)ijs.$(OBJ) $(IJSOBJ)ijs_server.$(OBJ) \
     $(IJSOBJ)ijs_client.$(OBJ) $(IJSOBJ)ijs_exec_$(IJSEXECTYPE).$(OBJ)
-$(IJSGEN)ijslib.dev : $(IJS_MAK) $(ECHOGS_XE) $(ijslib_)
-	$(SETMOD) $(IJSGEN)ijslib $(ijslib_)
+
+$(IJSGEN)ijslib_0.dev : $(TOP_MAKEFILES) $(IJS_MAK) $(ECHOGS_XE) $(ijslib_)
+	$(SETMOD) $(IJSGEN)ijslib_0 $(ijslib_)
+
+$(IJSGEN)ijslib_1.dev : $(TOP_MAKEFILES) $(IJS_MAK) $(ECHOGS_XE)
+	$(SETMOD) $(IJSGEN)ijslib_1 -lib $(IJS_NAME)
+
+
+$(IJSGEN)ijslib.dev : $(TOP_MAKEFILES) $(IJS_MAK) $(IJSGEN)ijslib_$(SHARE_IJS).dev
+	$(CP_) $(IJSGEN)ijslib_$(SHARE_IJS).dev $(IJSGEN)ijslib.dev
+
 
 ijs_h=$(IJSSRC)ijs.h
 
 ijs_client_h=$(IJSSRC)$(D)ijs_client.h
 ijs_server_h=$(IJSSRC)$(D)ijs_server.h
 
-$(IJSOBJ)ijs.$(OBJ) : $(IJSSRC)ijs.c $(IJSDEP) $(ijs_h)
+$(IJSOBJ)ijs.$(OBJ) : $(IJSSRC)ijs.c $(IJSDEP) $(ijs_h) $(ECHOGS_XE)
 #	echo $(IJS_CCFLAGS)
 	$(EXP)$(ECHOGS_XE) $(IJS_CCFLAGS)
 	$(IJS_CC) $(IJSO_)ijs.$(OBJ) $(C_) $(IJSSRC)ijs.c

@@ -1,4 +1,3 @@
-/* $Id: ps2pdf.cmd 8244 2007-09-18 19:01:34Z giles $ */
 /*
  * This file is maintained by a user: if you have any questions about it,
  * please contact Mark Hale (mark.hale@physics.org).
@@ -35,7 +34,7 @@ if outfile='' then do
 	infile=infile''inext
 end
 
-gs options '-q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -sOutputFile='outfile options '-c save pop -f' infile
+gs options '-q -P- -dSAFER -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -sOutputFile='outfile options '-c save pop -f' infile
 exit
 
 usage:

@@ -1,16 +1,17 @@
-#  Copyright (C) 2001-2007 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: macos-mcp.mak 10284 2009-11-05 22:24:30Z ray $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 # Makefile for CodeWarrior XML project file creation from Darwin/MacOSX.
 
 # Run this file through make on MacOS X (or any other system with shell
@@ -27,8 +28,11 @@
 
 BINDIR=./bin
 GLSRCDIR=./base
+DEVSRCDIR=./devices
 GLGENDIR=./obj
 GLOBJDIR=./obj
+DEVGENDIR=./obj
+DEVOBJDIR=./obj
 PSSRCDIR=./psi
 PSLIBDIR=./lib
 PSRESDIR=./Resource
@@ -53,12 +57,9 @@ GS_DOCDIR=:doc
 
 # Define whether or not searching for initialization files should always
 # look in the current directory first.  This leads to well-known security
-# and confusion problems, but users insist on it.
-# NOTE: this also affects searching for files named on the command line:
-# see the "File searching" section of Use.htm for full details.
-# Because of this, setting SEARCH_HERE_FIRST to 0 is not recommended.
+# and confusion problems,  but may be convenient sometimes.
 
-SEARCH_HERE_FIRST=1
+SEARCH_HERE_FIRST=0
 
 # Define the name of the interpreter initialization file.
 # (There is no reason to change this.)
@@ -75,7 +76,7 @@ GS=macgs
 
 # Define the platform name.
 
-PLATFORM=macos_
+GSPLATFORM=macos_
 
 
 # don't use any shared libraries, they are compiled into the Ghostscript Lib
@@ -96,7 +97,7 @@ JSRCDIR=jpeg
 # Define the directory where the PNG library sources are stored,
 # and the version of the library that is stored there.
 # You may need to change this if the libpng version changes.
-# See libpng.mak for more information.
+# See png.mak for more information.
 
 PNGSRCDIR=libpng
 
@@ -111,20 +112,24 @@ ZSRCDIR=zlib
 JBIG2_LIB=jbig2dec
 JBIG2SRCDIR=jbig2dec
 
-# Define the japser library source location.
-# See jasper.mak for more information.
+# Define the directory where the lcms source is stored.
+# See lcms.mak for more information
 
-JPX_LIB=jasper
-JPXSRCDIR=jasper
+LCMSSRCDIR=lcms
 
-# Define the directory where the icclib source are stored.
-# See icclib.mak for more information
+# Define the directory where the lcms2 source is stored.
+# See lcms2.mak for more information
 
-ICCSRCDIR=icclib
+LCMS2SRCDIR=lcms2
+
+# Which CMS are we using?
+# Options are currently lcms or lcms2
+
+WHICH_CMS=lcms2
 
 # IJS has not been ported to MacOS Classic. If you do the port,
 # you'll need to set these values. You'll also need to
-# include the ijs.mak makefile (right after icclib.mak).
+# include the ijs.mak makefile
 #
 # Define the directory where the ijs source is stored,
 # and the process forking method to use for the server.
@@ -132,11 +137,6 @@ ICCSRCDIR=icclib
 
 #IJSSRCDIR=ijs
 #IJSEXECTYPE=unix
-
-# Define the directory where the imdi library source is stored.
-# See devs.mak for more information
-
-IMDISRCDIR=imdi
 
 # ------ Platform-specific options ------ #
 
@@ -154,6 +154,9 @@ STDLIBS=
 # No real sync in MacOS 8/9, so leave it at nosync
 
 SYNC=nosync
+
+# define the file name extension for a shared lib
+DYNANIC_LIB_EXT=dylib
 
 # ------ Devices and features ------ #
 
@@ -227,13 +230,13 @@ DEVICE_DEVS7=$(DD)faxg3.dev $(DD)faxg32d.dev $(DD)faxg4.dev
 DEVICE_DEVS8=$(DD)pcxmono.dev $(DD)pcxgray.dev $(DD)pcx16.dev $(DD)pcx256.dev $(DD)pcx24b.dev $(DD)pcxcmyk.dev
 DEVICE_DEVS9=$(DD)pbm.dev $(DD)pbmraw.dev $(DD)pgm.dev $(DD)pgmraw.dev $(DD)pgnm.dev $(DD)pgnmraw.dev $(DD)pnm.dev $(DD)pnmraw.dev $(DD)ppm.dev $(DD)ppmraw.dev $(DD)pkm.dev $(DD)pkmraw.dev $(DD)pksm.dev $(DD)pksmraw.dev $(DD)pamcmyk32.dev
 DEVICE_DEVS10=$(DD)tiffcrle.dev $(DD)tiffg3.dev $(DD)tiffg32d.dev $(DD)tiffg4.dev $(DD)tifflzw.dev $(DD)tiffpack.dev
-DEVICE_DEVS11=$(DD)tiff12nc.dev $(DD)tiff24nc.dev $(DD)tiffgray.dev $(DD)tiff32nc.dev $(DD)tiffsep.dev $(DD)tiffsep1.dev
-DEVICE_DEVS12=$(DD)psmono.dev $(DD)psgray.dev $(DD)psrgb.dev $(DD)bit.dev $(DD)bitrgb.dev $(DD)bitcmyk.dev
-DEVICE_DEVS13=$(DD)pngmono.dev $(DD)pnggray.dev $(DD)png16.dev $(DD)png256.dev $(DD)png16m.dev
+DEVICE_DEVS11=$(DD)tiff12nc.dev $(DD)tiff24nc.dev $(DD)tiffgray.dev $(DD)tiff32nc.dev $(DD)tiffsep.dev $(DD)tiffsep1.dev $(DD)tiffscaled.dev $(DD)tiffscaled8.dev $(DD)tiffscaled24.dev $(DD)tiffscaled32.dev
+DEVICE_DEVS12=$(DD)bit.dev $(DD)bitrgb.dev $(DD)bitcmyk.dev
+DEVICE_DEVS13=$(DD)pngmono.dev $(DD)pngmonod.dev $(DD)pnggray.dev $(DD)png16.dev $(DD)png256.dev $(DD)png16m.dev
 DEVICE_DEVS14=$(DD)jpeg.dev $(DD)jpeggray.dev $(DD)jpegcmyk.dev
-DEVICE_DEVS15=$(DD)pdfwrite.dev $(DD)pswrite.dev $(DD)ps2write.dev $(DD)epswrite.dev $(DD)txtwrite.dev $(DD)pxlmono.dev $(DD)pxlcolor.dev
+DEVICE_DEVS15=$(DD)pdfwrite.dev $(DD)ps2write.dev $(DD)epswrite.dev $(DD)txtwrite.dev $(DD)pxlmono.dev $(DD)pxlcolor.dev
 
-DEVICE_DEVS16=$(DD)bbox.dev
+DEVICE_DEVS16=$(DD)bbox.dev $(DD)inkcov.dev
 DEVICE_DEVS17=
 DEVICE_DEVS18=
 DEVICE_DEVS19=
@@ -262,12 +265,14 @@ CCAUX=cc
 # specific few files that need this.  We may turn off others in the future.
 CC_NO_WARN=$(CC_) -Wno-cast-qual -Wno-traditional
 
+LD_SET_DT_SONAME=-soname=
+
 # ---------------- End of platform-specific section ---------------- #
 
 include $(GLSRCDIR)/unixhead.mak
 
 # Redefine the platform name before going on
-PLATFORM=macos_
+GSPLATFORM=macos_
 
 include $(GLSRCDIR)/gs.mak
 # psromfs.mak must precede lib.mak
@@ -275,14 +280,13 @@ include $(PSSRCDIR)/psromfs.mak
 include $(GLSRCDIR)/lib.mak
 include $(PSSRCDIR)/int.mak
 include $(GLSRCDIR)/jpeg.mak
-# zlib.mak must precede libpng.mak
+# zlib.mak must precede png.mak
 include $(GLSRCDIR)/zlib.mak
-include $(GLSRCDIR)/libpng.mak
+include $(GLSRCDIR)/png.mak
 include $(GLSRCDIR)/jbig2.mak
-include $(GLSRCDIR)/jasper.mak
 include $(GLSRCDIR)/ldf_jb2.mak
 include $(GLSRCDIR)/lwf_jp2.mak
-include $(GLSRCDIR)/icclib.mak
+include $(GLSRCDIR)/openjpeg.mak
 include $(GLSRCDIR)/devs.mak
 include $(GLSRCDIR)/contrib.mak
 #include $(GLSRCDIR)/unix-aux.mak
@@ -310,7 +314,6 @@ $(GLD)macos.dev: $(macos_) $(GLOBJ)gdevemap.$(OBJ)
 
 $(GLOBJ)gdevmac.$(OBJ): $(GLSRC)gdevmac.c $(gp_mac_h) $(gdevmac_h)
 $(GLOBJ)gdevemap.$(OBJ): $(GLSRC)gdevemap.c
-$(GLOBJ)gdevmacxf.$(OBJ):  $(GLSRC)gdevmacxf.c
 
 # -------------------- Platform specific sources -------------------- #
 
@@ -326,7 +329,7 @@ $(GLOBJ)gp_stdin.$(OBJ): $(GLSRC)gp_stdin.c $(AK) $(stdio__h) $(gx_h) $(gp_h)
 
 # ------------------------------------------------------------------- #
 
-MAC1=$(GLOBJ)gp_macio.$(OBJ) $(GLOBJ)gp_mac.$(OBJ) $(GLOBJ)gdevmacxf.$(OBJ) $(GLOBJ)gp_stdin.$(OBJ)
+MAC1=$(GLOBJ)gp_macio.$(OBJ) $(GLOBJ)gp_mac.$(OBJ) $(GLOBJ)gp_stdin.$(OBJ)
 MAC2=$(GLOBJ)gp_getnv.$(OBJ) $(GLOBJ)gp_paper.$(OBJ) $(GLOBJ)gp_nsync.$(OBJ) $(GLOBJ)gdevemap.$(OBJ) $(GLOBJ)gsdll.$(OBJ)
 
 $(GLD)macos_.dev: $(MAC1)
@@ -366,9 +369,6 @@ $(GENDEV_XE): $(GLSRC)gendev.c $(AK) $(GENDEV_DEPS)
 
 $(GENHT_XE): $(GLSRC)genht.c $(AK) $(GENHT_DEPS)
 	$(CCAUX) $(GENHT_CFLAGS) $(O_)$(GENHT_XE) $(GLSRC)genht.c
-
-$(GENINIT_XE): $(GLSRC)geninit.c $(AK) $(GENINIT_DEPS)
-	$(CCAUX) $(I_)$(GLSRCDIR)$(_I) $(O_)$(GENINIT_XE) $(GLSRC)geninit.c
 
 
 MKROMFS_OBJS=$(MKROMFS_ZLIB_OBJS) \

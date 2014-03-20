@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2007 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsrefct.h 8463 2007-12-22 19:13:20Z giles $ */
+
 /* Reference counting definitions */
 
 #ifndef gsrefct_INCLUDED
@@ -38,10 +40,10 @@
  *      rc_decrement(pobj);
  *      rc_decrement_only(pobj);
  * Both decrement the reference count, and free the object if that
- * was the last reference. The difference is that rc_decrement() 
- * also assigns zero to its argument, while rc_decrement_only() 
- * does not. The first must be used if the argument could be traceable 
- * by the allocator to avoid examining stale memory when a garbage 
+ * was the last reference. The difference is that rc_decrement()
+ * also assigns zero to its argument, while rc_decrement_only()
+ * does not. The first must be used if the argument could be traceable
+ * by the allocator to avoid examining stale memory when a garbage
  * collector runs. The second must be used if the pointer argument
  * is read-only.
  */
@@ -57,10 +59,10 @@ struct rc_header_s {
 #ifdef DEBUG
 void rc_trace_init_free(const void *vp, const rc_header *prc);
 void rc_trace_free_struct(const void *vp, const rc_header *prc,
-			  client_name_t cname);
+                          client_name_t cname);
 void rc_trace_increment(const void *vp, const rc_header *prc);
 void rc_trace_adjust(const void *vp, const rc_header *prc, int delta);
-#define IF_RC_DEBUG(call) if (gs_debug_c('^')) dlputs(""), call
+#define IF_RC_DEBUG(call) BEGIN if (gs_debug_c('^')) { dlputs(""); call; } END
 #else
 #define IF_RC_DEBUG(call) DO_NOTHING
 #endif
@@ -72,7 +74,7 @@ rc_free_proc(rc_free_struct_only);
  * rc_init[_free] really should be used only to initialize
  * stack-allocated structures; with heap-allocated structures, it's
  * better to use a finalize method so that the garbage collector can
- * clean them up if the refcount fails to reach zero. 
+ * clean them up if the refcount fails to reach zero.
  */
 #define rc_init_free(vp, mem, rcinit, proc)\
   BEGIN\
@@ -146,8 +148,8 @@ rc_free_proc(rc_free_struct_only);
 #  define rc_check_(vp)\
      BEGIN\
        if (gs_debug_c('?') && (vp)->rc.ref_count < 0)\
-	 lprintf2("0x%lx has ref_count of %ld!\n", (ulong)(vp),\
-		  (vp)->rc.ref_count);\
+         lprintf2("0x%lx has ref_count of %ld!\n", (ulong)(vp),\
+                  (vp)->rc.ref_count);\
      END
 #else
 #  define rc_check_(vp) DO_NOTHING
@@ -157,10 +159,10 @@ rc_free_proc(rc_free_struct_only);
     if (vp) {\
       RC_DO_ADJUST(vp, delta);\
       if (!(vp)->rc.ref_count) {\
-	rc_free_struct(vp, cname);\
-	body;\
+        rc_free_struct(vp, cname);\
+        body;\
       } else\
-	rc_check_(vp);\
+        rc_check_(vp);\
     }\
   END
 #define rc_adjust(vp, delta, cname)\

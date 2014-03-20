@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gscindex.h 8868 2008-07-23 23:29:39Z mvrhel $ */
+
 /* Client interface to Indexed color facilities */
 
 #ifndef gscindex_INCLUDED
@@ -44,40 +46,40 @@
  * few instances in which the client would need to replace them.
  */
 extern int gs_cspace_build_Indexed(
-				   gs_color_space ** ppcspace,
-				   gs_color_space * pbase_cspace,
-				   uint num_entries,
-				   const gs_const_string * ptbl,
-				   gs_memory_t * pmem
-				   );
+                                   gs_color_space ** ppcspace,
+                                   gs_color_space * pbase_cspace,
+                                   uint num_entries,
+                                   const gs_const_string * ptbl,
+                                   gs_memory_t * pmem
+                                   );
 
 /* Return the number of entries in the palette of an indexed color space. */
 extern int gs_cspace_indexed_num_entries(
-					 const gs_color_space * pcspace
-					 );
+                                         const gs_color_space * pcspace
+                                         );
 
 /* In the case of a procedure-based indexed color space, get a pointer to */
 /* the array of cached values. */
 extern float *gs_cspace_indexed_value_array(
-					    const gs_color_space * pcspace
-					    );
+                                            const gs_color_space * pcspace
+                                            );
 
 /* Set the lookup procedure to be used for an Indexed color space. */
 extern int gs_cspace_indexed_set_proc(
-				      gs_color_space * pcspace,
-				      int (*proc) (const gs_color_space *, int, float *)
-				      );
+                                      gs_color_space * pcspace,
+                                      int (*proc) (const gs_color_space *, int, float *)
+                                      );
 
 /* Look up an index in an Indexed color space. */
 int gs_cspace_indexed_lookup(const gs_color_space *, int,
-			     gs_client_color *);
+                             gs_client_color *);
 
 /* Look up an index in an Indexed color space. Return as a byte */
 int gs_cspace_indexed_lookup_bytes(const gs_color_space *pcs, float index_float,
-			unsigned char *output);
+                        unsigned char *output);
 
 /* Look up an index in an Indexed color space. Return as a frac */
 int gs_cspace_indexed_lookup_frac(const gs_color_space *pcs, float index_float,
-			frac *output);
+                        frac *output);
 
 #endif /* gscindex_INCLUDED */

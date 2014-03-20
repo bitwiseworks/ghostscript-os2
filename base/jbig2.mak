@@ -1,16 +1,18 @@
-#  Copyright (C) 2003-2006 Artifex Software, Inc.
-#  All Rights Reserved.
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
 #
-#  This software is provided AS-IS with no warranty, either express or
-#  implied.
+# This software is provided AS-IS with no warranty, either express or
+# implied.
 #
-#  This software is distributed under license and may not be copied, modified
-#  or distributed except as expressly authorized under the terms of that
-#  license.  Refer to licensing information at http://www.artifex.com/
-#  or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-#  San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
 #
-# $Id: jbig2.mak 8634 2008-04-10 22:08:20Z giles $
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
+#
 
 # makefile for jbig2dec library code.
 # Users of this makefile must define the following:
@@ -54,6 +56,7 @@ libjbig2_OBJS2=\
         $(JBIG2OBJ)jbig2_segment.$(OBJ) \
         $(JBIG2OBJ)jbig2_symbol_dict.$(OBJ) \
         $(JBIG2OBJ)jbig2_text.$(OBJ) \
+        $(JBIG2OBJ)jbig2_halftone.$(OBJ) \
         $(JBIG2OBJ)jbig2_metadata.$(OBJ) $(JBIG2_EXTRA_OBJS)
 
 libjbig2_OBJS=$(libjbig2_OBJS1) $(libjbig2_OBJS2)
@@ -71,6 +74,7 @@ libjbig2_HDRS=\
         $(JBIG2SRC)jbig2_priv.h \
         $(JBIG2SRC)jbig2_symbol_dict.h \
         $(JBIG2SRC)jbig2_text.h \
+        $(JBIG2SRC)jbig2_halftone.h \
         $(JBIG2SRC)jbig2_metadata.h \
         $(JBIG2SRC)config_win32.h
 
@@ -89,7 +93,7 @@ jbig2.config-clean :
 
 JBIG2DEP=$(AK)
 
-JBIG2_CC=$(CC_) $(CFLAGS) $(I_)$(JBIG2GENDIR) $(II)$(JB2I_)$(_I) $(JB2CF_)
+JBIG2_CC=$(CC_) $(CFLAGS) $(I_)$(JBIG2GENDIR) $(II)$(JB2I_)$(_I) $(JB2CF_) -DGSBUILD
 JBIG2O_=$(O_)$(JBIG2OBJ)
 
 # switch in the version of libjbig2.dev we're actually using
@@ -160,6 +164,9 @@ $(JBIG2OBJ)jbig2_symbol_dict.$(OBJ) : $(JBIG2SRC)jbig2_symbol_dict.c $(libjbig2_
 
 $(JBIG2OBJ)jbig2_text.$(OBJ) : $(JBIG2SRC)jbig2_text.c $(libjbig2_HDRS) $(JBIG2DEP)
 	$(JBIG2_CC) $(JBIG2O_)jbig2_text.$(OBJ) $(C_) $(JBIG2SRC)jbig2_text.c
+
+$(JBIG2OBJ)jbig2_halftone.$(OBJ) : $(JBIG2SRC)jbig2_halftone.c $(libjbig2_HDRS) $(JBIG2DEP)
+	$(JBIG2_CC) $(JBIG2O_)jbig2_halftone.$(OBJ) $(C_) $(JBIG2SRC)jbig2_halftone.c
 
 $(JBIG2OBJ)jbig2_metadata.$(OBJ) : $(JBIG2SRC)jbig2_metadata.c $(libjbig2_HDRS) $(JBIG2DEP)
 	$(JBIG2_CC) $(JBIG2O_)jbig2_metadata.$(OBJ) $(C_) $(JBIG2SRC)jbig2_metadata.c

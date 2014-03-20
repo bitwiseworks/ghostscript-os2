@@ -1,16 +1,18 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
-/* $Id: gconf.c 8250 2007-09-25 13:31:24Z giles $ */
+
 /* Configuration tables */
 #include "memory_.h"
 #include "gx.h"
@@ -22,6 +24,7 @@
 #include "gxiodev.h"
 #include "gxiparam.h"
 #include "gxcomp.h"
+#include "gxfapi.h"
 
 /*
  * The makefile generates the file gconfig.h, which consists of
@@ -91,7 +94,7 @@ static const gs_composite_type_t *const gx_compositor_list[] = {
 static const gx_device *gx_device_list[1024] = {
   /* as shared library are adding drivers here, so removed constness */
 #include "gconf.h"
-	 0
+         0
 };
 #undef device2_
 #undef device_
@@ -168,19 +171,39 @@ gs_find_compositor(int comp_id)
 extern_gs_lib_device_list();
 int
 gs_lib_device_list(const gx_device * const **plist,
-		   gs_memory_struct_type_t ** pst)
+                   gs_memory_struct_type_t ** pst)
 {
     int i;
 
     if (plist != 0)
-	*plist = gx_device_list;
+        *plist = gx_device_list;
     if (pst != 0)
-	*pst = NULL;
+        *pst = NULL;
 
     for (i = 0; i < countof(gx_device_list) - 1; ++i)
       if (!gx_device_list[i])
-	break;
+        break;
     return i;
+}
+
+/* Font API support  */
+#define fapi_(func) extern fapi_init_func(func);
+#include "gconf.h"
+#undef fapi_
+
+gs_fapi_server_init_func gs_fapi_server_inits[] = {
+#define fapi_(init_func) init_func,
+#include "gconf.h"
+#undef fapi_
+  NULL
+};
+
+extern_gs_get_fapi_server_inits();
+
+const gs_fapi_server_init_func *
+gs_get_fapi_server_inits(void)
+{
+    return(gs_fapi_server_inits);
 }
 
 #ifdef GS_DEVS_SHARED

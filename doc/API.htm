@@ -1,8 +1,8 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
 <html>
 <head>
+<meta http-equiv="content-type" content="text/html; charset=us-ascii">
 <title>The Ghostscript Interpreter Application Programming Interface (API)</title>
-<!-- $Id: API.htm 10732 2010-02-10 18:17:48Z giles $ -->
 <!-- Supercedes the API in DLL.htm -->
 <link rel="stylesheet" type="text/css" href="gs.css" title="Ghostscript Style">
 </head>
@@ -30,6 +30,7 @@
 <li><a href="#set_stdio"><code>gsapi_set_stdio</code></a>
 <li><a href="#set_poll"><code>gsapi_set_poll</code></a>
 <li><a href="#set_display_callback"><code>gsapi_set_display_callback</code></a>
+<li><a href="#set_arg_encoding"><code>gsapi_set_arg_encoding</code></a>
 <li><a href="#run"><code>gsapi_run_string_begin</code></a>
 <li><a href="#run"><code>gsapi_run_string_continue</code></a>
 <li><a href="#run"><code>gsapi_run_string_end</code></a>
@@ -110,7 +111,7 @@ by multiple applications at once.
 
 <p>
 The source for the executable is in <code>dw</code>*.* (Windows),
-<code>dp</code>*.* (OS/2) and  <b><tt>dx</tt></b>*.* (Linux).  
+<code>dp</code>*.* (OS/2) and  <code>dx</code>*.* (Linux).  
 See these source files for examples of how to use the DLL. A similar
 example for MacOS using the Carbon API is provided in <code>dm</code>*.*.
 
@@ -180,6 +181,12 @@ int
 int 
 <a href="#set_display_callback">gsapi_set_display_callback</a>
 (void *instance, display_callback *callback);
+</code>
+
+<li><code>
+int 
+<a href="#set_arg_encoding">gsapi_set_arg_encoding</a>
+(void *instance, int encoding);
 </code>
 
 <li><code>
@@ -261,7 +268,7 @@ typedef struct gsapi_revision_s {
 gsapi_revision_t r;
 
 if (gsapi_revision(&amp;r, sizeof(r)) == 0) {
-    if (r.revision < 650)
+    if (r.revision &lt; 650)
        printf("Need at least Ghostscript 6.50");
 }
 else {
@@ -276,7 +283,21 @@ else {
 Create a new instance of Ghostscript.
 This instance is passed to most other gsapi functions.
 The caller_handle will be provided to callback functions.
-<b>At this stage, Ghostscript supports only one instance</b>.
+
+<b>Unless Ghostscript has been compiled with the </code>GS_THREADSAFE</code>
+define, only one instance at a time is supported.</b>
+
+<p>Historically, Ghostscript has only supported a single instance; any
+attempt to create more than one at a time would result in gsapi_new_instance
+returning an error. Experimental work has been done to lift this
+restriction; if Ghostscript is compiled with the GS_THREADSAFE define
+then multiple concurrent instances are permitted.
+
+<p>While the core Ghostscript devices are believed to be thread safe
+now, certain devices are known not to be (particularly the contrib
+devices). The makefiles currently make no attempt to exclude these
+from builds. If you enable GS_THREADSAFE then you should check to ensure
+that you do not rely on such devices (check for global variable use).
 </blockquote>
 
 
@@ -285,7 +306,7 @@ The caller_handle will be provided to callback functions.
 Destroy an instance of Ghostscript.
 Before you call this, Ghostscript must have finished.
 If Ghostscript has been initialised, you must call 
-<code>gsapi_exit</code> before <b><tt>gsapi_delete_instance</tt></b>.
+<code>gsapi_exit</code> before <code>gsapi_delete_instance</code>.
 </blockquote>
 
 
@@ -301,14 +322,19 @@ the number of characters written.
 
 <h3><a name="set_poll"></a><code>gsapi_set_poll()</code></h3>
 <blockquote>
-Set the callback function for polling.
-This is used for handling window events or cooperative
-multitasking.  This function will only be called if
+Set the callback function for polling. This function will only be called if
 the Ghostscript interpreter was compiled with <code>CHECK_INTERRUPTS</code>
 as described in <code><a href="../base/gpcheck.h">gpcheck.h</a></code>.
-The polling function should return zero if all is well,
-and return negative if it wants ghostscript to abort.
-The polling function must be fast.
+<p>
+The polling function should return zero if all is well, and return
+negative if it wants ghostscript to abort. This is often
+used for checking for a user cancel. This can also be used for
+handling window events or cooperative multitasking.
+<p>
+The polling function is called very frequently during interpretation and
+rendering so it must be fast. If the function is slow, then using a counter
+to return 0 immediately some number of times can be used to reduce the
+performance impact.
 </blockquote>
 
 <h3><a name="set_display_callback"></a><code>gsapi_set_display_callback()</code></h3>
@@ -320,6 +346,20 @@ this must be called after
 and before <code>gsapi_init_with_args()</code>.
 See <code><a href="../base/gdevdsp.h">gdevdsp.h</a></code>
 for more details.
+</blockquote>
+
+<h3><a name="set_arg_encoding"></a><code>gsapi_set_arg_encoding()</code></h3>
+<blockquote>
+Set the encoding used for the interpretation of all subsequent args
+supplied via the gsapi interface on this instance. By default we
+expect args to be in encoding 0 (the 'local' encoding for this OS).
+On Windows this means "the currently selected codepage". On Linux this
+typically means utf8. This means that omitting to call this function
+will leave Ghostscript running exactly as it always has. Please note
+that use of the 'local' encoding is now deprecated and should be
+avoided in new code.
+This must be called after  <code>gsapi_new_instance()</code>
+and before <code>gsapi_init_with_args()</code>.
 </blockquote>
 
 <h3><a name="init"></a><code>gsapi_init_with_args()</code></h3>
@@ -337,7 +377,7 @@ are argv[1] to argv[argc-1].
 <blockquote>
 The <code>gsapi_run_*</code> functions are like 
 <code>gs_main_run_*</code> except that the error_object is omitted.
-If these functions return <= -100, either quit or a fatal
+If these functions return &lt;= -100, either quit or a fatal
 error has occured.  You must call <code>gsapi_exit()</code> next.
 The only exception is <code>gsapi_run_string_continue()</code>
 which will return <code>e_NeedInput</code> if all is well.
@@ -350,7 +390,7 @@ errors should be handled through the normal mechanisms within the
 interpreted code. If set to a negative value, the functions will return 
 an error code directly to the caller, bypassing the interpreted 
 language. The interpreted language's error handler is bypassed, regardless of 
-<code>user_errors</code> parameter, for the <b><tt>e_interrupt</tt></b> 
+<code>user_errors</code> parameter, for the <code>e_interrupt</code> 
 generated when <a href="#set_poll">the polling callback</a> returns a negative 
 value. A positive <code>user_errors</code> is treated the same as zero.
 <p>
@@ -380,7 +420,7 @@ This function is useful for debug clients only. Release clients must not call it
 <h3><a name="return_codes"></a>Return codes</h3>
 
 <p>
-The <code>gsapi_init_with_args</code>, <b><tt>gsapi_run_*</tt></b> and
+The <code>gsapi_init_with_args</code>, <code>gsapi_run_*</code> and
 <code>gsapi_exit</code> functions return an integer code.
 
 <p>
@@ -453,7 +493,7 @@ same directory as the example source.</p>
 <pre>
 /* Example of using GS DLL as a ps2pdf converter.  */
 
-#if defined(_WIN32) && !defined(_Windows)
+#if defined(_WIN32) &amp;&amp; !defined(_Windows)
 # define _Windows
 #endif
 #ifdef _Windows
@@ -489,7 +529,9 @@ int main(int argc, char *argv[])
     code = gsapi_new_instance(&amp;minst, NULL);
     if (code &lt; 0)
 	return 1;
-    code = gsapi_init_with_args(minst, gsargc, gsargv);
+    code = gsapi_set_arg_encoding(minst, GS_ARG_ENCODING_UTF8);
+    if (code == 0)
+        code = gsapi_init_with_args(minst, gsargc, gsargv);
     code1 = gsapi_exit(minst);
     if ((code == 0) || (code == e_Quit))
 	code = code1;
@@ -506,7 +548,7 @@ int main(int argc, char *argv[])
 <pre>
 /* Similar to command line gs */
 
-#if defined(_WIN32) && !defined(_Windows)
+#if defined(_WIN32) &amp;&amp; !defined(_Windows)
 # define _Windows
 #endif
 #ifdef _Windows
@@ -563,10 +605,12 @@ int main(int argc, char *argv[])
     int exit_code;
 
     code = gsapi_new_instance(&amp;minst, NULL);
-    if (code < 0)
+    if (code &lt; 0)
 	return 1;
     gsapi_set_stdio(minst, gsdll_stdin, gsdll_stdout, gsdll_stderr);
-    code = gsapi_init_with_args(minst, argc, argv);
+    code = gsapi_set_arg_encoding(minst, GS_ARG_ENCODING_UTF8);
+    if (code == 0)
+        code = gsapi_init_with_args(minst, argc, argv);
     if (code == 0)
 	code = gsapi_run_string(minst, start_string, 0, &amp;exit_code);
     code1 = gsapi_exit(minst);
@@ -594,9 +638,11 @@ int main(int argc, char *argv[])
     int exit_code;
 
     code = gsapi_new_instance(&amp;minst, NULL);
-    if (code < 0)
+    if (code &lt; 0)
 	return 1;
-    code = gsapi_init_with_args(minst, argc, argv);
+    code = gsapi_set_arg_encoding(minst, GS_ARG_ENCODING_UTF8);
+    if (code == 0)
+        code = gsapi_init_with_args(minst, argc, argv);
 
     if (code == 0) {
 	gsapi_run_string_begin(minst, 0, &amp;exit_code);
@@ -678,8 +724,43 @@ The callbacks are for device open, close, resize, sync, page,
 memory allocation and updating.
 Each callback function contains a handle can be set using
 <blockquote>
+  -sDisplayHandle=1234
+</blockquote>
+<p>
+Where "1234" is a string. The API was changed to use a string
+rather than an integer/long value when support for 64 bit systems
+arrived. A display "handle" is often a pointer, and since these
+command line options have to survive being processed by Postscript
+machinery, and Postscript only permits 32 bit number values, a
+different representation was required. Hence changing the value
+to a string, so that 64 bit values can be supported. The string
+formats allowed are:
+<blockquote>
+<code>1234</code> - implicit base 10
+</blockquote>
+<blockquote>
+<code>10#1234</code> - explicit base 10
+</blockquote>
+<blockquote>
+<code>16#04d2</code> - explicit base 16
+</blockquote>
+<p>
+The "number string" is parsed by the display device to retrieve
+the number value, and is then assigned to the void pointer
+parameter "pHandle" in the display device structure. Thus, for
+a trivial example, passing <code>-sDisplayHandle=0</code> will result
+in the first parameter passed to your display device callbacks being:
+<code>(void *)0</code>.
+<p>
+The previous API, using a number value:
+<blockquote>
   -dDisplayHandle=1234
 </blockquote>
+<p>
+is still supported on 32 bit systems, but will cause a "typecheck"
+error on 64 bit systems, and is considered deprecated. It should
+not be used in new code.
+
 <p>
 The device raster format can be configured using
 <blockquote>
@@ -760,10 +841,10 @@ or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
 San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
 
 <p>
-<small>Ghostscript version 8.71, 10 February 2010
+<small>Ghostscript version 9.10, 30 August 2013
 
 
 <!-- [3.0 end visible trailer] ============================================= -->
 
-</small></body>
+</body>
 </html>

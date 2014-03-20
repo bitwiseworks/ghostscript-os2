@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxht.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Rest of (client) halftone definitions */
 
 #ifndef gxht_INCLUDED
@@ -49,7 +51,7 @@
  * and this holds true for the graphic library as well.
  *
  * Note also that implementing a generalized halftone cache is not trivial,
- * as the device-specific representation of spot halftones depends on the 
+ * as the device-specific representation of spot halftones depends on the
  * default transformation for the device, and more generally the device
  * specific representation of halftones may depend on the sense of the device
  * (additive or subtract). Hence, a halftone cache would need to be keyed
@@ -116,9 +118,9 @@ typedef struct gs_client_order_ht_procs_s {
      */
 
     int (*create_order) (gx_ht_order * porder,
-			 gs_state * pgs,
-			 const gs_client_order_halftone * phcop,
-			 gs_memory_t * mem);
+                         gs_state * pgs,
+                         const gs_client_order_halftone * phcop,
+                         gs_memory_t * mem);
 
 } gs_client_order_ht_procs_t;
 struct gs_client_order_halftone_s {
@@ -138,10 +140,10 @@ typedef struct gs_halftone_component_s {
     int cname;
     gs_halftone_type type;
     union {
-	gs_spot_halftone spot;	/* Type 1 */
-	gs_threshold_halftone threshold;	/* Type 3 */
-	gs_threshold2_halftone threshold2;	/* Extended Type 3 */
-	gs_client_order_halftone client_order;	/* client order */
+        gs_spot_halftone spot;	/* Type 1 */
+        gs_threshold_halftone threshold;	/* Type 3 */
+        gs_threshold2_halftone threshold2;	/* Extended Type 3 */
+        gs_client_order_halftone client_order;	/* client order */
     } params;
 } gs_halftone_component;
 
@@ -164,7 +166,7 @@ typedef struct gs_multiple_halftone_s {
     gs_halftone_component *components;
     uint num_comp;
     int (*get_colorname_string)(const gs_memory_t *mem, gs_separation_name colorname_index,
-		unsigned char **ppstr, unsigned int *pname_size);
+                unsigned char **ppstr, unsigned int *pname_size);
 } gs_multiple_halftone;
 
 #define st_multiple_halftone_max_ptrs 1
@@ -182,13 +184,13 @@ struct gs_halftone_s {
     gs_halftone_type type;
     rc_header rc;
     union {
-	gs_screen_halftone screen;	/* setscreen */
-	gs_colorscreen_halftone colorscreen;	/* setcolorscreen */
-	gs_spot_halftone spot;	/* Type 1 */
-	gs_threshold_halftone threshold;	/* Type 3 */
-	gs_threshold2_halftone threshold2;	/* Extended Type 3 */
-	gs_client_order_halftone client_order;	/* client order */
-	gs_multiple_halftone multiple;	/* Type 5 */
+        gs_screen_halftone screen;	/* setscreen */
+        gs_colorscreen_halftone colorscreen;	/* setcolorscreen */
+        gs_spot_halftone spot;	/* Type 1 */
+        gs_threshold_halftone threshold;	/* Type 3 */
+        gs_threshold2_halftone threshold2;	/* Extended Type 3 */
+        gs_client_order_halftone client_order;	/* client order */
+        gs_multiple_halftone multiple;	/* Type 5 */
     } params;
 };
 
@@ -199,27 +201,20 @@ extern_st(st_halftone);
 #define st_halftone_max_ptrs\
   max(max(st_screen_halftone_max_ptrs, st_colorscreen_halftone_max_ptrs),\
       max(max(st_spot_halftone_max_ptrs, st_threshold_halftone_max_ptrs),\
-	  max(st_client_order_halftone_max_ptrs,\
-	      st_multiple_halftone_max_ptrs)))
+          max(st_client_order_halftone_max_ptrs,\
+              st_multiple_halftone_max_ptrs)))
 
 /* Procedural interface for AccurateScreens */
 
 /*
  * Set/get the default AccurateScreens value (for set[color]screen).
- * Note that this value is stored in a static variable.
  */
-void gs_setaccuratescreens(bool);
-bool gs_currentaccuratescreens(void);
-
-/*
- * Set/get the value for UseWTS. Also a static, but it's going away.
- */
-void gs_setusewts(bool);
-bool gs_currentusewts(void);
+void gs_setaccuratescreens(gs_memory_t *, bool);
+bool gs_currentaccuratescreens(gs_memory_t *);
 
 /* Initiate screen sampling with optional AccurateScreens. */
 int gs_screen_init_memory(gs_screen_enum *, gs_state *,
-			  gs_screen_halftone *, bool, gs_memory_t *);
+                          gs_screen_halftone *, bool, gs_memory_t *);
 
 #define gs_screen_init_accurate(penum, pgs, phsp, accurate)\
   gs_screen_init_memory(penum, pgs, phsp, accurate, pgs->memory)
@@ -228,10 +223,8 @@ int gs_screen_init_memory(gs_screen_enum *, gs_state *,
 
 /*
  * Set/get the MinScreenLevels value.
- *
- * Note that this value is stored in a static variable.
  */
-void gs_setminscreenlevels(uint);
-uint gs_currentminscreenlevels(void);
+void gs_setminscreenlevels(gs_memory_t *, uint);
+uint gs_currentminscreenlevels(gs_memory_t *);
 
 #endif /* gxht_INCLUDED */

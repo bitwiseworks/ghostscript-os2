@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gsistate.c 10212 2009-10-22 18:28:22Z giles $ */
+
 /* Imager state housekeeping */
 #include "gx.h"
 #include "gserrors.h"
@@ -26,6 +28,9 @@
 #include "gzht.h"
 #include "gzline.h"
 #include "gxfmap.h"
+#include "gsicc_cache.h"
+#include "gsicc_manage.h"
+#include "gsicc_profilecache.h"
 
 /******************************************************************************
  * See gsstate.c for a discussion of graphics/imager state memory management. *
@@ -41,12 +46,12 @@ extern /*const*/ gx_color_map_procs *const cmap_procs_default;
 static
 ENUM_PTRS_WITH(line_params_enum_ptrs, gx_line_params *plp) return 0;
     case 0: return ENUM_OBJ((plp->dash.pattern_size == 0 ?
-			     NULL : plp->dash.pattern));
+                             NULL : plp->dash.pattern));
 ENUM_PTRS_END
 static RELOC_PTRS_WITH(line_params_reloc_ptrs, gx_line_params *plp)
 {
     if (plp->dash.pattern_size)
-	RELOC_VAR(plp->dash.pattern);
+        RELOC_VAR(plp->dash.pattern);
 } RELOC_PTRS_END
 private_st_line_params();
 
@@ -58,13 +63,15 @@ private_st_line_params();
  * pointers are handled in this manner.
  */
 public_st_imager_state();
-static 
+static
 ENUM_PTRS_BEGIN(imager_state_enum_ptrs)
     ENUM_SUPER(gs_imager_state, st_line_params, line_params, st_imager_state_num_ptrs - st_line_params_num_ptrs);
     ENUM_PTR(0, gs_imager_state, client_data);
-    ENUM_PTR(1, gs_imager_state, transparency_stack);
-    ENUM_PTR(2, gs_imager_state, trans_device); 
-#define E1(i,elt) ENUM_PTR(i+3,gs_imager_state,elt);
+    ENUM_PTR(1, gs_imager_state, trans_device);
+    ENUM_PTR(2, gs_imager_state, icc_manager);
+    ENUM_PTR(3, gs_imager_state, icc_link_cache);
+    ENUM_PTR(4, gs_imager_state, icc_profile_cache);
+#define E1(i,elt) ENUM_PTR(i+5,gs_imager_state,elt);
     gs_cr_state_do_ptrs(E1)
 #undef E1
 ENUM_PTRS_END
@@ -72,8 +79,10 @@ static RELOC_PTRS_BEGIN(imager_state_reloc_ptrs)
 {
     RELOC_SUPER(gs_imager_state, st_line_params, line_params);
     RELOC_PTR(gs_imager_state, client_data);
-    RELOC_PTR(gs_imager_state, transparency_stack);
     RELOC_PTR(gs_imager_state, trans_device);
+    RELOC_PTR(gs_imager_state, icc_manager);
+    RELOC_PTR(gs_imager_state, icc_link_cache);
+    RELOC_PTR(gs_imager_state, icc_profile_cache);
 #define R1(i,elt) RELOC_PTR(gs_imager_state,elt);
     gs_cr_state_do_ptrs(R1)
 #undef R1
@@ -85,7 +94,6 @@ static RELOC_PTRS_BEGIN(imager_state_reloc_ptrs)
     }
 } RELOC_PTRS_END
 
-
 /* Initialize an imager state, other than the parts covered by */
 /* gs_imager_state_initial. */
 int
@@ -94,15 +102,14 @@ gs_imager_state_initialize(gs_imager_state * pis, gs_memory_t * mem)
     int i;
     pis->memory = mem;
     pis->client_data = 0;
-    pis->transparency_stack = 0;
     pis->trans_device = 0;
     /* Color rendering state */
     pis->halftone = 0;
     {
-	int i;
+        int i;
 
-	for (i = 0; i < gs_color_select_count; ++i)
-	    pis->screen_phase[i].x = pis->screen_phase[i].y = 0;
+        for (i = 0; i < gs_color_select_count; ++i)
+            pis->screen_phase[i].x = pis->screen_phase[i].y = 0;
     }
     pis->dev_ht = 0;
     pis->cie_render = 0;
@@ -111,23 +118,27 @@ gs_imager_state_initialize(gs_imager_state * pis, gs_memory_t * mem)
     pis->undercolor_removal = 0;
     /* Allocate an initial transfer map. */
     rc_alloc_struct_n(pis->set_transfer.gray,
-		      gx_transfer_map, &st_transfer_map,
-		      mem, return_error(gs_error_VMerror),
-		      "gs_imager_state_init(transfer)", 1);
+                      gx_transfer_map, &st_transfer_map,
+                      mem, return_error(gs_error_VMerror),
+                      "gs_imager_state_init(transfer)", 1);
     pis->set_transfer.gray->proc = gs_identity_transfer;
     pis->set_transfer.gray->id = gs_next_ids(pis->memory, 1);
     pis->set_transfer.gray->values[0] = frac_0;
     pis->set_transfer.red =
-	pis->set_transfer.green =
-	pis->set_transfer.blue = NULL; 
+        pis->set_transfer.green =
+        pis->set_transfer.blue = NULL;
     for (i = 0; i < GX_DEVICE_COLOR_MAX_COMPONENTS; i++)
-	pis->effective_transfer[i] = pis->set_transfer.gray;
+        pis->effective_transfer[i] = pis->set_transfer.gray;
     pis->cie_joint_caches = NULL;
+    pis->cie_joint_caches_alt = NULL;
     pis->cmap_procs = cmap_procs_default;
     pis->pattern_cache = NULL;
     pis->have_pattern_streams = false;
     pis->devicergb_cs = gs_cspace_new_DeviceRGB(mem);
     pis->devicecmyk_cs = gs_cspace_new_DeviceCMYK(mem);
+    pis->icc_link_cache = gsicc_cache_new(pis->memory);
+    pis->icc_manager = gsicc_manager_new(pis->memory);
+    pis->icc_profile_cache = gsicc_profilecache_new(pis->memory);
     return 0;
 }
 
@@ -140,12 +151,11 @@ gs_imager_state *
 gs_imager_state_copy(const gs_imager_state * pis, gs_memory_t * mem)
 {
     gs_imager_state *pis_copy =
-	gs_alloc_struct(mem, gs_imager_state, &st_imager_state,
-			"gs_imager_state_copy");
+        gs_alloc_struct(mem, gs_imager_state, &st_imager_state,
+                        "gs_imager_state_copy");
 
     if (pis_copy) {
-	*pis_copy = *pis;
-	pis_copy->transparency_stack = 0;
+        *pis_copy = *pis;
     }
     return pis_copy;
 }
@@ -164,8 +174,12 @@ gs_imager_state_copied(gs_imager_state * pis)
     rc_increment(pis->set_transfer.green);
     rc_increment(pis->set_transfer.blue);
     rc_increment(pis->cie_joint_caches);
+    rc_increment(pis->cie_joint_caches_alt);
     rc_increment(pis->devicergb_cs);
     rc_increment(pis->devicecmyk_cs);
+    rc_increment(pis->icc_link_cache);
+    rc_increment(pis->icc_profile_cache);
+    rc_increment(pis->icc_manager);
 }
 
 /* Adjust reference counts before assigning one imager state to another. */
@@ -178,6 +192,7 @@ gs_imager_state_pre_assign(gs_imager_state *pto, const gs_imager_state *pfrom)
     rc_pre_assign(pto->element, pfrom->element, cname)
 
     RCCOPY(cie_joint_caches);
+    RCCOPY(cie_joint_caches_alt);
     RCCOPY(set_transfer.blue);
     RCCOPY(set_transfer.green);
     RCCOPY(set_transfer.red);
@@ -189,6 +204,9 @@ gs_imager_state_pre_assign(gs_imager_state *pto, const gs_imager_state *pfrom)
     RCCOPY(halftone);
     RCCOPY(devicergb_cs);
     RCCOPY(devicecmyk_cs);
+    RCCOPY(icc_link_cache);
+    RCCOPY(icc_profile_cache);
+    RCCOPY(icc_manager);
 #undef RCCOPY
 }
 
@@ -200,7 +218,8 @@ gs_imager_state_release(gs_imager_state * pis)
     gx_device_halftone *pdht = pis->dev_ht;
 
 #define RCDECR(element)\
-    rc_decrement(pis->element, cname)
+    rc_decrement(pis->element, cname);\
+    pis->element = NULL	/* prevent subsequent decrements from this imager state */
 
     RCDECR(cie_joint_caches);
     RCDECR(set_transfer.gray);
@@ -215,11 +234,14 @@ gs_imager_state_release(gs_imager_state * pis)
      * dependent structures as well.
      */
     if (pdht != 0 && pdht->rc.ref_count == 1) {
-	gx_device_halftone_release(pdht, pdht->rc.memory);
+        gx_device_halftone_release(pdht, pdht->rc.memory);
     }
     RCDECR(dev_ht);
     RCDECR(halftone);
     RCDECR(devicergb_cs);
     RCDECR(devicecmyk_cs);
+    RCDECR(icc_link_cache);
+    RCDECR(icc_profile_cache);
+    RCDECR(icc_manager);
 #undef RCDECR
 }

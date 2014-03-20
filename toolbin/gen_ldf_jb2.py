@@ -1,9 +1,22 @@
 #!/bin/env python
+# Copyright (C) 2001-2012 Artifex Software, Inc.
+# All Rights Reserved.
+#
+# This software is provided AS-IS with no warranty, either express or
+# implied.
+#
+# This software is distributed under license and may not be copied,
+# modified or distributed except as expressly authorized under the terms
+# of the license contained in the file LICENSE in this distribution.
+#
+# Refer to licensing information at http://www.artifex.com or contact
+# Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+# CA  94903, U.S.A., +1(415)492-9861, for further information.
+#
 #
 # script to generate ldf_jb2.mak
 # whose source sometimes changes
 
-# $Id: gen_ldf_jb2.py 8022 2007-06-05 22:23:38Z giles $
 
 import time, glob
 import os.path
@@ -25,7 +38,7 @@ license = """#    Copyright (C) %d Artifex Software, Inc.  All rights reserved.
 # contact Artifex Software, Inc., 101 Lucas Valley Road #110,
 # San Rafael, CA  94903, U.S.A., +1(415)492-9861.
 
-# $Id: gen_ldf_jb2.py 8022 2007-06-05 22:23:38Z giles $
+# $""" """Id$
 """ % time.gmtime().tm_year
 
 comment = """

@@ -1,17 +1,19 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
 
-/* $Id: gxsync.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* Interface to synchronization primitives */
 
 /* Initial version 2/1/98 by John Desrosiers (soho@crl.com) */
@@ -36,16 +38,15 @@ typedef struct gx_semaphore_s {
 
 gx_semaphore_t *		/* returns a new semaphore, 0 if error */
     gx_semaphore_alloc(
-		       gs_memory_t * memory	/* memory allocator to use */
-		       );
+                       gs_memory_t * memory	/* memory allocator to use */
+                       );
 void
     gx_semaphore_free(
-		      gx_semaphore_t * sema	/* semaphore to delete */
-		      );
+                      gx_semaphore_t * sema	/* semaphore to delete */
+                      );
 
 #define gx_semaphore_wait(sema)  gp_semaphore_wait(&(sema)->native)
 #define gx_semaphore_signal(sema)  gp_semaphore_signal(&(sema)->native)
-
 
 /* ----- Monitor interface ----- */
 /* These have the usual monitor semantics: at init time, */
@@ -57,12 +58,12 @@ typedef struct gx_monitor_s {
 
 gx_monitor_t *			/* returns a new monitor, 0 if error */
     gx_monitor_alloc(
-		     gs_memory_t * memory	/* memory allocator to use */
-		     );
+                     gs_memory_t * memory	/* memory allocator to use */
+                     );
 void
     gx_monitor_free(
-		    gx_monitor_t * mon	/* monitor to delete */
-		    );
+                    gx_monitor_t * mon	/* monitor to delete */
+                    );
 
 #define gx_monitor_enter(sema)  gp_monitor_enter(&(sema)->native)
 #define gx_monitor_leave(sema)  gp_monitor_leave(&(sema)->native)

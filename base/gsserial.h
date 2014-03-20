@@ -1,16 +1,18 @@
-/* Copyright (C) 2001-2006 Artifex Software, Inc.
+/* Copyright (C) 2001-2012 Artifex Software, Inc.
    All Rights Reserved.
-  
+
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license.  Refer to licensing information at http://www.artifex.com/
-   or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
-   San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file LICENSE in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134, San Rafael,
+   CA  94903, U.S.A., +1(415)492-9861, for further information.
 */
-/* $Id: gsserial.h 8022 2007-06-05 22:23:38Z giles $ */
+
 /* some general structures useful for converting objects to serial form */
 
 #ifndef gsserial_INCLUDED
@@ -27,7 +29,7 @@
  * where:
  *
  *    s[i] & 0x80 == 0x80 for i = 0, ..., n - 1,
- *    s[n] & 0x80 == 0x00 
+ *    s[n] & 0x80 == 0x00
  *
  * and
  *
@@ -57,7 +59,7 @@ extern  int     enc_u_size_uint(uint);
 #define enc_u_sizew(w)                                      \
     ( (uint)(w) < enc_u_lim_1b                              \
         ? 1                                                 \
-        : (uint)(w) < enc_u_lim_2b ? 2 : enc_u_size_uint(w) ) 
+        : (uint)(w) < enc_u_lim_2b ? 2 : enc_u_size_uint(w) )
 
 /* similarly, for a pair of values (frequently used for points) */
 #define enc_u_size2w(w1, w2)                        \
@@ -100,7 +102,6 @@ extern  byte *          enc_u_get_uint_nc(uint *, byte *);
 
 #define enc_u_putxy(xy, p)    enc_u_put2w((xy).x, (xy).y, (p))
 
-
 /* decode an unsigned integer */
 #define enc_u_getw(w, p)                        \
     BEGIN                                       \
@@ -139,7 +140,6 @@ extern  byte *          enc_u_get_uint_nc(uint *, byte *);
 
 #define enc_u_getxy(xy, p)      enc_u_get2w((xy).x, (xy).y, (p))
 #define enc_u_getxy_nc(xy, p)   enc_u_get2w_nc((xy).x, (xy).y, (p))
-
 
 /*
  * An encoding mechanism similar to that above for signed integers. This
@@ -185,7 +185,6 @@ extern  int     enc_s_size_int(int);
                                       : enc_s_sizew_max )
 
 #define enc_s_sizexy(xy)    (enc_s_sizew((xy).x) + enc_s_sizew((xy).y))
-
 
 /* encode and decode a signed integfer; note special handling of const */
 extern  byte *          enc_s_put_int(int, byte *);

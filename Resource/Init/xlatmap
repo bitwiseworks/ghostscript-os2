@@ -9,7 +9,6 @@
 % obvious format of this file. Strings and names must not be empty
 % and must not contain null ('\0') characters.
 
-% $Id: xlatmap 8954 2008-08-08 04:22:38Z ray $
 
 % The map contains entries for each kind of font being handled by
 % any font rendering plugin. The key of an entry is the font type
@@ -32,6 +31,7 @@
   (3.4) /Big5     % Traditional Chinese
   (3.5) /Wansung  % Korean
   (3.6) /Johab    % Korean
+  (3.10) /UCS-4   % UCS-4
   % todo : add more entries
 ]
 
