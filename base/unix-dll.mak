@@ -194,10 +194,12 @@ install-so-subtarget: so-subtarget
 	$(INSTALL_PROGRAM) $(GSSOX) $(DESTDIR)$(bindir)/$(GSSOX_XENAME)
 	$(INSTALL_PROGRAM) $(BINDIR)/gspmdrv.exe $(DESTDIR)$(bindir)/gspmdrv.exe
 	$(INSTALL_PROGRAM) $(BINDIR)/$(GS_SONAME_MAJOR_MINOR) $(DESTDIR)$(libdir)/$(GS_SONAME_MAJOR_MINOR)
+	$(INSTALL_DATA) $(BINDIR)/gs.a $(DESTDIR)$(libdir)/gs.a
+	$(INSTALL_DATA) $(BINDIR)/gs.lib $(DESTDIR)$(libdir)/gs.lib
 	$(RM_) $(DESTDIR)$(libdir)/$(GS_SONAME)
-	ln -s $(GS_SONAME_MAJOR_MINOR) $(DESTDIR)$(libdir)/$(GS_SONAME)
+	cp -p $(BINDIR)/$(GS_SONAME) $(DESTDIR)$(libdir)/$(GS_SONAME)
 	$(RM_) $(DESTDIR)$(libdir)/$(GS_SONAME_MAJOR)
-	ln -s $(GS_SONAME_MAJOR_MINOR) $(DESTDIR)$(libdir)/$(GS_SONAME_MAJOR)
+	#ln -s $(GS_SONAME_MAJOR_MINOR) $(DESTDIR)$(libdir)/$(GS_SONAME_MAJOR)
 	$(INSTALL_DATA) $(PSSRC)iapi.h $(DESTDIR)$(gsincludedir)iapi.h
 	$(INSTALL_DATA) $(PSSRC)ierrors.h $(DESTDIR)$(gsincludedir)ierrors.h
 	$(INSTALL_DATA) $(DEVSRC)gdevdsp.h $(DESTDIR)$(gsincludedir)gdevdsp.h

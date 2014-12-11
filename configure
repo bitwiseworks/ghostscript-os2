@@ -8502,7 +8502,7 @@ case `uname` in
           DYNAMIC_LDFLAGS="-Zdll psi/gsdll2.def"
           SO_LIB_EXT=""
           DLL_EXT=".dll"
-          SO_LIB_VERSION_SEPARATOR="-"
+          SO_LIB_VERSION_SEPARATOR="."
         ;;
         *BSD)
           DYNAMIC_CFLAGS="-fPIC"
