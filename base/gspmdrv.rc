@@ -18,7 +18,7 @@
 #include <os2.h>
 #include "gspmdrv.h"
 
-ICON ID_GSPMDRV obj\gspmdrv.ico
+ICON ID_GSPMDRV soobj\gspmdrv.ico
 
 DLGTEMPLATE IDD_ABOUT LOADONCALL MOVEABLE DISCARDABLE
 BEGIN

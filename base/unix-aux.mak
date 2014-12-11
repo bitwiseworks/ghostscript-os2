@@ -66,6 +66,28 @@ $(GLOBJ)gp_sysv.$(OBJ): $(GLSRC)gp_sysv.c $(stdio__h) $(time__h) $(AK)\
  $(MAKEDIRS)
 	$(GLCC) $(GLO_)gp_sysv.$(OBJ) $(C_) $(GLSRC)gp_sysv.c
 
+# The GCC/EMX OS/2 platform
+os2__=$(GLOBJ)gp_getnv.$(OBJ) $(GLOBJ)gp_getnv.$(OBJ) $(GLOBJ)gp_os2.$(OBJ) $(GLOBJ)gp_os2fs.$(OBJ) $(GLOBJ)gp_paper.$(OBJ) $(GLOBJ)gp_stdia.$(OBJ)
+$(GLGEN)os2_.dev: $(os2__) $(GLD)posync.dev
+	$(SETMOD) $(GLGEN)os2_ $(os2__) -include $(GLD)posync
+
+$(GLOBJ)gp_os2.$(OBJ): $(GLSRC)gp_os2.c $(GLSRC)gp_os2.h\
+ $(dos__h) $(pipe__h) $(string__h) $(time__h)\
+ $(gx_h) $(gsexit_h) $(gsutil_h) $(gp_h) $(gpmisc_h)
+	$(GLCC) $(GLO_)gp_os2.$(OBJ) $(C_) $(GLSRC)gp_os2.c
+
+# Define OS/2 printer (file system) as a separable feature.
+os2print_=$(GLOBJ)gp_os2pr.$(OBJ)
+$(GLGEN)os2print.dev: $(ECHOGS_XE) $(os2print_)
+	echo HELLO WORLD!
+	$(SETMOD) $(PSD)os2print $(os2print_)
+	$(ADDMOD) $(PSD)os2print -iodev printer
+
+$(GLOBJ)gp_os2pr.$(OBJ): $(GLSRC)gp_os2pr.c $(GLSRC)gp_os2.h $(AK)\
+ $(ctype__h) $(errno__h) $(stdio__h) $(string__h)\
+ $(gsmemory_h) $(gstypes_h) $(gxiodev_h)
+	$(GLCC) $(GLO_)gp_os2pr.$(OBJ) $(C_) $(GLSRC)gp_os2pr.c
+
 # -------------------------- Auxiliary programs --------------------------- #
 
 $(ECHOGS_XE): $(GLSRC)echogs.c $(AK) $(stdpre_h) $(MAKEDIRS)
@@ -89,23 +111,23 @@ $(GENHT_XE): $(GLSRC)genht.c $(AK) $(GENHT_DEPS) $(MAKEDIRS)
 # which means that the mkromfs build can't find the zlib source it needs.
 # So it's split into two targets, one using the zlib source directly.....
 MKROMFS_OBJS_0=$(MKROMFS_ZLIB_OBJS) $(AUX)gpmisc.$(OBJ) $(AUX)gp_getnv.$(OBJ) \
- $(AUX)gscdefs.$(OBJ) $(AUX)gp_unix.$(OBJ) $(AUX)gp_unifs.$(OBJ) $(AUX)gp_unifn.$(OBJ) \
+ $(AUX)gscdefs.$(OBJ) $(AUX)gp_os2fs.$(OBJ) \
  $(AUX)gp_stdia.$(OBJ) $(AUX)gsutil.$(OBJ) $(AUX)memento.$(OBJ)
 
 $(MKROMFS_XE)_0: $(GLSRC)mkromfs.c $(MKROMFS_COMMON_DEPS) $(MKROMFS_OBJS_0)
-	$(CCAUX_) $(GENOPT) $(CFLAGS) $(I_)$(GLSRCDIR)$(_I) $(I_)$(GLOBJ)$(_I) $(I_)$(ZSRCDIR)$(_I) $(GLSRC)mkromfs.c $(O_)$(MKROMFS_XE)_0 $(MKROMFS_OBJS_0) $(AUXEXTRALIBS)
+	$(CCAUX_) -o $(AUX)mkromfs.exe -D__OS2__ $(GENOPT) $(CFLAGS) $(I_)$(GLSRCDIR)$(_I) $(I_)$(GLOBJ)$(_I) $(I_)$(ZSRCDIR)$(_I) $(GLSRC)mkromfs.c  $(MKROMFS_OBJS_0) $(AUXEXTRALIBS)
 
 # .... and one using the zlib library linked via the command line
 MKROMFS_OBJS_1=$(AUX)gscdefs.$(OBJ) \
  $(AUX)gpmisc.$(OBJ) $(AUX)gp_getnv.$(OBJ) \
- $(AUX)gp_unix.$(OBJ) $(AUX)gp_unifs.$(OBJ) $(AUX)gp_unifn.$(OBJ) \
+ $(AUX)gp_os2fs.$(OBJ) \
  $(AUX)gp_stdia.$(OBJ) $(AUX)gsutil.$(OBJ)
 
 $(MKROMFS_XE)_1: $(GLSRC)mkromfs.c $(MKROMFS_COMMON_DEPS) $(MKROMFS_OBJS_1)
 	$(CCAUX_) $(GENOPT) $(CFLAGS) $(I_)$(GLSRCDIR)$(_I) $(I_)$(GLOBJ)$(_I) $(I_)$(ZSRCDIR)$(_I) $(GLSRC)mkromfs.c $(O_)$(MKROMFS_XE)_1 $(MKROMFS_OBJS_1) $(AUXEXTRALIBS)
 
 $(MKROMFS_XE): $(MKROMFS_XE)_$(SHARE_ZLIB) $(MAKEDIRS)
-	$(CP_) $(MKROMFS_XE)_$(SHARE_ZLIB) $(MKROMFS_XE)
+	#$(CP_) $(MKROMFS_XE)_$(SHARE_ZLIB) $(MKROMFS_XE)
 
 # Query the environment to construct gconfig_.h.
 # These are all defined conditionally (except the JasPER one), so that

@@ -272,6 +272,9 @@
 #endif /* !Windows/x86 */
 
 /* Now do all the defaulting . */
+#ifndef PNG_DLL_EXPORT
+#  define PNG_DLL_EXPORT
+#endif
 #ifndef PNGCAPI
 #  define PNGCAPI
 #endif

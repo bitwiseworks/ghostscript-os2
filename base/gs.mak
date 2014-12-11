@@ -390,7 +390,8 @@ DEVS_ALL=$(GLGENDIR)$(D)$(GSPLATFORM).dev\
  $(DEVICE_DEVS_EXTRA) $(GLD)romfs$(COMPILE_INITS).dev 
 
 devs_tr=$(GLGENDIR)$(D)devs.tr
-$(devs_tr) : $(GS_MAK) $(TOP_MAKEFILES) $(ECHOGS_XE)
+# YD added os2print and os2prn to force their build before!
+$(devs_tr) : $(GS_MAK) $(TOP_MAKEFILES) $(ECHOGS_XE) $(PSD)os2print.dev $(PSD)os2prn.dev
 	$(EXP)$(ECHOGS_XE) -w $(devs_tr) - -include $(GLGENDIR)$(D)$(GSPLATFORM)
 	$(EXP)$(ECHOGS_XE) -a $(devs_tr) -+ $(FEATURE_DEVS)
 	$(EXP)$(ECHOGS_XE) -a $(devs_tr) -+ $(FEATURE_DEVS_EXTRA)

@@ -3212,6 +3212,17 @@ $(GLOBJ)gp_upapr.$(OBJ) : $(GLSRC)gp_upapr.c $(malloc__h) $(AK) $(gp_h)\
 
 # File system implementation.
 
+# OS/2 file system
+$(GLOBJ)gp_os2fs.$(OBJ): $(GLSRC)gp_os2fs.c $(GLSRC)gp_os2.h\
+ $(dos__h) $(pipe__h) $(string__h) $(time__h)\
+ $(gx_h) $(gsexit_h) $(gsutil_h) $(gp_h) $(gpmisc_h)
+	$(GLCC) $(GLO_)gp_os2fs.$(OBJ) $(C_) $(GLSRC)gp_os2fs.c
+
+$(AUX)gp_os2fs.$(OBJ): $(GLSRC)gp_os2fs.c $(GLSRC)gp_os2.h\
+ $(dos__h) $(pipe__h) $(string__h) $(time__h)\
+ $(gx_h) $(gsexit_h) $(gsutil_h) $(gp_h) $(gpmisc_h)
+	$(GLCC) $(AUXO_)gp_os2fs.$(OBJ) $(C_) $(GLSRC)gp_os2fs.c
+
 # MS-DOS file system, also used by Desqview/X.
 $(GLOBJ)gp_dosfs.$(OBJ) : $(GLSRC)gp_dosfs.c $(AK) $(dos__h) $(gp_h)\
  $(gpmisc_h) $(gx_h) $(MAKEDIRS)

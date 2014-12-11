@@ -14,6 +14,8 @@
 #
 # Partial makefile for Unix shared library target
 
+OS2TK_PATH = d:/usr/dev/toolkit452/h
+
 # Useful make commands:
 #  make so		make ghostscript as a shared object
 #  make sodebug		make debug ghostscript as a shared object
@@ -27,6 +29,14 @@
 # Location for building shared object
 SODIRPREFIX=so
 SODEBUGDIRPREFIX=sodebug
+
+# ------ OS/2 Devices and features ------ #
+# Choose the language feature(s) to include.  See gs.mak for details.
+# Since we have a large address space, we include some optional features.
+FEATURE_DEVS=$(PSD)psl3.dev $(PSD)pdf.dev $(PSD)dpsnext.dev $(PSD)ttfont.dev $(PSD)epsf.dev $(PSD)jbig2.dev
+FEATURE_DEVS+=$(PSD)os2print.dev
+DEVICE_DEVS=$(DD)display.dev
+DEVICE_DEVS+=$(DD)os2prn.dev
 
 # ------------------- Ghostscript shared object --------------------------- #
 
@@ -43,7 +53,7 @@ GSSOX_XE=$(BINDIR)/$(GSSOX_XENAME)
 GSSOX=$(BINDIR)/$(GSSOX_XENAME)
 
 # shared library
-GS_SONAME_BASE=lib$(GS_SO_BASE)
+GS_SONAME_BASE=$(GS_SO_BASE)dll2
 
 # GNU/Linux
 GS_SOEXT=$(SO_LIB_EXT)
@@ -82,7 +92,7 @@ GS_SO_MAJOR_MINOR=$(BINDIR)/$(GS_SONAME_MAJOR_MINOR)
 
 $(GS_SO): $(GS_SO_MAJOR)
 	$(RM_) $(GS_SO)
-	ln -s $(GS_SONAME_MAJOR_MINOR) $(GS_SO)
+	cp $(GS_SO_MAJOR_MINOR) $(GS_SO)
 
 $(GS_SO_MAJOR): $(GS_SO_MAJOR_MINOR)
 	$(RM_) $(GS_SO_MAJOR)
@@ -90,12 +100,35 @@ $(GS_SO_MAJOR): $(GS_SO_MAJOR_MINOR)
 
 # Build the small Ghostscript loaders, with Gtk+ and without
 $(GSSOC_XE): $(GS_SO) $(PSSRC)$(SOC_LOADER)
-	$(GLCC) -g -o $(GSSOC_XE) $(PSSRC)dxmainc.c \
+	emximp -o $(BINDIR)/gs.a $(PSSRC)gsdll2.def
+	emximp -o $(BINDIR)/gs.lib $(PSSRC)gsdll2.def
+	$(GLCC) -g -o $(GSSOC_XE) $(PSSRC)dpmain.c soobj/gscdefs.o soobj/gssprintf.o soobj/trio.o \
 	-L$(BINDIR) -l$(GS_SO_BASE)
 
 $(GSSOX_XE): $(GS_SO) $(PSSRC)$(SOC_LOADER)
 	$(GLCC) -g $(SOC_CFLAGS) -o $(GSSOX_XE) $(PSSRC)$(SOC_LOADER) \
 	-L$(BINDIR) -l$(GS_SO_BASE) $(SOC_LIBS)
+
+$(PSOBJ)gsdll.$(OBJ): $(PSSRC)gsdll.c $(gsdll_h) $(ghost_h) $(gscdefs_h)
+	$(PSCC) $(PSO_)gsdll.$(OBJ) $(C_) $(PSSRC)gsdll.c
+
+# os2.mak Make the icons from their text form.
+$(PSOBJ)gsos2.ico: $(PSSRC)gsos2.icx $(ECHOGS_XE)
+	$(ECHOGS_XE) -wb $(PSOBJ)gsos2.ico -n -X -r $(PSSRC)gsos2.icx
+
+$(GLOBJ)gspmdrv.ico: $(GLSRC)gspmdrv.icx $(ECHOGS_XE)
+	$(ECHOGS_XE) -wb $(GLOBJ)gspmdrv.ico -n -X -r $(GLSRC)gspmdrv.icx
+
+$(PSOBJ)$(GS).res: $(PSSRC)$(GS).rc $(PSOBJ)gsos2.ico
+	wrc -i=$(PSSRCDIR);$(PSOBJDIR) -r $(PSSRC)$(GS).rc -fo=$(PSOBJ)$(GS).res
+
+# os2.mak PM driver program
+$(GLOBJ)gspmdrv.res: $(GLSRC)gspmdrv.rc $(GLSRC)gspmdrv.h $(GLOBJ)gspmdrv.ico
+	wrc -i=$(OS2TK_PATH) -r $(GLSRC)gspmdrv.rc -fo=$(GLOBJ)gspmdrv.res
+
+$(BINDIR)/gspmdrv.exe: $(GLSRC)gspmdrv.c $(GLOBJ)gspmdrv.res $(GLSRC)gspmdrv.def
+	$(GLCC) -g -Zomf -o $(BINDIR)/gspmdrv.exe $(GLSRC)gspmdrv.c $(GLOBJ)gssprintf.$(OBJ) $(GLOBJ)trio.$(OBJ) \
+		 $(GLOBJ)gspmdrv.res $(GLSRC)gspmdrv.def
 
 # ------------------------- Recursive make targets ------------------------- #
 
@@ -140,6 +173,7 @@ so-subtarget:
 	 prefix=$(prefix)
 	$(MAKE) $(SODEFS_FINAL) GENOPT='$(GENOPT)' LDFLAGS='$(LDFLAGS)'\
 	 CFLAGS='$(CFLAGS_STANDARD) $(GCFLAGS) $(AC_CFLAGS) $(XCFLAGS)' prefix=$(prefix)\
+	 $(BINDIR)/gspmdrv.exe \
 	 $(GSSOC_XE) $(GSSOX_XE)
 
 install-so:
@@ -158,6 +192,7 @@ install-so-subtarget: so-subtarget
 	-mkdir -p $(DESTDIR)$(gsincludedir)
 	$(INSTALL_PROGRAM) $(GSSOC) $(DESTDIR)$(bindir)/$(GSSOC_XENAME)
 	$(INSTALL_PROGRAM) $(GSSOX) $(DESTDIR)$(bindir)/$(GSSOX_XENAME)
+	$(INSTALL_PROGRAM) $(BINDIR)/gspmdrv.exe $(DESTDIR)$(bindir)/gspmdrv.exe
 	$(INSTALL_PROGRAM) $(BINDIR)/$(GS_SONAME_MAJOR_MINOR) $(DESTDIR)$(libdir)/$(GS_SONAME_MAJOR_MINOR)
 	$(RM_) $(DESTDIR)$(libdir)/$(GS_SONAME)
 	ln -s $(GS_SONAME_MAJOR_MINOR) $(DESTDIR)$(libdir)/$(GS_SONAME)

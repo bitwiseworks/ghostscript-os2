@@ -614,6 +614,7 @@ include $(GLSRCDIR)/ijs.mak
 @LCUPSIINCLUDE@
 include $(DEVSRCDIR)/devs.mak
 include $(DEVSRCDIR)/contrib.mak
+include $(GLSRCDIR)/pcwin.mak
 include $(GLSRCDIR)/unix-aux.mak
 include $(GLSRCDIR)/unixlink.mak
 include $(GLSRCDIR)/unix-dll.mak

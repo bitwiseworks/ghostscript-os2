@@ -194,6 +194,11 @@
 #  endif
 #endif
 
+/* pngconf.h does not set PNG_DLL_EXPORT unless it is required, so: */
+#ifndef PNG_DLL_EXPORT
+#  define PNG_DLL_EXPORT
+#endif
+
 #include "png.h"
 
 /* pngconf.h does not set PNG_DLL_EXPORT unless it is required, so: */

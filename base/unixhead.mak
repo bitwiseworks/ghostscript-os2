@@ -22,7 +22,7 @@
 # Define the platform name.  For a "stock" System V platform,
 # use sysv_ instead of unix_.
 
-GSPLATFORM=unix_
+GSPLATFORM=os2_
 
 # Define the syntax for command, object, and executable files.
 
@@ -48,7 +48,7 @@ Q=
 CAT=cat
 D=/
 EXP=
-SHELL=/bin/sh
+SHELL=/@unixroot/usr/bin/sh.exe
 SH=$(SHELL)
 
 # Define generic commands.
