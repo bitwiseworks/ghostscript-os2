@@ -1898,6 +1898,13 @@ case `uname` in
           DLL_EXT=".dll"
           SO_LIB_VERSION_SEPARATOR="-"
         ;;
+        OS/2*)
+          DYNAMIC_CFLAGS="-D__DLL__"
+          DYNAMIC_LDFLAGS="-Zdll psi/gsdll2.def"
+          SO_LIB_EXT=""
+          DLL_EXT=".dll"
+          SO_LIB_VERSION_SEPARATOR="."
+        ;;
         *BSD)
           DYNAMIC_CFLAGS="-fPIC"
           DYNAMIC_LDFLAGS="-shared -Wl,\$(LD_SET_DT_SONAME)\$(LDFLAGS_SO_PREFIX)\$(GS_SONAME_MAJOR)"
