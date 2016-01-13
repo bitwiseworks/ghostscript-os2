@@ -14,8 +14,6 @@
 #
 # Partial makefile for Unix shared library target
 
-OS2TK_PATH = d:/usr/dev/toolkit452/h
-
 # Useful make commands:
 #  make so		make ghostscript as a shared object
 #  make sodebug		make debug ghostscript as a shared object
@@ -43,7 +41,7 @@ DEVICE_DEVS+=$(DD)os2prn.dev
 # Shared object names
 
 # simple loader (no support for display device)
-GSSOC_XENAME=$(GS_SO_BASE)c$(XE)
+GSSOC_XENAME=$(GS_SO_BASE)os2$(XE)
 GSSOC_XE=$(BINDIR)/$(GSSOC_XENAME)
 GSSOC=$(BINDIR)/$(GSSOC_XENAME)
 
@@ -103,7 +101,7 @@ $(GSSOC_XE): $(GS_SO) $(PSSRC)$(SOC_LOADER)
 	emximp -o $(BINDIR)/gs.a $(PSSRC)gsdll2.def
 	emximp -o $(BINDIR)/gs.lib $(PSSRC)gsdll2.def
 	$(GLCC) -g -o $(GSSOC_XE) $(PSSRC)dpmain.c soobj/gscdefs.o soobj/gssprintf.o soobj/trio.o \
-	-L$(BINDIR) -l$(GS_SO_BASE)
+	$(PSSRC)gsos2.def -L$(BINDIR) -l$(GS_SO_BASE)
 
 $(GSSOX_XE): $(GS_SO) $(PSSRC)$(SOC_LOADER)
 	$(GLCC) -g $(SOC_CFLAGS) -o $(GSSOX_XE) $(PSSRC)$(SOC_LOADER) \
@@ -124,7 +122,7 @@ $(PSOBJ)$(GS).res: $(PSSRC)$(GS).rc $(PSOBJ)gsos2.ico
 
 # os2.mak PM driver program
 $(GLOBJ)gspmdrv.res: $(GLSRC)gspmdrv.rc $(GLSRC)gspmdrv.h $(GLOBJ)gspmdrv.ico
-	wrc -i=$(OS2TK_PATH) -r $(GLSRC)gspmdrv.rc -fo=$(GLOBJ)gspmdrv.res
+	wrc -i=$(GLSRCDIR);$(GLOBJDIR) -r $(GLSRC)gspmdrv.rc -fo=$(GLOBJ)gspmdrv.res
 
 $(BINDIR)/gspmdrv.exe: $(GLSRC)gspmdrv.c $(GLOBJ)gspmdrv.res $(GLSRC)gspmdrv.def
 	$(GLCC) -g -Zomf -o $(BINDIR)/gspmdrv.exe $(GLSRC)gspmdrv.c $(GLOBJ)gssprintf.$(OBJ) $(GLOBJ)trio.$(OBJ) \
@@ -174,7 +172,7 @@ so-subtarget:
 	$(MAKE) $(SODEFS_FINAL) GENOPT='$(GENOPT)' LDFLAGS='$(LDFLAGS)'\
 	 CFLAGS='$(CFLAGS_STANDARD) $(GCFLAGS) $(AC_CFLAGS) $(XCFLAGS)' prefix=$(prefix)\
 	 $(BINDIR)/gspmdrv.exe \
-	 $(GSSOC_XE) $(GSSOX_XE)
+	 $(GSSOC_XE)
 
 install-so:
 	$(MAKE) install-so-subtarget BUILDDIRPREFIX=$(SODIRPREFIX)
@@ -191,7 +189,7 @@ install-so-subtarget: so-subtarget
 	-mkdir -p $(DESTDIR)$(libdir)
 	-mkdir -p $(DESTDIR)$(gsincludedir)
 	$(INSTALL_PROGRAM) $(GSSOC) $(DESTDIR)$(bindir)/$(GSSOC_XENAME)
-	$(INSTALL_PROGRAM) $(GSSOX) $(DESTDIR)$(bindir)/$(GSSOX_XENAME)
+#	$(INSTALL_PROGRAM) $(GSSOX) $(DESTDIR)$(bindir)/$(GSSOX_XENAME)
 	$(INSTALL_PROGRAM) $(BINDIR)/gspmdrv.exe $(DESTDIR)$(bindir)/gspmdrv.exe
 	$(INSTALL_PROGRAM) $(BINDIR)/$(GS_SONAME_MAJOR_MINOR) $(DESTDIR)$(libdir)/$(GS_SONAME_MAJOR_MINOR)
 	$(INSTALL_DATA) $(BINDIR)/gs.a $(DESTDIR)$(libdir)/gs.a
