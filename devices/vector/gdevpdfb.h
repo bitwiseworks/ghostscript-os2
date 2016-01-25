@@ -99,6 +99,7 @@ const gx_device_pdf PDF_DEVICE_IDENT =
   gdev_pdf_dev_spec_op		/* dev_spec_op */
  },
  psdf_initial_values(PSDF_VERSION_INITIAL, 0 /*false */ ),  /* (!ASCII85EncodePages) */
+ 0,                     /* pdf_font_dir */
  PDF_FOR_OPDFREAD,		/* is_ps2write */
  PDF_COMPATIBILITY_LEVEL_INITIAL,  /* CompatibilityLevel */
  -1,				/* EndPage */
@@ -125,6 +126,7 @@ const gx_device_pdf PDF_DEVICE_IDENT =
  {0, 0, 0},			/* InstanceUUID */
  0,				/* DocumentTimeSeq */
  PDF_FOR_OPDFREAD,		/* ForOPDFRead */
+ PDF_FOR_EPS2WRITE,     /* is_eps2write */
  false,				/* CompressEntireFile */
  0 /*false*/,			/* ResourcesBeforeUsage */
  1 /*true*/,			/* HavePDFWidths */
@@ -136,9 +138,6 @@ const gx_device_pdf PDF_DEVICE_IDENT =
  0 /*false*/,			/* PDFA */
  0 /*false*/,			/* Abort generation of PDFA or X, produce PDF */
  12000,				/* MaxClipPathSize */ /* HP LaserJet 1320 hangs with 14000. */
-#ifdef DEPRECATED_906
- max_long,                      /* MaxViewerMemorySize */
-#endif
  256000,			/* MaxShadingBitmapSize */
  PDF_DEVICE_MaxInlineImageSize,	/* MaxInlineImageSize */
  {0, 0},                        /* DSCEncodingToUnicode */
@@ -155,6 +154,8 @@ const gx_device_pdf PDF_DEVICE_IDENT =
  {0},				/* EncryptionKey */
  0,				/* EncryptionV */
  0 /*false*/,			/* is_EPS */
+ 0,             /* AccumulatingBBox */
+ {{0,0},{0,0}},		/* BBox */
  {-1, -1},			/* doc_dsc_info */
  {-1, -1},			/* page_dsc_info */
  0 /*false*/,			/* fill_overprint */
@@ -192,20 +193,20 @@ const gx_device_pdf PDF_DEVICE_IDENT =
  1,				/* used_mask */
  {
      {
-         {0}}},			/* resources */
- {0},				/* cs_Patterns */
- {0},				/* Identity_ToUnicode_CMaps */
+         {0}}},	/* resources */
+ {0},			/* cs_Patterns */
+ {0},			/* Identity_ToUnicode_CMaps */
  0,				/* last_resource */
  0,				/* OneByteIdentityH */
- gs_no_id,			/* IdentityCIDSystemInfo_id */
- {
-     {
-         {0}}},			/* outline_levels */
- 0,				/* outline_depth */
+ gs_no_id,		/* IdentityCIDSystemInfo_id */
+ 0,             /* outline_levels */
+ -1,			/* outline_depth */
+ 0,             /* max_outline_depth */
  0,				/* closed_outline_depth */
  0,				/* outlines_open */
  0,				/* articles */
  0,				/* Dests */
+ 0,				/* EmbeddedFiles */
  {0},				/* fileID */
          {0, 0},		/* uuid_time */
  0,				/* global_named_objects */
@@ -229,6 +230,7 @@ const gx_device_pdf PDF_DEVICE_IDENT =
  0,				/* sbstack_depth */
  0,				/* sbstack */
  0,				/* FormDepth */
+ 0,             /* HighLevelForm */
  0,				/* PatternDepth */
  {0,0,0,0,0,0},                 /* AccumulatedPatternMatrix */
  0,				/* substream_Resources */
@@ -238,6 +240,8 @@ const gx_device_pdf PDF_DEVICE_IDENT =
  0,				/* font3 */
  0,				/* accumulating_substream_resource */
  {0,0,0,0,0,0,0,0,0},		/* charproc_ctm */
+ 0,             /* accumulating_charproc */
+ {{0, 0}, {0, 0}},  /* Charproc BBox */
  0,				/* charproc_just_accumulated */
  1,             /* PS_accumulator */
  0,				/* accumulating_a_global_object */
@@ -256,7 +260,7 @@ const gx_device_pdf PDF_DEVICE_IDENT =
  0,				/* find_resource_param */
  0,				/* last_charpath_op */
  0,				/* type3charpath */
- 0,				/* SetPageSize */
+ 1,				/* SetPageSize */
  0,				/* RotatePages */
  0,				/* Fit Pages */
  0,				/* CenterPages */
@@ -272,10 +276,11 @@ const gx_device_pdf PDF_DEVICE_IDENT =
  !PDF_FOR_OPDFREAD,		/* PreserveSMask */
  !PDF_FOR_OPDFREAD,		/* PreserveTrMode */
  false,                 /* NoT3CCITT */
- true,                 /* UseOldColor */
+ false,                 /* UseOldColor */
  false,                 /* Linearise */
- 0,                     /* FirstPage (from the command line) */
- 0,                     /* LastPage (from the command line) */
  0,                     /* pointer to resourceusage */
- 0                      /* Size of resourceusage */
+ 0,                     /* Size of resourceusage */
+ false,                 /* called from output_page */
+ false,                 /* FlattenFonts, writes text as outlines instead of fonts */
+ -1                     /* Last Form ID, start with -1 which means 'none' */
 };

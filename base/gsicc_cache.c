@@ -127,6 +127,18 @@ rc_gsicc_link_cache_free(gs_memory_t * mem, void *ptr_in, client_name_t cname)
     /* Ending the entire cache.  The ref counts on all the links should be 0 */
     gsicc_link_cache_t *link_cache = (gsicc_link_cache_t * ) ptr_in;
 
+    if_debug2m(gs_debug_flag_icc, mem,
+               "[icc] Removing link cache = 0x%x memory = 0x%x\n",
+               link_cache, link_cache->memory);
+    gs_free_object(mem->stable_memory, link_cache, "rc_gsicc_link_cache_free");
+}
+
+/* release the semaphore and monitor of the link_cache when it is freed */
+void
+icc_linkcache_finalize(const gs_memory_t *mem, void *ptr)
+{
+    gsicc_link_cache_t *link_cache = (gsicc_link_cache_t * ) ptr;
+
     while (link_cache->head != NULL) {
         gsicc_remove_link(link_cache->head, mem);
         link_cache->num_links--;
@@ -140,22 +152,92 @@ rc_gsicc_link_cache_free(gs_memory_t * mem, void *ptr_in, client_name_t cname)
     link_cache->wait = NULL;
     gx_monitor_free(link_cache->lock);
     link_cache->lock = NULL;
-    if_debug2m(gs_debug_flag_icc, mem,
-               "[icc] Removing link cache = 0x%x memory = 0x%x\n",
-               link_cache, link_cache->memory);
-    gs_free_object(mem->stable_memory, link_cache, "rc_gsicc_link_cache_free");
 }
 
-/* release the semaphore and monitor of the link_cache when it is freed */
-void
-icc_linkcache_finalize(const gs_memory_t *mem, void *ptr)
+/* This is a special allocation for a link that is used by devices for
+   doing color management on post rendered data.  It is not tied into the
+   profile cache like gsicc_alloc_link. Also it goes ahead and creates
+   the link */
+gsicc_link_t *
+gsicc_alloc_link_dev(gs_memory_t *memory, cmm_profile_t *src_profile,
+    cmm_profile_t *des_profile, gsicc_rendering_param_t *rendering_params)
 {
-    gsicc_link_cache_t *link_cache = (gsicc_link_cache_t * ) ptr;
+    gsicc_link_t *result;
+    int cms_flags = 0;
+    gs_memory_t *nongc_mem = memory->non_gc_memory;
 
-    gx_semaphore_free(link_cache->wait);
-    link_cache->wait = NULL;
-    gx_monitor_free(link_cache->lock);
-    link_cache->lock = NULL;
+    result = (gsicc_link_t*) gs_malloc(nongc_mem, 1, sizeof(gsicc_link_t), 
+        "gsicc_alloc_link_dev");
+
+    if (result == NULL)
+        return NULL;
+
+    /* set up placeholder values */
+    result->is_monitored = false;
+    result->orig_procs.map_buffer = NULL;
+    result->orig_procs.map_color = NULL;
+    result->orig_procs.free_link = NULL;
+    result->next = NULL;
+    result->link_handle = NULL;
+    result->icc_link_cache = NULL;
+    result->wait = NULL;
+    result->procs.map_buffer = gscms_transform_color_buffer;
+    result->procs.map_color = gscms_transform_color;
+    result->procs.free_link = gscms_release_link;
+    result->hashcode.link_hashcode = 0;
+    result->hashcode.des_hash = 0;
+    result->hashcode.src_hash = 0;
+    result->hashcode.rend_hash = 0;
+    result->ref_count = 1;
+    result->includes_softproof = 0;
+    result->includes_devlink = 0;
+    result->num_waiting = 0;
+    result->is_identity = false;
+    result->valid = true;
+
+    if (src_profile->profile_handle == NULL) {
+        src_profile->profile_handle = gsicc_get_profile_handle_buffer(src_profile->buffer,
+            src_profile->buffer_size, nongc_mem);
+    }
+
+    if (des_profile->profile_handle == NULL) {
+        des_profile->profile_handle = gsicc_get_profile_handle_buffer(des_profile->buffer,
+            des_profile->buffer_size, nongc_mem);
+    }
+
+    /* Check for problems.. */
+    if (src_profile->profile_handle == 0 || des_profile->profile_handle == 0) {
+        gs_free_object(nongc_mem, result, "gsicc_alloc_link_dev");
+        return NULL;
+    }
+
+    result->link_handle = gscms_get_link(src_profile->profile_handle,
+        des_profile->profile_handle, rendering_params, cms_flags, nongc_mem);
+
+    /* Check for problems.. */
+    if (result->link_handle == 0) {
+        gs_free_object(nongc_mem, result, "gsicc_alloc_link_dev");
+        return NULL;
+    }
+
+    /* Check for identity transform */
+    if (gsicc_get_hash(src_profile) == gsicc_get_hash(des_profile))
+        result->is_identity = true;
+
+    /* Set the rest */
+    result->data_cs = src_profile->data_cs;
+    result->num_input = src_profile->num_comps;
+    result->num_output = des_profile->num_comps;
+
+    return result;
+}
+
+/* And the related release of the link */
+void
+gsicc_free_link_dev(gs_memory_t *memory, gsicc_link_t *link)
+{
+    gs_memory_t *nongc_mem = memory->non_gc_memory;
+    gs_free_object(nongc_mem, link, "gsicc_free_link_dev");
 }
 
 static gsicc_link_t *
@@ -233,12 +315,19 @@ gsicc_set_link_data(gsicc_link_t *icc_link, void *link_handle,
     gx_monitor_leave(lock);	/* done with updating, let everyone run */
 }
 
-void
-gsicc_link_free(gsicc_link_t *icc_link, gs_memory_t *memory)
+static void
+gsicc_link_free_contents(gsicc_link_t *icc_link)
 {
     icc_link->procs.free_link(icc_link);
     gx_semaphore_free(icc_link->wait);
     icc_link->wait = NULL;
+}
+
+void
+gsicc_link_free(gsicc_link_t *icc_link, gs_memory_t *memory)
+{
+    gsicc_link_free_contents(icc_link);
+
     gs_free_object(memory->stable_memory, icc_link, "gsicc_link_free");
 }
 
@@ -248,8 +337,7 @@ icc_link_finalize(const gs_memory_t *mem, void *ptr)
 {
     gsicc_link_t *icc_link = (gsicc_link_t * ) ptr;
 
-    gx_semaphore_free(icc_link->wait);
-    icc_link->wait = NULL;
+    gsicc_link_free_contents(icc_link);
 }
 
 static void
@@ -257,6 +345,19 @@ gsicc_mash_hash(gsicc_hashlink_t *hash)
 {
     hash->link_hashcode =
         (hash->des_hash >> 1) ^ (hash->rend_hash) ^ (hash->src_hash);
+}
+
+int64_t 
+gsicc_get_hash(cmm_profile_t *profile)
+{
+    if (!profile->hash_is_valid) {
+        int64_t hash;
+
+        gsicc_get_icc_buff_hash(profile->buffer, &hash, profile->buffer_size);
+        profile->hashcode = hash;
+        profile->hash_is_valid = true;
+    }
+    return profile->hashcode;
 }
 
 void
@@ -481,9 +582,14 @@ gsicc_get_link(const gs_imager_state *pis, gx_device *dev_in,
     } else {
         dev = dev_in;
     }
-    if ( input_colorspace->cmm_icc_profile_data == NULL ) {
-        /* Use default type */
-        gs_input_profile = gsicc_get_gscs_profile(input_colorspace, pis->icc_manager);
+    if (input_colorspace->cmm_icc_profile_data == NULL) {
+        if (input_colorspace->icc_equivalent != NULL) {
+            gs_input_profile = input_colorspace->icc_equivalent->cmm_icc_profile_data;        
+        } else {
+            /* Use default type */
+            gs_input_profile = gsicc_get_gscs_profile(input_colorspace, 
+                                                      pis->icc_manager);
+        }
     } else {
         gs_input_profile = input_colorspace->cmm_icc_profile_data;
     }
@@ -598,19 +704,19 @@ gsicc_get_link(const gs_imager_state *pis, gx_device *dev_in,
         if (!(rendering_params->rendering_intent & gsRI_OVERRIDE)) {
             /* No it was not.  Check if our device profile RI was specified */
             if (render_cond.rendering_intent != gsRINOTSPECIFIED) {
-                rendering_params->rendering_intent = render_cond.rendering_intent;      
+                rendering_params->rendering_intent = render_cond.rendering_intent;
             }
         }
         /* Similar for the black point compensation */
         if (!(rendering_params->black_point_comp & gsBP_OVERRIDE)) {
             if (render_cond.black_point_comp != gsBPNOTSPECIFIED) {
-                rendering_params->black_point_comp = render_cond.black_point_comp;      
+                rendering_params->black_point_comp = render_cond.black_point_comp;
             }
         }
         /* And the Black preservation */
         if (!(rendering_params->preserve_black & gsKP_OVERRIDE)) {
-            if (render_cond.preserve_black != gsBPNOTSPECIFIED) {
-                rendering_params->preserve_black = render_cond.preserve_black;      
+            if (render_cond.preserve_black != gsBKPRESNOTSPECIFIED) {
+                rendering_params->preserve_black = render_cond.preserve_black;
             }
         }
         devicegraytok = dev_profile->devicegraytok;
@@ -713,6 +819,7 @@ gsicc_get_link_profile(const gs_imager_state *pis, gx_device *dev,
     cmm_profile_t *devlink_profile = NULL;
     bool src_dev_link = gs_input_profile->isdevlink;
     bool pageneutralcolor = false;
+    int cms_flags = 0;
 
     /* Determine if we are using a soft proof or device link profile */
     if (dev != NULL ) {
@@ -762,10 +869,9 @@ gsicc_get_link_profile(const gs_imager_state *pis, gx_device *dev,
         gs_input_profile->buffer == NULL &&
         gs_input_profile->dev != NULL) {
 
-        /* ICC profile should be in clist. This is
-        the first call to it.  Note that the profiles are not
-        really shared amongst threads like the links are.  Hence
-        the memory is for the local thread's chunk */
+        /* ICC profile should be in clist. This is the first call to it.  Note that 
+           the profiles are not really shared amongst threads like the links are.  
+           Hence the memory is for the local thread's chunk */
         cms_input_profile =
             gsicc_get_profile_handle_clist(gs_input_profile,
                                            gs_input_profile->memory);
@@ -813,6 +919,12 @@ gsicc_get_link_profile(const gs_imager_state *pis, gx_device *dev,
 
     /* Now compute the link contents */
     cms_input_profile = gs_input_profile->profile_handle;
+    /*  Check if the source was generated from a PS CIE color space.  If yes, 
+        then we need to make sure that the CMM does not do something like 
+        force a white point mapping like lcms does */
+    if (gsicc_profile_from_ps(gs_input_profile)) {
+        cms_flags = cms_flags | gscms_avoid_white_fix_flag(); 
+    } 
     if (cms_input_profile == NULL) {
         if (gs_input_profile->buffer != NULL) {
             cms_input_profile =
@@ -935,6 +1047,9 @@ gsicc_get_link_profile(const gs_imager_state *pis, gx_device *dev,
             icc_manager->smask_profiles->smask_gray->profile_handle;
         cms_output_profile = 
             icc_manager->graytok_profile->profile_handle;
+        /* Turn off bp compensation in this case as there is a bug in lcms */
+        rendering_params->black_point_comp = false;
+        cms_flags = 0;  /* Turn off any flag setting */
     }
     /* Get the link with the proof and or device link profile */
     if (include_softproof || include_devicelink || src_dev_link) {
@@ -943,7 +1058,7 @@ gsicc_get_link_profile(const gs_imager_state *pis, gx_device *dev,
                                                    cms_output_profile,
                                                    cms_devlink_profile,
                                                    rendering_params,
-                                                   src_dev_link,
+                                                   src_dev_link, cms_flags,
                                                    cache_mem->non_gc_memory);
         if (include_softproof) {
             gx_monitor_leave(proof_profile->lock);
@@ -953,7 +1068,8 @@ gsicc_get_link_profile(const gs_imager_state *pis, gx_device *dev,
         }
     } else {
         link_handle = gscms_get_link(cms_input_profile, cms_output_profile,
-                                     rendering_params, cache_mem->non_gc_memory);
+                                     rendering_params, cms_flags, 
+                                     cache_mem->non_gc_memory);
     }
     if (!src_dev_link) {
         gx_monitor_leave(gs_output_profile->lock);
@@ -1012,7 +1128,9 @@ gsicc_get_link_profile(const gs_imager_state *pis, gx_device *dev,
    buffer are parsed and placed into a custom stucture that is pointed to by
    the profile pointer.  Note that this pointer is not visible to the garbage
    collector and should be allocated in non-gc memory as is demonstrated in
-   this sample.
+   this sample.  The structure elements are released when the profile is 
+   destroyed through the call to gsicc_named_profile_release, which is set
+   as the value of the profile member variable release.
 
    Note that there are calls defined in gsicc_littlecms.c that will create link
    transforms between Named Color ICC profiles and the output device.  Such
@@ -1029,8 +1147,8 @@ gsicc_get_link_profile(const gs_imager_state *pis, gx_device *dev,
 
    !!!!IT WILL BE NECESSARY TO PERFORM THE PROPER DEALLOCATION
        CLEAN-UP OF THE STRUCTURES WHEN rc_free_icc_profile OCCURS FOR THE NAMED
-       COLOR PROFILE!!!!!!
-
+       COLOR PROFILE!!!!!!   See gsicc_named_profile_release below for an example.
+       This is set in the profile release member variable.
 */
 
 /* Define the demo structure and function for named color look-up */
@@ -1038,6 +1156,7 @@ gsicc_get_link_profile(const gs_imager_state *pis, gx_device *dev,
 typedef struct gsicc_namedcolortable_s {
     gsicc_namedcolor_t *named_color;    /* The named color */
     unsigned int number_entries;        /* The number of entries */
+    gs_memory_t *memory;
 } gsicc_namedcolortable_t;
 
 /* Support functions for parsing buffer */
@@ -1060,7 +1179,38 @@ get_to_next_line(char **buffptr, int *buffer_count)
     }
 }
 
-/* Function returns -1 if name not found.  Otherwise transform the color. */
+/* Release the structures we allocated in gsicc_transform_named_color */
+static void
+gsicc_named_profile_release(void *ptr)
+{
+    gsicc_namedcolortable_t *namedcolor_table = (gsicc_namedcolortable_t*) ptr;
+    unsigned int num_entries;
+    gs_memory_t *mem;
+    int k;
+    gsicc_namedcolor_t *namedcolor_data;
+
+    if (namedcolor_table != NULL) {
+        mem = namedcolor_table->memory;
+        num_entries = namedcolor_table->number_entries;
+        namedcolor_data = namedcolor_table->named_color;
+
+        for (k = 0; k < num_entries; k++) {
+            gs_free(mem, namedcolor_data[k].colorant_name, 1,
+                namedcolor_data[k].name_size + 1,
+                "gsicc_named_profile_release (colorant_name)");
+        }
+
+        gs_free(mem, namedcolor_data, num_entries, sizeof(gsicc_namedcolor_t),
+            "gsicc_named_profile_release (namedcolor_data)");
+
+        gs_free(namedcolor_table->memory, namedcolor_table, 1,
+            sizeof(gsicc_namedcolortable_t),
+            "gsicc_named_profile_release (namedcolor_table)");
+    }
+}
+
+/* Function returns -1 if a name is not found.  Otherwise it will transform
+   the named colors and return 0 */
 int
 gsicc_transform_named_color(const float tint_values[],
                             gsicc_namedcolor_t color_names[], 
@@ -1070,18 +1220,18 @@ gsicc_transform_named_color(const float tint_values[],
                             cmm_profile_t *gs_output_profile,
                             gsicc_rendering_param_t *rendering_params)
 {
-
     gsicc_namedcolor_t *namedcolor_data;
     unsigned int num_entries;
     cmm_profile_t *named_profile;
     gsicc_namedcolortable_t *namedcolor_table;
+    int num_nonnone_names;
     int k,j,n;
     float lab[3];
     char *buffptr;
     int buffer_count;
     int count;
     int code;
-    char *pch, *temp_ptr;
+    char *pch, *temp_ptr, *last = NULL;
     bool done;
     int curr_name_size;
     bool found_match;
@@ -1096,6 +1246,7 @@ gsicc_transform_named_color(const float tint_values[],
     gsicc_rendering_param_t render_cond;   
     cmm_dev_profile_t *dev_profile;
     int indices[GS_CLIENT_COLOR_MAX_COMPONENTS]; 
+    gs_memory_t *nongc_mem = pis->memory->non_gc_memory;
 
     /* Check if the data that we have has already been generated. */
     if (pis->icc_manager != NULL) {
@@ -1107,45 +1258,46 @@ gsicc_transform_named_color(const float tint_values[],
                 /*  Note that we do this in non-GC memory since the
                     profile pointer is not GC'd */
                 namedcolor_table =
-                    (gsicc_namedcolortable_t*) gs_malloc(pis->memory->stable_memory, 1,
+                    (gsicc_namedcolortable_t*) gs_malloc(nongc_mem, 1,
                                                     sizeof(gsicc_namedcolortable_t),
                                                     "gsicc_transform_named_color");
-                if (namedcolor_table == NULL) return(-1);
+                if (namedcolor_table == NULL) 
+                    return(gs_error_VMerror);
+                namedcolor_table->memory = nongc_mem;
                 /* Parse buffer and load the structure we will be searching */
                 buffptr = (char*) named_profile->buffer;
                 buffer_count = named_profile->buffer_size;
                 count = sscanf(buffptr,"%d",&num_entries);
                 if (num_entries < 1 || count == 0) {
-                    gs_free(pis->memory, namedcolor_table, 1,
+                    gs_free(nongc_mem, namedcolor_table, 1,
                             sizeof(gsicc_namedcolortable_t),
                             "gsicc_transform_named_color");
-                    return (-1);
+                    return -1;
                 }
                 code = get_to_next_line(&buffptr,&buffer_count);
                 if (code < 0) {
-                    gs_free(pis->memory,
-                            namedcolor_table, 1,
+                    gs_free(nongc_mem, namedcolor_table, 1,
                             sizeof(gsicc_namedcolortable_t),
                             "gsicc_transform_named_color");
-                    return (-1);
+                    return -1;
                 }
                 namedcolor_data =
-                    (gsicc_namedcolor_t*) gs_malloc(pis->memory->stable_memory, num_entries,
+                    (gsicc_namedcolor_t*) gs_malloc(nongc_mem, num_entries,
                                                     sizeof(gsicc_namedcolor_t),
                                                     "gsicc_transform_named_color");
                 if (namedcolor_data == NULL) {
-                    gs_free(pis->memory, namedcolor_table, 1,
+                    gs_free(nongc_mem, namedcolor_table, num_entries,
                             sizeof(gsicc_namedcolortable_t),
                             "gsicc_transform_named_color");
-                    return (-1);
+                    return gs_error_VMerror;
                 }
                 namedcolor_table->number_entries = num_entries;
                 namedcolor_table->named_color = namedcolor_data;
                 for (k = 0; k < num_entries; k++) {
                     if (k == 0) {
-                        pch = strtok(buffptr,",;");
+                        pch = gs_strtok(buffptr,",;", &last);
                     } else {
-                        pch = strtok(NULL,",;");
+                        pch = gs_strtok(NULL,",;", &last);
                     }
                     /* Remove any /0d /0a stuff from start */
                     temp_ptr = pch;
@@ -1161,13 +1313,14 @@ gsicc_transform_named_color(const float tint_values[],
                     namedcolor_data[k].name_size = curr_name_size;
                     /* +1 for the null */
                     namedcolor_data[k].colorant_name =
-                        (char*) gs_malloc(pis->memory->stable_memory,1,
-                                          curr_name_size+1,
+                        (char*)gs_malloc(nongc_mem, 1, curr_name_size + 1,
                                           "gsicc_transform_named_color");
+                    if (namedcolor_data[k].colorant_name == NULL)
+                        return gs_error_VMerror;
                     strncpy(namedcolor_data[k].colorant_name,temp_ptr,
                             namedcolor_data[k].name_size+1);
                     for (j = 0; j < 3; j++) {
-                        pch = strtok(NULL,",;");
+                        pch = gs_strtok(NULL,",;", &last);
                         count = sscanf(pch,"%f",&(lab[j]));
                     }
                     lab[0] = lab[0]*65535/100.0;
@@ -1178,53 +1331,62 @@ gsicc_transform_named_color(const float tint_values[],
                         if (lab[j] < 0) lab[j] = 0;
                         namedcolor_data[k].lab[j] = (unsigned short) lab[j];
                     }
-                    if (code < 0) {
-                        gs_free(pis->memory, namedcolor_table, 1,
-                                sizeof(gsicc_namedcolortable_t),
-                                "gsicc_transform_named_color");
-                        gs_free(pis->memory, namedcolor_data, num_entries,
-                                sizeof(gsicc_namedcolordata_t),
-                                "gsicc_transform_named_color");
-                        return (-1);
-                    }
                 }
                 /* Assign to the profile pointer */
                 named_profile->profile_handle = namedcolor_table;
+                named_profile->release = gsicc_named_profile_release;
             } else {
                 if (named_profile->profile_handle != NULL ) {
                     namedcolor_table =
                         (gsicc_namedcolortable_t*) named_profile->profile_handle;
                    num_entries = namedcolor_table->number_entries;
                 } else {
-                    return(-1);
+                    return -1;
                 }
             }
             /* Go through each of our spot names, getting the color value for
                each one. */
+            num_nonnone_names = num_names;
             for (n = 0; n < num_names; n++) {
-                /* Search our structure for the color name */
+                /* Search our structure for the color name.  Ignore the None
+                   colorant names.  All is a special case that someone may 
+                   want to detect and do some special handling for.  In this
+                   particular example we would punt with All and let the default
+                   methods handle it */
                 found_match = false;
-                for (k = 0; k < num_entries; k++) {
-                    if (color_names[n].name_size == 
-                        namedcolor_table->named_color[k].name_size) {
-                        if( strncmp((const char *) namedcolor_table->named_color[k].colorant_name,
-                            (const char *) color_names[n].colorant_name, color_names[n].name_size) == 0) {
-                            found_match = true;
-                            break;
+
+                if (strncmp("None", (const char *)color_names[n].colorant_name, 
+                            color_names[n].name_size) == 0) {
+                    num_nonnone_names--;
+                } else {
+                    /* Colorant was not None */
+                    for (k = 0; k < num_entries; k++) {
+                        if (color_names[n].name_size ==
+                            namedcolor_table->named_color[k].name_size) {
+                            if (strncmp((const char *)namedcolor_table->named_color[k].colorant_name,
+                                (const char *)color_names[n].colorant_name, color_names[n].name_size) == 0) {
+                                found_match = true;
+                                break;
+                            }
                         }
                     }
-                }
-                if (found_match) {
-                    indices[n] = k;
-                } else {
-                    /* We do not know this colorant, return -1 */
-                    return -1;
+                    if (found_match) {
+                        indices[n] = k;
+                    } else {
+                        /* We do not know this colorant, return -1 */
+                        return -1;
+                    }
                 }
             }
+            if (num_nonnone_names < 1)
+                return -1; /* No non-None colorants. */
             /* We have all the colorants.  Lets go through and see if we can
                make something that looks like a merge of the various ones */
-            /* Apply tint, blend LAB values  */
-            for (n = 0; n < num_names; n++) {
+            /* Apply tint, blend LAB values.  Note that we may have wanted to 
+               check if we even want to do this.  It is possible that the
+               device directly supports this particular colorant.  One may
+               want to check the alt tint transform boolean */
+            for (n = 0; n < num_nonnone_names; n++) {
                 for (j = 0; j < 3; j++) {
                     temp = (float) namedcolor_table->named_color[indices[n]].lab[j] * tint_values[n]
                             + (float) white_lab[j] * (1.0 - tint_values[n]);
@@ -1242,11 +1404,20 @@ gsicc_transform_named_color(const float tint_values[],
                     psrc[2] = (psrc[2] + temp_lab[2]) / 2; /* b* */
                 }
             }
-            /* Push LAB value through CMM to get device values */
+            /* Push LAB value through CMM to get CMYK device values */
+            /* Note that there are several options here. You could us an NCLR 
+               icc profile to compute the device colors that you want.  For,
+               example if the output device had an NCLR profile.
+               However, what you MUST do here is set ALL the device values.  
+               Hence, below we initialize all of them to zero and in this 
+               particular example, set only the ones that were output from 
+               the device profile */
             if ( gs_output_profile != NULL ) {
                 curr_output_profile = gs_output_profile;
             } else {
-                /* Use the device profile */
+                /* Use the device profile.  Note if one was not set for the
+                   device, the default CMYK profile is used.  Note that 
+                   if we specified and NCLR profile it will be used here */
                 code = dev_proc(dev, get_profile)(dev,  &dev_profile);
                 gsicc_extract_profile(dev->graphics_type_tag,
                                       dev_profile, &(curr_output_profile),
@@ -1264,17 +1435,28 @@ gsicc_transform_named_color(const float tint_values[],
                 (icc_link->procs.map_color)(dev, icc_link, psrc, psrc_temp, 2);
             }
             gsicc_release_link(icc_link);
-            for ( k = 0; k < curr_output_profile->num_comps; k++){
+
+            /* Clear out ALL the color values */
+            for (k = 0; k < dev->color_info.num_components; k++){
+                device_values[k] = 0;
+            }
+            /* Set only the values that came from the profile.  By default
+               this would generally be just CMYK values.  For the equivalent
+               color computation case it certainly will be.  If someone 
+               specified an NCLR profile it could be more.  Note that if an
+               NCLR profile is being used we will want to make sure the colorant
+               order is correct */
+            for (k = 0; k < curr_output_profile->num_comps; k++){
                 device_values[k] = psrc_temp[k];
             }
             return 0;
         }
     }
-    return -1;
+    return -1; /* Color not found */
 }
 
 /* Used by gs to notify the ICC manager that we are done with this link for now */
-/* This may release elements waiting on a icc_link_cache slot */
+/* This may release elements waiting on an icc_link_cache slot */
 void
 gsicc_release_link(gsicc_link_t *icclink)
 {
@@ -1327,7 +1509,6 @@ gsicc_release_link(gsicc_link_t *icclink)
 }
 
 /* Used to initialize the buffer description prior to color conversion */
-
 void
 gsicc_init_buffer(gsicc_bufferdesc_t *buffer_desc, unsigned char num_chan, unsigned char bytes_per_chan,
                   bool has_alpha, bool alpha_first, bool is_planar, int plane_stride, int row_stride,
@@ -1360,4 +1541,3 @@ gsicc_get_device_profile_comps(cmm_dev_profile_t *dev_profile)
        return dev_profile->link_profile->num_comps_out;
     }
 }
-

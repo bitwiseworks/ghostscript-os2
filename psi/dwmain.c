@@ -66,7 +66,7 @@ static int poll(void)
     }
     /* If text window closing then abort Ghostscript */
     if (tw->quitnow)
-        return e_Fatal;
+        return gs_error_Fatal;
     return 0;
 }
 
@@ -335,11 +335,11 @@ int new_main(int argc, char *argv[])
     if (code == 0)
         code = gsdll.run_string(instance, start_string, 0, &exit_code);
     code1 = gsdll.exit(instance);
-    if (code == 0 || (code == e_Quit && code1 != 0))
+    if (code == 0 || (code == gs_error_Quit && code1 != 0))
         code = code1;
 #if defined(_MSC_VER) || defined(__BORLANDC__)
     } __except(exception_code() == EXCEPTION_STACK_OVERFLOW) {
-        code = e_Fatal;
+        code = gs_error_Fatal;
         text_puts(tw, "*** C stack overflow. Quiting...\n");
     }
 #endif
@@ -357,12 +357,12 @@ int new_main(int argc, char *argv[])
     exit_status = 0;
     switch (code) {
         case 0:
-        case e_Quit:
+        case gs_error_Quit:
             break;
-        case e_Fatal:
+        case gs_error_Fatal:
             exit_status = 1;
             break;
-        case e_Info:
+        case gs_error_Info:
         default:
             exit_status = 255;
     }
@@ -390,6 +390,22 @@ set_font(void)
     WritePrivateProfileString(szIniSection, "FontSize", buf, szIniName);
 }
 
+typedef BOOL (SetProcessDPIAwareFn)(void);
+
+static void
+avoid_windows_scale(void)
+{
+    /* Fetch the function address and only call it if it is there; this keeps
+     * compatability with Windows < 8.1 */
+    HMODULE hUser32 = LoadLibrary(TEXT("user32.dll"));
+    SetProcessDPIAwareFn *ptr;
+
+    ptr = (SetProcessDPIAwareFn *)GetProcAddress(hUser32, "SetProcessDPIAware");
+    if (ptr != NULL)
+        ptr();
+    FreeLibrary(hUser32);
+}
+
 int PASCAL
 WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLine, int cmdShow)
 {
@@ -410,6 +426,9 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLine, int cmd
     char winposbuf[256];
     int len = sizeof(winposbuf);
     int x, y, cx, cy;
+
+    /* Mark us as being 'system dpi aware' to avoid horrid scaling */
+    avoid_windows_scale();
 
     /* copy the hInstance into a variable so it can be used */
     ghInstance = hInstance;

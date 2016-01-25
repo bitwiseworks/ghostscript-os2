@@ -38,6 +38,7 @@
 #include "gsimage.h"
 #include "gsiparm4.h"
 #include "stream.h"
+#include "gsovrc.h"
 
 /* GC descriptors */
 public_st_pattern_template();
@@ -65,7 +66,7 @@ const gs_color_space_type gs_color_space_type_Pattern = {
     gx_set_overprint_Pattern,
     gx_final_Pattern, gx_adjust_color_Pattern,
     gx_serialize_Pattern,
-    gx_cspace_no_linear
+    gx_cspace_no_linear, gx_polarity_unknown
 };
 
 /* Initialize a generic pattern template. */
@@ -266,10 +267,22 @@ gx_install_Pattern(gs_color_space * pcs, gs_state * pgs)
 /*
  * Set the overprint compositor for a Pattern color space. This does nothing;
  * for patterns the overprint compositor is set at set_device_color time.
+ * However, it is possible that this pattern color has nothing to do with what
+ * is about to happen (e.g. an image enumeration and fill).  Hence, we should
+ * at least disable the overprint compositor if overprint is off.  If overprint
+ * is not off, it is not clear how we should proceed, as the color space is
+ * a factor in that set up and here the color space is a pattern.
 */
 static int
 gx_set_overprint_Pattern(const gs_color_space * pcs, gs_state * pgs)
 {
+    gs_overprint_params_t params;
+
+    if (!pgs->overprint) {
+        params.retain_any_comps = false;
+        pgs->effective_overprint_mode = 0;
+        return gs_state_update_overprint(pgs, &params);
+    }
     return 0;
 }
 

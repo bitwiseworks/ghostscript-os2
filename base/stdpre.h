@@ -19,8 +19,11 @@
 #ifndef stdpre_INCLUDED
 #  define stdpre_INCLUDED
 
+/* if we define _LARGEFILE64_SOURCE zlib tries to include unistd.h */
+#ifndef _MSC_VER
 /* Ghostscript uses transitional LFS functions. */
 #define _LARGEFILE64_SOURCE 1
+#endif
 
 #ifndef _FILE_OFFSET_BITS
 #define _FILE_OFFSET_BITS 64
@@ -360,16 +363,6 @@ typedef const char *ptr_ord_t;
 /* Backward compatibility */
 #define round_up(v, m) ROUND_UP(v, m)
 #define round_down(v, m) ROUND_DOWN(v, m)
-
-/*
- * In pre-ANSI C, float parameters get converted to double.
- * However, if we pass a float to a function that has been declared
- * with a prototype, and the parameter has been declared as float,
- * the ANSI standard specifies that the parameter is left as float.
- * To avoid problems caused by missing prototypes,
- * we declare almost all float parameters as double.
- */
-typedef double floatp;
 
 /*
  * Because of C's strange insistence that ; is a terminator and not a

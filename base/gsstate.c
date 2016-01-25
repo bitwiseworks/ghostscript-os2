@@ -158,7 +158,6 @@ typedef struct gs_state_parts_s {
 /* GC descriptors */
 extern_st(st_imager_state);
 public_st_gs_state();
-
 /* GC procedures for gs_state */
 static ENUM_PTRS_WITH(gs_state_enum_ptrs, gs_state *gsvptr)
 ENUM_PREFIX(st_imager_state, gs_state_num_ptrs + 2);
@@ -644,15 +643,19 @@ gs_state_update_overprint(gs_state * pgs, const gs_overprint_params_t * pparams)
     gx_device *         dev = pgs->device;
     gx_device *         ovptdev;
 
-    if ( (code = gs_create_overprint(&pct, pparams, pgs->memory)) >= 0 &&
-         (code = dev_proc(dev, create_compositor)( dev,
+    code = gs_create_overprint(&pct, pparams, pgs->memory);
+    if (code >= 0) {
+        code = dev_proc(dev, create_compositor)( dev,
                                                    &ovptdev,
                                                    pct,
                                                    pis,
                                                    pgs->memory,
-                                                   NULL)) >= 0   ) {
-        if (ovptdev != dev)
-            gx_set_device_only(pgs, ovptdev);
+                                                   NULL);
+        if (code >= 0 || code == gs_error_handled){
+            if (ovptdev != dev)
+                gx_set_device_only(pgs, ovptdev);
+            code = 0;
+        }
     }
     if (pct != 0)
         gs_free_object(pgs->memory, pct, "gs_state_update_overprint");
@@ -698,18 +701,7 @@ void
 gs_setoverprint(gs_state * pgs, bool ovp)
 {
     bool    prior_ovp = pgs->overprint;
-    cmm_dev_profile_t *profile_struct;
-    gx_device *dev = pgs->device;
 
-    /* Check if overprint is disabled */
-    if (dev != NULL) {
-        if (dev->procs.get_profile == NULL) {
-            profile_struct = dev->icc_struct;
-        } else {
-            dev_proc(dev, get_profile)(dev,  &profile_struct);
-        }
-        if (profile_struct->sim_overprint == false) return;
-    }
     pgs->overprint = ovp;
     if (prior_ovp != ovp)
         (void)gs_do_set_overprint(pgs);
@@ -833,7 +825,7 @@ gs_initgraphics(gs_state * pgs)
 
 /* setfilladjust */
 int
-gs_setfilladjust(gs_state * pgs, floatp adjust_x, floatp adjust_y)
+gs_setfilladjust(gs_state * pgs, double adjust_x, double adjust_y)
 {
 #define CLAMP_TO_HALF(v)\
     ((v) <= 0 ? fixed_0 : (v) >= 0.5 ? fixed_half : float2fixed(v));
@@ -1024,6 +1016,7 @@ gstate_clone(gs_state * pfrom, gs_memory_t * mem, client_name_t cname,
     }
     gs_imager_state_copied((gs_imager_state *)pgs);
     /* Don't do anything to clip_stack. */
+
     rc_increment(pgs->device);
     *parts.color[0].ccolor    = *pfrom->color[0].ccolor;
     *parts.color[0].dev_color = *pfrom->color[0].dev_color;

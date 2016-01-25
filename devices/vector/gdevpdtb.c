@@ -340,6 +340,12 @@ pdf_base_font_alloc(gx_device_pdf *pdev, pdf_base_font_t **ppbfont,
         complete = copied;
     pbfont->copied = (gs_font_base *)copied;
     pbfont->complete = (gs_font_base *)complete;
+
+    /* replace the font cache of the copied fonts with our own font cache
+     * this is required for PCL, see 'pdf_free_pdf_font_cache' in gdevpdf.c
+     * for further details.
+     */
+    pbfont->copied->dir = pbfont->complete->dir = pdev->pdf_font_dir;
     pbfont->is_standard = is_standard;
     if (pfname->size > 0) {
         font_name.data = pfname->chars;
@@ -562,7 +568,7 @@ pdf_write_embedded_font(gx_device_pdf *pdev, pdf_base_font_t *pbfont, font_type 
     gs_const_string fnstr;
     pdf_data_writer_t writer;
     byte digest[6] = {0,0,0,0,0,0};
-    int code, code1 = 0;
+    int code = 0;
     int options=0;
 
     if (pbfont->written)
@@ -640,18 +646,14 @@ pdf_write_embedded_font(gx_device_pdf *pdev, pdf_base_font_t *pbfont, font_type 
                                 WRITE_TYPE1_EEXEC_PAD | WRITE_TYPE1_ASCIIHEX,
                                 NULL, 0, &fnstr, lengths);
             if (lengths[0] > 0) {
-                if (code < 0) {
-                    code1 = code;
+                if (code < 0)
                     goto finish;
-                }
                 code = cos_dict_put_c_key_int((cos_dict_t *)writer.pres->object,
                             "/Length1", lengths[0]);
             }
             if (lengths[1] > 0) {
-                if (code < 0) {
-                    code1 = code;
+                if (code < 0)
                     goto finish;
-                }
                 code = cos_dict_put_c_key_int((cos_dict_t *)writer.pres->object,
                             "/Length2", lengths[1]);
                 if (code < 0)
@@ -675,7 +677,6 @@ pdf_write_embedded_font(gx_device_pdf *pdev, pdf_base_font_t *pbfont, font_type 
                                         TYPE2_OPTIONS |
                             (pdev->CompatibilityLevel < 1.3 ? WRITE_TYPE2_AR3 : 0),
                                         NULL, 0, &fnstr, FontBBox);
-            code1 = code;
         }
         goto finish;
 
@@ -735,6 +736,7 @@ pdf_write_embedded_font(gx_device_pdf *pdev, pdf_base_font_t *pbfont, font_type 
         *ppcd = (cos_dict_t *)writer.pres->object;
         if (code < 0) {
             pdf_end_fontfile(pdev, &writer);
+            pdf_obj_mark_unused(pdev, writer.pres->object->id);
             return code;
         }
         code = pdf_end_fontfile(pdev, &writer);
@@ -744,9 +746,6 @@ pdf_write_embedded_font(gx_device_pdf *pdev, pdf_base_font_t *pbfont, font_type 
         code = gs_note_error(gs_error_rangecheck);
     }
 
-    if (code >=0 && code1 < 0) {
-        code = code1;
-    }
     pbfont->written = true;
     return code;
 }

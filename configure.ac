@@ -20,7 +20,7 @@ dnl Initialization and Versioning
 dnl ------------------------------------------------
 
 AC_INIT
-AC_PREREQ(2.52)
+AC_PREREQ(2.60)
 AC_LANG(C)
 AC_CONFIG_SRCDIR(psi/gs.c)
 
@@ -180,6 +180,13 @@ case `uname` in
             CC_DBG_FLAGS_TO_TRY="-g -O0"
         fi
         ;;
+        AIX)
+        if test $ac_cv_prog_gcc = yes; then
+            CC_OPT_FLAGS_TO_TRY="-O2"
+            CC_DBG_FLAGS_TO_TRY="-gdwarf-2 -g3 -O0"
+            SET_DT_SONAME="so"
+        fi
+        ;;
 esac
 
 AC_SUBST(SET_DT_SONAME)
@@ -188,8 +195,8 @@ AC_SUBST(SET_DT_SONAME)
 if test $ac_cv_prog_gcc = yes; then
     cflags_to_try="-Wall -Wstrict-prototypes -Wundef \
 -Wmissing-declarations -Wmissing-prototypes -Wwrite-strings \
--Wno-strict-aliasing -Wdeclaration-after-statement \
--fno-builtin -fno-common"
+-Wno-strict-aliasing -Werror=declaration-after-statement \
+-fno-builtin -fno-common -Werror=return-type"
     optflags_to_try="$CC_OPT_FLAGS_TO_TRY"
     dbgflags_to_try="$CC_DBG_FLAGS_TO_TRY"
 else
@@ -274,7 +281,8 @@ if test x$BIGENDIAN = x ; then
      return (*(char*)&one == 0 ? 0 : 1);
     ])],
     [BIGENDIAN=1;AC_MSG_RESULT(big)],
-    [BIGENDIAN=0;AC_MSG_RESULT(little)])
+    [BIGENDIAN=0;AC_MSG_RESULT(little)],
+    [BIGENDIAN=1;AC_MSG_RESULT(cross compiling: assuming big engian, otherwise use "--enable-little-endian")])
 else
   if test x$BIGENDIAN = x1 ; then
     AC_MSG_RESULT(big)
@@ -411,31 +419,60 @@ if test "x$ac_cv_header_inttypes_h" = xyes; then
         GCFLAGS="$GCFLAGS -DHAVE_INTTYPES_H=1"
 fi
 
-dnl try to find a 64 bit type for devicen color index
-uint64_type="none"
- AC_CHECK_SIZEOF(unsigned long int)
- if test $ac_cv_sizeof_unsigned_long_int = 8; then
-        uint64_type="unsigned long int"
- else
-  AC_CHECK_SIZEOF(unsigned long long)
-  if test $ac_cv_sizeof_unsigned_long_long = 8; then
-        uint64_type="unsigned long long"
-  else
-   AC_CHECK_SIZEOF(unsigned __int64)
-   if test $ac_cv_sizeof_unsigned___int64 = 8; then
-        uint64_type="unsigned __int64"
+large_color_index=1
+
+AC_ARG_WITH([large_color_index],, large_color_index="$with_large_color_index")
+
+if test x"$large_color_index" != "x0"; then
+  dnl try to find a 64 bit type for devicen color index
+  color_ind_type="none"
+   AC_CHECK_SIZEOF(unsigned long int)
+   if test $ac_cv_sizeof_unsigned_long_int = 8; then
+          color_ind_type="unsigned long int"
    else
-    AC_CHECK_SIZEOF(u_int64_t)
-    if test $ac_cv_sizeof_u_int64_t = 8; then
-        uint64_type="u_int64_t"
+    AC_CHECK_SIZEOF(unsigned long long)
+    if test $ac_cv_sizeof_unsigned_long_long = 8; then
+          color_ind_type="unsigned long long"
+    else
+     AC_CHECK_SIZEOF(unsigned __int64)
+     if test $ac_cv_sizeof_unsigned___int64 = 8; then
+          color_ind_type="unsigned __int64"
+     else
+      AC_CHECK_SIZEOF(u_int64_t)
+      if test $ac_cv_sizeof_u_int64_t = 8; then
+          color_ind_type="u_int64_t"
+      fi
+     fi
     fi
    fi
-  fi
- fi
-dnl we don't need to do anything if a 64-bit type wasn't found
-dnl the code falls back to a (probably 32-bit) default
-if test "$uint64_type" != "none"; then
-        GCFLAGS="$GCFLAGS -DGX_COLOR_INDEX_TYPE=\"$uint64_type\""
+else
+  dnl try to find a 32 bit type for devicen color index
+  color_ind_type="none"
+   AC_CHECK_SIZEOF(unsigned long int)
+   if test $ac_cv_sizeof_unsigned_long_int = 4; then
+          color_ind_type="unsigned long int"
+   else
+    AC_CHECK_SIZEOF(unsigned int)
+    if test $ac_cv_sizeof_unsigned_int = 4; then
+          color_ind_type="unsigned int"
+    else
+     AC_CHECK_SIZEOF(unsigned __int32)
+     if test $ac_cv_sizeof_unsigned___int32 = 4; then
+          color_ind_type="unsigned __int32"
+     else
+      AC_CHECK_SIZEOF(u_int32_t)
+      if test $ac_cv_sizeof_u_int32_t = 4; then
+          color_ind_type="u_int32_t"
+      fi
+     fi
+    fi
+   fi
+fi
+
+dnl if a suitable type wasn't found above, we fall back to
+dnl a default in genarch.
+if test "$color_ind_type" != "none"; then
+        GCFLAGS="$GCFLAGS -DGX_COLOR_INDEX_TYPE=\"$color_ind_type\""
 fi
 
 dnl --------------------------------------------------
@@ -456,23 +493,76 @@ dnl --------------------------------------------------
 
 AC_CHECK_LIB(m, cos)
 
+AC_CHECK_FUNCS([pread pwrite], [HAVE_PREAD_PWRITE="-DHAVE_PREAD_PWRITE=1"], [HAVE_PREAD_PWRITE=])
+
+if test "x$HAVE_PREAD_PWRITE" != "x"; then
+  save_cflags=$CFLAGS
+  CFLAGS="$CFLAGS -D__USE_UNIX98=1 -D_XOPEN_SOURCE=500"
+  AC_CHECK_DECLS([pwrite,pread], [], [HAVE_PREAD_PWRITE=])
+  CFLAGS=$save_cflags
+  if test "x$HAVE_PREAD_PWRITE" != "x"; then
+    GCFLAGS="$GCFLAGS -D__USE_UNIX98=1"
+  fi
+fi
+
+AC_SUBST(HAVE_PREAD_PWRITE)
+
 SYNC="nosync"
 PTHREAD_LIBS=""
+RECURSIVE_MUTEXATTR=""
 
-case `uname` in
-    MINGW*)
-      AC_MSG_WARN([disabling support for pthreads......])
-    ;;
-    *)
-      AC_CHECK_LIB(pthread, pthread_create, [
-        SYNC=posync;
-        PTHREAD_LIBS="-lpthread"
-      ])
-    ;;
-esac
+AC_ARG_ENABLE([threading], AC_HELP_STRING([--disable-threading],
+    [disable support for multithreaded rendering]))
+
+# if you haven't got pread/pwrite, we can't use multithreading
+if test "x$HAVE_PREAD_PWRITE" != "x"; then
+  if test "$enable_threading" != "no"; then
+    case `uname` in
+      MINGW*)
+        AC_MSG_WARN([disabling support for pthreads......])
+      ;;
+      *)
+        AC_CHECK_LIB(pthread, pthread_create, [
+          SYNC=posync;
+          PTHREAD_LIBS="-lpthread"
+        ])
+        AC_MSG_CHECKING([recursive mutexes.......])
+        AC_TRY_COMPILE([#include <pthread.h>],
+             [
+                static int k = PTHREAD_MUTEX_RECURSIVE;
+                #ifndef pthread_mutexattr_settype
+                #ifdef __cplusplus
+                  (void) pthread_mutexattr_settype;
+                #else
+                  (void) pthread_mutexattr_settype;
+                #endif
+                #endif
+                ;
+                return 0;
+              ],
+             [RECURSIVE_MUTEXATTR="-DGS_RECURSIVE_MUTEXATTR=PTHREAD_MUTEX_RECURSIVE"],
+             [AC_TRY_COMPILE([#include <pthread.h>],
+                [
+                  static int k = PTHREAD_MUTEX_RECURSIVE_NP;
+                  #ifndef pthread_mutexattr_settype
+                  #ifdef __cplusplus
+                    (void) pthread_mutexattr_settype;
+                  #else
+                    (void) pthread_mutexattr_settype;
+                  #endif
+                  #endif
+                  ;
+                  return 0;
+                ],
+                [RECURSIVE_MUTEXATTR="-DGS_RECURSIVE_MUTEXATTR=PTHREAD_MUTEX_RECURSIVE_NP"])])
+      ;;
+    esac
+  fi
+fi
 
 AC_SUBST(SYNC)
 AC_SUBST(PTHREAD_LIBS)
+AC_SUBST(RECURSIVE_MUTEXATTR)
 
 dnl Tests for iconv (Needed for OpenPrinting Vector, "opvp" output device)
 AC_ARG_WITH(libiconv,
@@ -643,7 +733,7 @@ AC_ARG_ENABLE([freetype], AC_HELP_STRING([--disable-freetype],
 
 FT_BRIDGE=0
 SHARE_FT=0
-FTSRCDIR=
+FTSRCDIR=src
 FT_CFLAGS=
 FT_LIBS=
 
@@ -651,7 +741,7 @@ INSERT_UFST_BRIDGE_EQUAL_ONE=
 UFST_ROOT=
 UFST_CFLAGS=
 UFST_LIB_EXT=
-FAPIUFST_MAK="\$(GLSRCDIR)/stub.mak"
+FAPIUFST_MAK="\$(GLSRCDIR)\$(D)stub.mak"
 
 AC_ARG_ENABLE([fapi], AC_HELP_STRING([--disable-fapi],
        [Force use of the (deprecated) Artifex font scaler/renderer]))
@@ -671,7 +761,16 @@ if test x"$enable_fapi" != xno; then
          *) UFST_ROOT=`pwd`/$with_ufst ;;
       esac
 
-      FAPIUFST_MAK="\$(UFST_ROOT)/fapiufst.mak"
+      # Various versions of UFST fail to build with -Werror=return-type so
+      # strip that off our GCFLAGS if it's there.
+      tmp_cflags=""
+      for tmp_cflag in $GCFLAGS ; do
+        echo $tmp_cflag
+        tmp_cflags="$tmp_cflags $(echo $tmp_cflag | grep -v "Werror=return-type")"
+      done
+      GCFLAGS="$tmp_cflags"
+
+      FAPIUFST_MAK="\$(UFST_ROOT)\$(D)fapiufst.mak"
     
       if ! test -f $UFST_ROOT/fapiufst.mak ; then
         echo $UFST_ROOT/fapiufst.mak
@@ -883,48 +982,28 @@ AC_SUBST(LIBPNGDIR)
 
 WHICHLCMS=
 
-AC_ARG_WITH([lcms], AC_HELP_STRING([--with-lcms],
-    [try to use LittleCMS 1.x instead of the default of LittleCMS 2.x]))
+AC_MSG_CHECKING([for local lcms2 library source])
+LCMS2DIR=src
 
-if test x$with_lcms != xyes; then
-  AC_MSG_CHECKING([for local lcms2 library source])
-  LCMS2DIR=$srcdir/lcms2
-  if test -f $LCMS2DIR/include/lcms2.h; then
-        AC_MSG_RESULT([yes])
-        SHARELCMS=0
-        WHICHLCMS=lcms2
-  else
-    AC_MSG_RESULT([no])
-    AC_MSG_CHECKING([for system lcms2 library])
-    AC_CHECK_LIB(lcms2, cmsGetTransformOutputFormat, [
-           AC_CHECK_HEADERS([lcms2.h], [LCMS2DIR="";SHARELCMS=1;WHICHLCMS=lcms2])
-         ])
-    if test x$WHICHLCMS = x; then
-      AC_MSG_WARN([lcms2 not found, or too old])
-    fi
-  fi
-fi
-
-if test x$WHICHLCMS = x; then
-  AC_MSG_CHECKING([for local lcms library source])
-  LCMSDIR=$srcdir/lcms
-  SHARELCMS=0
-  if test -f $LCMSDIR/include/lcms.h; then
-        AC_MSG_RESULT([yes])
-        SHARELCMS=0
-        WHICHLCMS=lcms
-  else
-
-    AC_MSG_ERROR([LittleCMS source not found!])
-    #AC_CHECK_LIB(lcms, cmsCreateXYZProfile, [
-    #          AC_CHECK_HEADERS([lcms.h], [SHARELCMS=1;LCMSDIR=""])
-    #        ])
+LCMS2SRC=$srcdir/lcms2
+if test -f $LCMS2SRC/include/lcms2.h; then
+      AC_MSG_RESULT([yes])
+      SHARELCMS=0
+      WHICHLCMS=lcms2
+      LCMS2DIR=$LCMS2SRC
+else
+  AC_MSG_RESULT([no])
+  AC_MSG_CHECKING([for system lcms2 library])
+  AC_CHECK_LIB(lcms2, _cmsCreateMutex, [
+         AC_CHECK_HEADERS([lcms2.h], [SHARELCMS=1;WHICHLCMS=lcms2])
+       ])
+  if test x$WHICHLCMS = x; then
+    AC_MSG_ERROR([lcms2 not found, or too old])
   fi
 fi
 
 AC_SUBST(SHARELCMS)
 AC_SUBST(WHICHLCMS)
-AC_SUBST(LCMSDIR)
 AC_SUBST(LCMS2DIR)
 
 dnl look for libtiff, it also requires lib
@@ -934,12 +1013,15 @@ AC_ARG_WITH([system-libtiff], AC_HELP_STRING([--with-system-libtiff],
             [], [with_system_libtiff=check])
 TIFFDEVS=''
 FAX_DEVS=''
+XPSWRITEDEVICE=''
 
-LIBTIFFDIR=''
+
+LIBTIFFDIR='src'
 LIBTIFFCONFDIR=''
 
-TIFFDEVS_ALL='tiffs tiff12nc tiff24nc tiff48nc tiff32nc tiff64nc tiffcrle tifflzw tiffpack tiffgray tiffsep tiffsep1 tiffscaled'
+TIFFDEVS_ALL='tiffs tiff12nc tiff24nc tiff48nc tiff32nc tiff64nc tiffcrle tifflzw tiffpack tiffgray tiffsep tiffsep1 tiffscaled tiffscaled4 tiffscaled8 tiffscaled24 tiffscaled32'
 FAX_DEVS_ALL='cfax dfaxlow dfaxhigh fax faxg3 faxg32d faxg4 tiffg3 tiffg32d tiffg4 tfax'
+
 case "x$with_system_libtiff" in
     xcheck)
         if test -d $srcdir/tiff; then
@@ -967,11 +1049,11 @@ case "x$with_system_libtiff" in
             fi
         fi
         if test "x$HAVE_LOCAL_LIBTIFF" = x && test "x$HAVE_SYSTEM_LIBTIFF" = x; then
-            AC_MSG_NOTICE([Could not find a copy of libtiff on your system.
-Disabling tiff output devices.])
+            AC_MSG_NOTICE([Could not find a copy of libtiff on your system. Disabling tiff and xps output devices.])
         else
             TIFFDEVS="$TIFFDEVS_ALL"
             FAX_DEVS="$FAX_DEVS_ALL"
+            XPSWRITEDEVICE='xpswrite'
         fi
         ;;
     xyes)
@@ -996,9 +1078,9 @@ Disabling tiff output devices.])
             SHARE_LIBTIFF=1
             TIFFDEVS="$TIFFDEVS_ALL"
             FAX_DEVS="$FAX_DEVS_ALL"
+            XPSWRITEDEVICE='xpswrite'
        else
-            AC_MSG_NOTICE([Could not find a copy of libtiff on your system.
-Disabling tiff output devices.])
+            AC_MSG_NOTICE([Could not find a copy of libtiff on your system. Disabling tiff and xps output devices.])
         fi
         ;;
     xno)
@@ -1010,10 +1092,10 @@ Disabling tiff output devices.])
             SHARE_LIBTIFF=0
             TIFFDEVS="$TIFFDEVS_ALL"
             FAX_DEVS="$FAX_DEVS_ALL"
+            XPSWRITEDEVICE='xpswrite'
         else
             AC_MSG_RESULT([no])
-            AC_MSG_NOTICE([Could not find local copy of libtiff.
-Disabling tiff output devices.])
+            AC_MSG_NOTICE([Could not find local copy of libtiff. Disabling tiff and xps output devices.])
         fi
         ;;
 esac
@@ -1022,10 +1104,10 @@ if test $SHARE_LIBTIFF -eq 0; then
       echo
       echo "Running libtiff configure script..."
       olddir=`pwd`
-      if ! test -d $LIBTIFFCONFDIR ; then
-        mkdir $LIBTIFFCONFDIR
+      if ! test -d "$LIBTIFFCONFDIR" ; then
+        mkdir "$LIBTIFFCONFDIR"
       fi
-      cd "$LIBTIFFCONFDIR" && $olddir/$LIBTIFFDIR/configure --disable-jbig --disable-lzma $SUBCONFIG_OPTS
+      cd "$LIBTIFFCONFDIR" && ../"$LIBTIFFDIR"/configure --disable-jbig --disable-lzma $SUBCONFIG_OPTS
       status=$?
       if test "$status" -ne 0 ; then
         AC_MSG_ERROR([libtiff configure script failed], $status)
@@ -1082,12 +1164,20 @@ if ( test -d $srcdir/cups ); then
     if test x$enable_cups != xno; then
         if test x$with_local_cups != xyes; then
             AC_PATH_PROG(CUPSCONFIG,cups-config)
-            AC_CHECK_HEADER([cups/raster.h],[],[CUPSCONFIG=""])
+            # check for a libcups header
+            AC_CHECK_HEADER([cups/cups.h],[],[CUPSCONFIG=""])
+            # And check for a libcupsimage header
+            if test "x$CUPSCONFIG" != x; then
+                AC_CHECK_HEADER([cups/raster.h],[],[CUPSCONFIG=""])
+            fi
+
             if test "x$CUPSCONFIG" != x; then
                 dnl Use values from CUPS config...
                 CUPSCFLAGS="`$CUPSCONFIG --cflags` $CFLAGS"
 #                CUPSLINK="`$CUPSCONFIG --ldflags` `$CUPSCONFIG --static --image --libs | sed -e '1,$s/-lssl//'` $LIBS"
                 CUPSLINK="`$CUPSCONFIG --ldflags` `$CUPSCONFIG --image --libs`"
+                CUPSAPIVERSION="`$CUPSCONFIG --api-version`"
+
                 GS_SPLIT_LIBS([CUPSLIBS], [$CUPSLINK])
                 GS_SPLIT_LIBPATHS([CUPSLIBDIRS],[$CUPSLINK])
 
@@ -1111,7 +1201,15 @@ if ( test -d $srcdir/cups ); then
 
                 CUPSINCLUDE="include $srcdir/cups/cups.mak"
                 CUPSDEV="cups"
+
+                echo "\n\n\n $CUPSAPIVERSION \n\n\n"
+                # pwgraster support arrived in cups 1.5.x
+                if test "$CUPSAPIVERSION" ">" "1.4" ; then
+                  CUPSDEV="$CUPSDEV pwgraster"
+                fi
+
                 CUPSVERSION="`$CUPSCONFIG --version`"
+
                 LCUPSINCLUDE="include \$(GLSRCDIR)/lcups.mak"
                 LCUPSIINCLUDE="include \$(GLSRCDIR)/lcupsi.mak"
                 if ( test x$with_pdftoraster != xno ); then
@@ -1128,7 +1226,7 @@ if ( test -d $srcdir/cups ); then
                 LCUPSBUILDTYPE=linux
                 LCUPSINCLUDE="include \$(GLSRCDIR)/lcups.mak"
                 LCUPSIINCLUDE="include \$(GLSRCDIR)/lcupsi.mak"
-                CUPSDEV="cups"
+                CUPSDEV="cups pwgraster"
             fi
         fi
     fi
@@ -1330,6 +1428,7 @@ SHARE_JPX=0
 JPXDEVS=''
 JPX_DECODER=
 JPX_AUTOCONF_CFLAGS=
+JPX_LRINTF_SUBST=
 
 if test x$with_luratech != xno; then
   AC_MSG_CHECKING([for local Luratech JPEG2K library source])
@@ -1363,6 +1462,27 @@ fi
 
 OPENJPEGDIR=$srcdir/openjpeg
 
+if test "x$ac_cv_header_stdint_h" = "xyes"; then
+  CFLAGS_OPJ_HAVE_STDINT_H="-DOPJ_HAVE_STDINT_H=1"
+else
+  CFLAGS_OPJ_HAVE_STDINT_H=
+fi
+
+
+if test "x$ac_cv_header_inttypes_h" = "xyes"; then
+  CFLAGS_OPJ_HAVE_INTTYPES_H="-DOPJ_HAVE_INTTYPES_H=1"
+else
+  CFLAGS_OPJ_HAVE_INTTYPES_H=
+fi
+
+if test "x$BIGENDIAN" != "x0"; then
+  CFLAGS_OPJ_BIGENDIAN="-DOPJ_BIG_ENDIAN"
+else
+  CFLAGS_OPJ_BIGENDIAN=
+fi
+
+AC_CHECK_FUNCS([fseeko], [CFLAGS_OPJ_HAVE_FSEEKO="-DOPJ_HAVE_FSEEKO=1"], [CFLAGS_OPJ_HAVE_STDINT_H=])
+
 JPX_SSE_CFLAGS=""
 
 if test "x$HAVE_SSE2" = "x" ; then
@@ -1371,13 +1491,15 @@ if test "x$HAVE_SSE2" = "x" ; then
   fi
 fi
 
+AC_CHECK_DECL(lrintf, , [OPJ_LRINTF_SUBST="-D\"lrintf(a)\"=\"((long)(a+0.5))\"]",[[#include <math.h>]])
+
 AC_ARG_ENABLE([openjpeg], AC_HELP_STRING([--disable-openjpeg],
         [Do not use OpenJPEG for JPX decoding]))
 
 if test "x$JPX_DECODER" = "x"; then
   if test "x$enable_openjpeg" != "xno"; then
     AC_MSG_CHECKING([for local OpenJPEG library source])
-    if test -e $OPENJPEGDIR/libopenjpeg/openjpeg.h; then
+    if test -e $OPENJPEGDIR/src/lib/openjp2/openjpeg.h; then
       AC_MSG_RESULT([yes])
       JPXDIR="$OPENJPEGDIR"
       JPX_DECODER=openjpeg
@@ -1385,10 +1507,12 @@ if test "x$JPX_DECODER" = "x"; then
       AC_CHECK_FUNCS([memalign], [have_memalign=1])
 
       if test "x$have_memalign" = "x1"; then
-        JPX_AUTOCONF_CFLAGS="-DUSE_OPENJPEG_JP2 $JPX_SSE_CFLAGS"
+        JPX_AUTOCONF_CFLAGS=""
       else
-        JPX_AUTOCONF_CFLAGS="-DUSE_OPENJPEG_JP2 $JPX_SSE_CFLAGS -D\"memalign(a,b)=malloc(b)\""
+        JPX_AUTOCONF_CFLAGS="-D\"memalign(a,b)=malloc(b)\""
       fi
+      
+      JPX_AUTOCONF_CFLAGS="$JPX_AUTOCONF_CFLAGS $OPJ_LRINTF_SUBST -DUSE_JPIP -DUSE_OPENJPEG_JP2 $CFLAGS_OPJ_HAVE_STDINT_H $CFLAGS_OPJ_HAVE_INTTYPES_H $CFLAGS_OPJ_BIGENDIAN $CFLAGS_OPJ_HAVE_FSEEKO"
 
       JPXDEVS='$(PSD)jpx.dev'
     else
@@ -1522,6 +1646,81 @@ AC_ARG_WITH([gs], AC_HELP_STRING([--with-gs=NAME],
         [GS="$with_gs"],[GS='gs'])
 AC_SUBST(GS)
 
+PCL=
+PCL_TARGET=
+
+PLROMFS_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+PL_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+PCL_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+PCL_TOP_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+PXL_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+
+if test -f $srcdir/pcl/pl/pl.mak; then
+  AC_ARG_WITH([pcl], AC_HELP_STRING([--with-pcl=NAME],
+        [name of the GhostPCL executible (if the source is available, ignored otherwise) [[gpcl6]]]),
+        [PCL="$with_pcl"],[PCL='gpcl6'])
+
+  PCL_TARGET=gpcl6
+
+  PLROMFS_MAK="\$(PLSRCDIR)\$(D)plromfs.mak"
+  PL_MAK="\$(PLSRCDIR)\$(D)pl.mak"
+  PCL_MAK="\$(PCL5SRCDIR)\$(D)pcl.mak"
+  PCL_TOP_MAK="\$(PCL5SRCDIR)\$(D)pcl_top.mak"
+  PXL_MAK="\$(PXLSRCDIR)\$(D)pxl.mak"
+fi
+AC_SUBST(PCL)
+AC_SUBST(PCL_TARGET)
+
+AC_SUBST(PLROMFS_MAK)
+AC_SUBST(PL_MAK)
+AC_SUBST(PCL_MAK)
+AC_SUBST(PCL_TOP_MAK)
+AC_SUBST(PXL_MAK)
+
+
+XPS=
+XPS_TARGET=
+
+XPS_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+XPSROMFS_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+# gxps currently depends on code in pl
+if test "x$PCL_TARGET" != "x" ; then
+  if test -f $srcdir/xps/xps.mak; then
+    AC_ARG_WITH([xps], AC_HELP_STRING([--with-xps=NAME],
+          [name of the GhostXPS executible (if the source is available, ignored otherwise) [[gxps]]]),
+          [XPS="$with_xps"],[XPS='gxps'])
+
+    XPS_TARGET=gxps
+    XPS_MAK="\$(XPSSRCDIR)\$(D)xps.mak"
+    XPSROMFS_MAK="\$(XPSSRCDIR)\$(D)xpsromfs.mak"
+  fi
+fi
+
+AC_SUBST(XPS)
+AC_SUBST(XPS_TARGET)
+AC_SUBST(XPS_MAK)
+AC_SUBST(XPSROMFS_MAK)
+
+GPDL=
+GPDL_TARGET=
+
+GPDL_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+# in order to build gpdl we need the pdls available
+
+if test "x$XPS_TARGET" != "x" && test "x$PCL_TARGET" != "x" ; then
+  if test -f $srcdir/gpdl/gpdl.mak; then
+    AC_ARG_WITH([gpdl], AC_HELP_STRING([--with-gpdl=NAME],
+          [name of the GhostPDL executible (if the source is available, ignored otherwise) [[gpdl]]]),
+          [GPDL="$with_gpdl"],[GPDL='gpdl'])
+
+#    GPDL_TARGET=gpdl
+    GPDL_MAK="\$(GPDLSRCDIR)\$(D)gpdl.mak"
+  fi
+fi
+AC_SUBST(GPDL)
+AC_SUBST(GPDL_TARGET)
+AC_SUBST(GPDL_MAK)
+
 dnl do we compile the postscript initialization files into Ghostscript?
 COMPILE_INITS="1"
 AC_ARG_ENABLE([compile-inits], AC_HELP_STRING([--disable-compile-inits],
@@ -1578,7 +1777,6 @@ dnl Check which drivers we'd like to support.
 P_DEVS0=""
 F_DEVS0=""
 CUPS_DEVS0=""
-SVG_DEVS0=""
 XPS_DEVS0=""
 JBIG2_DEVS=""
 IJS_DEVS0=""
@@ -1597,7 +1795,7 @@ APPLE_DEVS='appledmp iwhi iwlo iwlq'
 IBM_DEVS='ibmpro jetp3852'
 OKI_DEVS='oki182 okiibm oki4w'
 JAPAN_DEVS='lips4 lips4v ljet4pjl lj4dithp dj505j picty180 lips2p bjc880j pr201 pr150 pr1000 pr1000_4 jj100 bj10v bj10vh mj700v2c mj500c mj6000c mj8000c fmpr fmlbp ml600 lbp310 lbp320 md50Mono md50Eco md1xMono escpage lp2000 npdl rpdl'
-MISC_PDEVS='uniprint ap3250 atx23 atx24 atx38 coslw2p coslwxl cp50 declj250 fs600 imagen lj250 m8510 necp6 oce9050 r4081 sj48 tek4696 t4693d2 t4693d4 t4693d8 dl2100 la50 la70 la75 la75plus ln03 xes md2k md5k gdi samsunggdi'
+MISC_PDEVS='uniprint ap3250 atx23 atx24 atx38 itk24i itk38 coslw2p coslwxl cp50 declj250 fs600 imagen lj250 m8510 necp6 oce9050 r4081 sj48 tek4696 t4693d2 t4693d4 t4693d8 dl2100 la50 la70 la75 la75plus ln03 xes md2k md5k gdi samsunggdi'
 OPVP_DEVS='opvp oprp'
 
 ETS_HALFTONING_DEVS='rinkj'
@@ -1610,10 +1808,9 @@ JPEG_DEVS='jpeg jpeggray jpegcmyk'
 
 PCX_DEVS='pcxmono pcxgray pcx16 pcx256 pcx24b pcxcmyk pcx2up'
 PBM_DEVS='pbm pbmraw pgm pgmraw pgnm pgnmraw pnm pnmraw ppm ppmraw pkm pkmraw pksm pksmraw pam pamcmyk4 pamcmyk32 plan plang planm planc plank'
-PS_DEVS='psdf psdcmyk psdrgb pdfwrite ps2write epswrite bbox txtwrite inkcov'
-MISC_FDEVS='ccr cif inferno mag16 mag256 mgr4 mgr8 mgrgray2 mgrgray4 mgrgray8 mgrmono miff24 plan9bm sgirgb sunhmono bit bitrgb bitrgbtags bitcmyk devicen spotcmyk xcf'
-SVGDEV='svgwrite'
-XPSDEV='xpswrite'
+PS_DEVS='psdf psdcmyk psdrgb pdfwrite ps2write eps2write bbox txtwrite inkcov ink_cov psdcmykog fpng'
+MISC_FDEVS='ccr cif inferno mag16 mag256 mgr4 mgr8 mgrgray2 mgrgray4 mgrgray8 mgrmono miff24 plan9bm sgirgb sunhmono bit bitrgb bitrgbtags bitcmyk devicen spotcmyk xcf plib plibg plibm plibc plibk gprf'
+XPSDEV=$XPSWRITEDEVICE
 
 while test -n "$drivers"; do
         if echo $drivers |grep "," >/dev/null; then
@@ -1643,7 +1840,7 @@ while test -n "$drivers"; do
                 fi
                 ;;
         FILES)
-                F_DEVS0="$F_DEVS0 $BMP_DEVS $FAX_DEVS $JPEG_DEVS $TIFFDEVS $PCX_DEVS $PBM_DEVS $PS_DEVS $MISC_FDEVS $SVGDEV $XPSDEV"
+                F_DEVS0="$F_DEVS0 $BMP_DEVS $FAX_DEVS $JPEG_DEVS $TIFFDEVS $PCX_DEVS $PBM_DEVS $PS_DEVS $MISC_FDEVS $XPSDEV"
                 CUPS_DEVS0="$CUPSDEV"
                 JBIG2_DEVS="$JBIG2FILEDEVS"
                 PNG_DEVS0="$PNGDEVS"
@@ -1732,12 +1929,8 @@ while test -n "$drivers"; do
                 # PostScript/PDF writing
                 F_DEVS0="$F_DEVS0 $PS_DEVS"
                 ;;
-        SVG)
-                # SVG writing
-                SVG_DEVS0="$SVGDEV"
-                ;;
         XPS)
-                # SVG writing
+                # XPS writing
                 XPS_DEVS0="$XPSDEV"
                 ;;
 
@@ -1779,11 +1972,6 @@ if test x$enable_threadsafe = xyes; then
   for ntsdev in $NTS_DEVS ; do
     NTS_EXCLUDES="$(echo \"$CUPS_DEVS0{[@]:0}\" | grep -o $ntsdev) $NTS_EXCLUDES"
     CUPS_DEVS0=`echo $CUPS_DEVS0 | sed "s/\b$ntsdev\b//g"`
-  done
-
-  for ntsdev in $NTS_DEVS ; do
-    NTS_EXCLUDES="$(echo \"$SVG_DEVS0{[@]:0}\" | grep -o $ntsdev) $NTS_EXCLUDES"
-    SVG_DEVS0=`echo $SVG_DEVS0 | sed "s/\b$ntsdev\b//g"`
   done
 
   for ntsdev in $NTS_DEVS ; do
@@ -1836,10 +2024,6 @@ if test -n "$CUPS_DEVS0"; then
     CUPS_DEVS=`(for i in $CUPS_DEVS0; do d='$(DD)'${i}.dev; if ( grep '^'$d $noncontribmakefiles  2>&1 >/dev/null) || ( ! test -z "$CONTRIBINCLUDE" ); then echo $d; fi; done) | sort | uniq | tr '\012\015' '  '`
 fi
 
-if test -n "$SVG_DEVS0"; then
-    SVG_DEVS=`(for i in $SVG_DEVS0; do d='$(DD)'${i}.dev; if ( grep '^'$d $noncontribmakefiles  2>&1 >/dev/null) || ( ! test -z "$CONTRIBINCLUDE" ); then echo $d; fi; done) | sort | uniq | tr '\012\015' '  '`
-fi
-
 if test -n "$XPS_DEVS0"; then
     XPS_DEVS=`(for i in $XPS_DEVS0; do d='$(DD)'${i}.dev; if ( grep '^'$d $noncontribmakefiles  2>&1 >/dev/null) || ( ! test -z "$CONTRIBINCLUDE" ); then echo $d; fi; done) | sort | uniq | tr '\012\015' '  '`
 fi
@@ -1859,7 +2043,6 @@ fi
 AC_SUBST(P_DEVS)
 AC_SUBST(F_DEVS)
 AC_SUBST(CUPS_DEVS)
-AC_SUBST(SVG_DEVS)
 AC_SUBST(XPS_DEVS)
 AC_SUBST(JBIG2_DEVS)
 AC_SUBST(IJS_DEVS)
@@ -1918,6 +2101,18 @@ case `uname` in
 
           DYNAMIC_LDFLAGS="-G -shared -Wl,\$(LD_SET_DT_SONAME)\$(LDFLAGS_SO_PREFIX)\$(GS_SONAME_MAJOR)"
           DYNAMIC_LIBS=""
+          SO_LIB_EXT=".so"
+        ;;
+        AIX)
+          DYNAMIC_CFLAGS="-fPIC"
+          GCFLAGS="-Wl,-brtl $GCFLAGS"
+          DYNAMIC_LDFLAGS="-shared -Wl,-brtl,-G -fPIC"
+          if test $ac_cv_prog_gcc = yes; then
+            # GCC high level flag
+            DYNAMIC_LIBS="-ldl"
+          else
+            DYNAMIC_LIBS=""
+          fi
           SO_LIB_EXT=".so"
         ;;
 esac
@@ -2048,19 +2243,104 @@ AC_FUNC_VPRINTF
 AC_CHECK_FUNCS([bzero dup2 floor gettimeofday memchr memmove memset mkdir mkfifo modf pow putenv rint setenv sqrt strchr strrchr strspn strstr])
 
 dnl --------------------------------------------------
+dnl disable the memory header ID code on SPARC
+dnl --------------------------------------------------
+
+case `uname -a` in
+        *sparc*)
+	  GCFLAGS="$GCFLAGS -DGS_USE_MEMORY_HEADER_ID=0"
+        ;;
+esac
+
+dnl --------------------------------------------------
 dnl set big/little endian for LCMS
 dnl --------------------------------------------------
 
-if test "x$BIGENDIAN" != "x0"; then
-  LCMS_ENDIAN="-DUSE_BIG_ENDIAN=$BIGENDIAN"
-  LCMS2_ENDIAN="-DCMS_USE_BIG_ENDIAN=$BIGENDIAN"
-else
-  LCMS_ENDIAN=
-  LCMS2_ENDIAN=
-fi
+LCMS_ENDIAN="-DUSE_BIG_ENDIAN=$BIGENDIAN"
+LCMS2_ENDIAN="-DCMS_USE_BIG_ENDIAN=$BIGENDIAN"
 
 AC_SUBST(LCMS_ENDIAN)
 AC_SUBST(LCMS2_ENDIAN)
+
+dnl --------------------------------------------------
+dnl set memory manager's ptr alignment
+dnl --------------------------------------------------
+
+ALIGN_TEXT_PROG_INCS="\
+#include <stdio.h> \
+#include <stdlib.h>"
+
+
+ALIGN_TEXT_PROG="\
+    struct altest \
+    { \
+      char a; \
+      int b; \
+      long c; \
+      long long d; \
+      float e; \
+      double f; \
+      void *g; \
+    }; \
+    struct altest *a; \
+    struct altest d; \
+    char *b, *c, *lim; \
+    int ret = 0; \
+    c = b = malloc(64 * sizeof(struct altest)); \
+    lim = b + (64 * sizeof(struct altest)); \
+    do \
+    { \
+        b++; \
+        if ((b >= lim) || \
+            ((((unsigned int)b) & 4) == 0 && (((unsigned int)b) & 8) != 0)) \
+        { \
+          break; \
+        } \
+    } while(1); \
+    if (b >= lim) \
+    { \
+        ret = -1; \
+    } \
+    else \
+    { \
+        a = (struct altest *)b; \
+        b = a->g; \
+        ret = 0; \
+    } \
+    free(c); \
+    exit(ret);"
+
+
+GS_MEMPTR_ALIGNMENT=
+
+AC_ARG_WITH(memory-alignment,
+            [AC_HELP_STRING([--with-memory-alignment],
+                               [Allows setting minimum alignment for the memory manager (4 or 8 bytes]))],
+            [GS_MEMPTR_ALIGNMENT=$with_memory_alignment],[GS_MEMPTR_ALIGNMENT=check])
+
+if test x"$GS_MEMPTR_ALIGNMENT" = xcheck ; then
+   AC_MSG_CHECKING([minimum memory pointer alignment])
+   AC_RUN_IFELSE(
+    [AC_LANG_PROGRAM([$ALIGN_TEXT_PROG_INCS], [
+      $ALIGN_TEXT_PROG
+    ])],
+    [GS_MEMPTR_ALIGNMENT=4;AC_MSG_RESULT(done)],
+    [GS_MEMPTR_ALIGNMENT=8;AC_MSG_RESULT(done)],
+    [GS_MEMPTR_ALIGNMENT=4;AC_MSG_RESULT(cross compiling: assuming 4 byte - otherwise use "--with-memory-alignment=")])
+
+fi
+
+if test x"$GS_MEMPTR_ALIGNMENT" != x4 && test x"$GS_MEMPTR_ALIGNMENT" != x8 ; then
+    AC_MSG_ERROR([4 and 8 are the only valid values for "--with-memory-alignment"], -1)
+fi
+
+if test x"$GS_MEMPTR_ALIGNMENT" != x4  || test x"$with_memory_alignment" != x ; then
+  LCMS2_PTR_ALIGNMENT="-DCMS_PTR_ALIGNMENT=$GS_MEMPTR_ALIGNMENT"
+
+  GCFLAGS="$GCFLAGS -DGS_MEMPTR_ALIGNMENT=$GS_MEMPTR_ALIGNMENT"
+fi
+
+AC_SUBST(LCMS2_PTR_ALIGNMENT)
 
 dnl --------------------------------------------------
 dnl decide if we have to "hack" sqrtf() for lcms2
@@ -2069,6 +2349,14 @@ dnl --------------------------------------------------
 AC_CHECK_FUNC([sqrtf], [SQRTF_SUBST=], [SQRTF_SUBST="-Dsqrtf=\"(float)sqrt\""])
 
 AC_SUBST(SQRTF_SUBST)
+
+dnl --------------------------------------------------
+dnl check for and possibly replace strnlen
+dnl --------------------------------------------------
+AC_CHECK_FUNCS([strnlen], [HAVE_STRNLEN=],[HAVE_STRNLEN="-D\"strnlen(a,b)=strlen(a)\""])
+
+GCFLAGS="$GCFLAGS $HAVE_STRNLEN"
+
 
 dnl --------------------------------------------------
 dnl check for byte swap intrinsics
@@ -2135,12 +2423,15 @@ AC_ARG_WITH([gnu-make],  AC_HELP_STRING([--without-gnu-make],
     [disable GNU make features]), gnu_make=no)
 
 if test "x$gnu_make" != "xno"; then
+  SUB_MAKE_OPTION="-f \$(MAKEFILE)"
   ORDER_ONLY="|"
 else
+  SUB_MAKE_OPTION=
   ORDER_ONLY=""
 fi
 
 AC_SUBST(ORDER_ONLY)
+AC_SUBST(SUB_MAKE_OPTION)
 
 # --------------------------------------------------
 # annoying: Windows doesn't allow "aux" as a
@@ -2156,11 +2447,32 @@ case `uname` in
 esac
 AC_SUBST(AUXDIRPOSTFIX)
 
+# --------------------------------------------------
+# Set executable name extention
+# usually empty on Unix-like systems
+# --------------------------------------------------
+EXEEXT=""
+
+AC_ARG_WITH([exe-ext],  AC_HELP_STRING([--with-exe-ext=EXT],
+    [set the file name executable extension (must include any separator e.g. the period in ".exe")]),[], [exe_ext=])
+
+if test "x"$with_exe_ext != "x"; then
+  EXEEXT="$with_exe_ext"
+else
+  case `uname` in
+    MINGW*)
+      EXEEXT=".exe"
+    ;;
+  esac
+fi
+
+AC_SUBST(EXEEXT)
 
 dnl --------------------------------------------------
 dnl Do substitutions
 dnl --------------------------------------------------
-
+SRCDIR="$srcdir"
+AC_SUBST(SRCDIR)
 AC_SUBST(OPT_CFLAGS)
 AC_SUBST(DBG_CFLAGS)
 AC_SUBST(GCFLAGS)

@@ -618,7 +618,7 @@ gx_forward_strip_tile_rect_devn(gx_device * dev, const gx_strip_bitmap * tiles,
         return gx_default_strip_tile_rect_devn(dev, tiles, x, y, w, h, pdcolor0, 
                                                pdcolor1, px, py);
     else
-        return dev_proc(tdev, strip_tile_rect_devn)(dev, tiles, x, y, w, h, 
+        return dev_proc(tdev, strip_tile_rect_devn)(tdev, tiles, x, y, w, h, 
                                                     pdcolor0, pdcolor1, px, py);
 }
 
@@ -714,17 +714,18 @@ static void
 fwd_map_gray_cs(gx_device * dev, frac gray, frac out[])
 {
     gx_device_forward * const fdev = (gx_device_forward *)dev;
-    gx_device * const tdev = fdev->target;
+    gx_device * tdev = fdev->target;
     const gx_cm_color_map_procs * pprocs;
 
+    pprocs = get_color_mapping_procs_subclass(tdev);
     /* Verify that all of the pointers and procs are set */
     /* If not then use a default routine.  This case should be an error */
     if (tdev == 0 || dev_proc(tdev, get_color_mapping_procs) == 0 ||
-          (pprocs = dev_proc(tdev, get_color_mapping_procs(tdev))) == 0 ||
+          pprocs == 0 ||
           pprocs->map_gray == 0)
         gray_cs_to_gray_cm(tdev, gray, out);   /* if all else fails */
     else
-        pprocs->map_gray(tdev, gray, out);
+        map_gray_subclass(pprocs, tdev, gray, out);
 }
 
 /*
@@ -735,17 +736,18 @@ fwd_map_rgb_cs(gx_device * dev, const gs_imager_state *pis,
                                    frac r, frac g, frac b, frac out[])
 {
     gx_device_forward * const fdev = (gx_device_forward *)dev;
-    gx_device * const tdev = fdev->target;
+    gx_device * tdev = fdev->target;
     const gx_cm_color_map_procs * pprocs;
 
+    pprocs = get_color_mapping_procs_subclass(tdev);
     /* Verify that all of the pointers and procs are set */
     /* If not then use a default routine.  This case should be an error */
     if (tdev == 0 || dev_proc(tdev, get_color_mapping_procs) == 0 ||
-          (pprocs = dev_proc(tdev, get_color_mapping_procs(tdev))) == 0 ||
+          pprocs == 0 ||
           pprocs->map_rgb == 0)
         rgb_cs_to_rgb_cm(tdev, pis, r, g, b, out);   /* if all else fails */
     else
-        pprocs->map_rgb(tdev, pis, r, g, b, out);
+        map_rgb_subclass(pprocs, tdev, pis, r, g, b, out);
 }
 
 /*
@@ -755,17 +757,18 @@ static void
 fwd_map_cmyk_cs(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 {
     gx_device_forward * const fdev = (gx_device_forward *)dev;
-    gx_device * const tdev = fdev->target;
+    gx_device * tdev = fdev->target;
     const gx_cm_color_map_procs * pprocs;
 
+    pprocs = get_color_mapping_procs_subclass(tdev);
     /* Verify that all of the pointers and procs are set */
     /* If not then use a default routine.  This case should be an error */
     if (tdev == 0 || dev_proc(tdev, get_color_mapping_procs) == 0 ||
-          (pprocs = dev_proc(tdev, get_color_mapping_procs(tdev))) == 0 ||
+          pprocs == 0 ||
           pprocs->map_cmyk == 0)
         cmyk_cs_to_cmyk_cm(tdev, c, m, y, k, out);   /* if all else fails */
     else
-        pprocs->map_cmyk(tdev, c, m, y, k, out);
+        map_cmyk_subclass(pprocs, tdev, c, m, y, k, out);
 }
 
 static const gx_cm_color_map_procs FwdDevice_cm_map_procs = {
@@ -838,6 +841,7 @@ gx_forward_dev_spec_op(gx_device * dev, int dev_spec_op, void *data, int size)
         if (dev_spec_op == gxdso_pattern_shfill_doesnt_need_path) {
             return (dev->procs.fill_path == gx_default_fill_path);
         }
+        return gs_error_undefined;
     } else if (dev_spec_op == gxdso_pattern_handles_clip_path) {
         if (dev->procs.fill_path == gx_default_fill_path)
             return 0;

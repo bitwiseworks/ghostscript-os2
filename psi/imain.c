@@ -15,6 +15,8 @@
 
 
 /* Common support for interpreter front ends */
+
+
 #include "malloc_.h"
 #include "memory_.h"
 #include "string_.h"
@@ -24,7 +26,11 @@
 #include "gslib.h"
 #include "gsmatrix.h"           /* for gxdevice.h */
 #include "gsutil.h"             /* for bytes_compare */
+#include "gspaint.h"		/* for gs_erasepage */
 #include "gxdevice.h"
+#include "gxdevsop.h"		/* for gxdso_* enums */
+#include "gxclpage.h"
+#include "gdevprn.h"
 #include "gxalloc.h"
 #include "gxiodev.h"            /* for iodev struct */
 #include "gzstate.h"
@@ -150,20 +156,20 @@ gs_main_init0(gs_main_instance * minst, FILE * in, FILE * out, FILE * err,
 #   else
     /* plmain settings remain in effect */
 #   endif
-    gp_get_realtime(minst->base_time);
+    gp_get_usertime(minst->base_time);
 
     /* Initialize the file search paths. */
     paths = (ref *) gs_alloc_byte_array(minst->heap, max_lib_paths, sizeof(ref),
                                         "lib_path array");
     if (paths == 0) {
-        gs_lib_finit(1, e_VMerror, minst->heap);
-        return_error(e_VMerror);
+        gs_lib_finit(1, gs_error_VMerror, minst->heap);
+        return_error(gs_error_VMerror);
     }
     array = (ref *) gs_alloc_byte_array(minst->heap, max_lib_paths, sizeof(ref),
                                         "lib_path array");
     if (array == 0) {
-        gs_lib_finit(1, e_VMerror, minst->heap);
-        return_error(e_VMerror);
+        gs_lib_finit(1, gs_error_VMerror, minst->heap);
+        return_error(gs_error_VMerror);
     }
     make_array(&minst->lib_path.container, avm_foreign, max_lib_paths,
                array);
@@ -182,7 +188,6 @@ int
 gs_main_init1(gs_main_instance * minst)
 {
     i_ctx_t *i_ctx_p;
-    extern init_proc(gs_iodev_init);
 
     if (minst->init_done < 1) {
         gs_dual_memory_t idmem;
@@ -202,7 +207,7 @@ gs_main_init1(gs_main_instance * minst)
                                         idmem.space_system);
 
             if (nt == 0)
-                return_error(e_VMerror);
+                return_error(gs_error_VMerror);
             mem->gs_lib_ctx->gs_name_table = nt;
             code = gs_register_struct_root(mem, NULL,
                                            (void **)&mem->gs_lib_ctx->gs_name_table,
@@ -217,7 +222,7 @@ gs_main_init1(gs_main_instance * minst)
         if (code < 0)
             return code;
         i_ctx_p = minst->i_ctx_p;
-        code = gs_iodev_init(imemory);
+        code = i_iodev_init(minst->i_ctx_p);
         if (code < 0)
             return code;
         minst->init_done = 1;
@@ -315,6 +320,7 @@ gs_main_init2(gs_main_instance * minst)
 {
     i_ctx_t *i_ctx_p;
     int code = gs_main_init1(minst);
+    int initial_init_level = minst->init_done;
 
     if (code < 0)
         return code;
@@ -323,6 +329,38 @@ gs_main_init2(gs_main_instance * minst)
     if (code < 0)
        return code;
     i_ctx_p = minst->i_ctx_p; /* display_set_callback or run_string may change it */
+
+    /* Now process the initial saved-pages=... argument, if any as well as saved-pages-test */
+    if (initial_init_level < 2) {
+       gx_device *pdev = gs_currentdevice(minst->i_ctx_p->pgs);	/* get the current device */
+       gx_device_printer *ppdev = (gx_device_printer *)pdev;
+
+        if (minst->saved_pages_test_mode) {
+            if ((dev_proc(pdev, dev_spec_op)(pdev, gxdso_supports_saved_pages, NULL, 0) == 0)) {
+                /* no warning or error if saved-pages-test mode is used, just disable it */
+                minst->saved_pages_test_mode = false;  /* device doesn't support it */
+            } else {
+                if ((code = gx_saved_pages_param_process(ppdev, (byte *)"begin", 5)) < 0)
+                    return code;
+                if (code > 0)
+                    if ((code = gs_erasepage(minst->i_ctx_p->pgs)) < 0)
+                        return code;
+            }
+        } else if (minst->saved_pages_initial_arg != NULL) {
+            if (dev_proc(pdev, dev_spec_op)(pdev, gxdso_supports_saved_pages, NULL, 0) == 0) {
+                outprintf(minst->heap,
+                          "   --saved-pages not supported by the '%s' device.\n",
+                          pdev->dname);
+                return gs_error_Fatal;
+            }
+            code = gx_saved_pages_param_process(ppdev, minst->saved_pages_initial_arg,
+                                                strlen(minst->saved_pages_initial_arg));
+            if (code > 0)
+                if ((code = gs_erasepage(minst->i_ctx_p->pgs)) < 0)
+                    return code;
+        }
+    }
+
     if (gs_debug_c(':'))
         print_resource_usage(minst, &gs_imemory, "Start");
     gp_readline_init(&minst->readline_data, imemory_system);
@@ -345,7 +383,7 @@ extend_path_list_container (gs_main_instance * minst, gs_file_path * pfp)
                                         "extend_path_list_container array");
 
     if (paths == 0) {
-        return_error(e_VMerror);
+        return_error(gs_error_VMerror);
     }
     make_array(&minst->lib_path.container, avm_foreign, len + LIB_PATH_EXTEND, paths);
     make_array(&minst->lib_path.list, avm_foreign | a_readonly, 0,
@@ -462,7 +500,12 @@ gs_main_set_lib_paths(gs_main_instance * minst)
         const char *dname = iodev->dname;
 
         if (dname && strlen(dname) == 5 && !memcmp("%rom%", dname, 5)) {
-            have_rom_device = 1;
+            struct stat pstat;
+            /* gs_error_unregistered means no usable romfs is available */
+            int code = iodev->procs.file_status((gx_io_device *)iodev, dname, &pstat);
+            if (code != gs_error_unregistered){
+                have_rom_device = 1;
+            }
             break;
         }
     }
@@ -514,7 +557,7 @@ gs_main_run_file_open(gs_main_instance * minst, const char *file_name, ref * pfr
         emprintf1(minst->heap,
                   "Can't find initialization file %s.\n",
                   file_name);
-        return_error(e_Fatal);
+        return_error(gs_error_Fatal);
     }
     r_set_attrs(pfref, a_execute + a_executable);
     return 0;
@@ -545,7 +588,7 @@ gs_run_init_file(gs_main_instance * minst, int *pexit_code, ref * perror_object)
                   "Initialization file %s does not begin with an integer.\n",
                   gs_init_file);
         *pexit_code = 255;
-        return_error(e_Fatal);
+        return_error(gs_error_Fatal);
     }
     *++osp = first_token;
     r_set_attrs(&ifile, a_executable);
@@ -574,7 +617,7 @@ gs_main_run_string_with_length(gs_main_instance * minst, const char *str,
         return code;
     code = gs_main_run_string_continue(minst, str, length, user_errors,
                                        pexit_code, perror_object);
-    if (code != e_NeedInput)
+    if (code != gs_error_NeedInput)
         return code;
     return gs_main_run_string_end(minst, user_errors,
                                   pexit_code, perror_object);
@@ -594,7 +637,7 @@ gs_main_run_string_begin(gs_main_instance * minst, int user_errors,
                       strlen(setup), (const byte *)setup);
     code = gs_main_interpret(minst, &rstr, user_errors, pexit_code,
                         perror_object);
-    return (code == e_NeedInput ? 0 : code == 0 ? e_Fatal : code);
+    return (code == gs_error_NeedInput ? 0 : code == 0 ? gs_error_Fatal : code);
 }
 /* Continue running a string with the option of suspending. */
 int
@@ -657,7 +700,7 @@ gs_push_integer(gs_main_instance * minst, long value)
 }
 
 int
-gs_push_real(gs_main_instance * minst, floatp value)
+gs_push_real(gs_main_instance * minst, double value)
 {
     ref vref;
 
@@ -680,7 +723,7 @@ static int
 pop_value(i_ctx_t *i_ctx_p, ref * pvalue)
 {
     if (!ref_stack_count(&o_stack))
-        return_error(e_stackunderflow);
+        return_error(gs_error_stackunderflow);
     *pvalue = *ref_stack_index(&o_stack, 0L);
     return 0;
 }
@@ -732,7 +775,7 @@ gs_pop_real(gs_main_instance * minst, float *result)
             *result = (float)(vref.value.intval);
             break;
         default:
-            return_error(e_typecheck);
+            return_error(gs_error_typecheck);
     }
     ref_stack_pop(&o_stack, 1);
     return 0;
@@ -758,7 +801,7 @@ gs_pop_string(gs_main_instance * minst, gs_string * result)
             result->size = r_size(&vref);
             break;
         default:
-            return_error(e_typecheck);
+            return_error(gs_error_typecheck);
     }
     ref_stack_pop(&o_stack, 1);
     return code;
@@ -833,6 +876,26 @@ gs_main_finit(gs_main_instance * minst, int exit_status, int code)
      * alloc_restore_all will close dynamically allocated devices.
      */
     tempnames = gs_main_tempnames(minst);
+
+#ifndef PSI_INCLUDED
+    /* We have to disable BGPrint before we call interp_reclaim() to prevent the
+     * parent rendering thread initialising for the next page, whilst we are
+     * removing objects it may want to access - for example, the I/O device table.
+     * We also have to mess with the BeginPage/EndPage procs so that we don't
+     * trigger a spurious extra page to be emitted.
+     */
+    if (minst->init_done >= 1) {
+        gs_main_run_string(minst,
+            "/systemdict .systemexec /begin .systemexec \
+            /BGPrint /GetDeviceParam .special_op \
+            {{ <</BeginPage {pop} /EndPage {pop pop //false } \
+              /BGPrint false /NumRenderingThreads 0>> setpagedevice} if} if \
+              serverdict /.jobsavelevel get 0 eq {/quit} {/stop} ifelse end \
+              .systemvar exec",
+            0 , &exit_code, &error_object);
+    }
+#endif
+
     /*
      * Close the "main" device, because it may need to write out
      * data before destruction. pdfwrite needs so.
@@ -847,7 +910,7 @@ gs_main_finit(gs_main_instance * minst, int exit_status, int code)
                 emprintf1(minst->heap,
                           "ERROR %d reclaiming the memory while the interpreter finalization.\n",
                           code);
-                return e_Fatal;
+                return gs_error_Fatal;
             }
             i_ctx_p = minst->i_ctx_p; /* interp_reclaim could change it. */
         }
@@ -861,8 +924,8 @@ gs_main_finit(gs_main_instance * minst, int exit_status, int code)
             /* deactivate the device just before we close it for the last time */
             gs_main_run_string(minst,
                 /* we need to do the 'quit' so we don't loop for input (double quit) */
-                ".uninstallpagedevice "
-                "serverdict /.jobsavelevel get 0 eq {/quit} {/stop} ifelse .systemvar exec",
+                ".uninstallpagedevice serverdict \
+                /.jobsavelevel get 0 eq {/quit} {/stop} ifelse .systemvar exec",
                 0 , &exit_code, &error_object);
             code = gs_closedevice(pdev);
             if (code < 0)
@@ -871,7 +934,7 @@ gs_main_finit(gs_main_instance * minst, int exit_status, int code)
                           code,
                           dname);
             rc_decrement(pdev, "gs_main_finit");                /* device might be freed */
-            if (exit_status == 0 || exit_status == e_Quit)
+            if (exit_status == 0 || exit_status == gs_error_Quit)
                 exit_status = code;
         }
 #endif
@@ -879,8 +942,10 @@ gs_main_finit(gs_main_instance * minst, int exit_status, int code)
     /* Flush stdout and stderr */
     if (minst->init_done >= 2)
       gs_main_run_string(minst,
-        "(%stdout) (w) file closefile (%stderr) (w) file closefile "
-        "serverdict /.jobsavelevel get 0 eq {/quit} {/stop} ifelse .systemvar exec",
+        "(%stdout) (w) file closefile (%stderr) (w) file closefile \
+        /systemdict .systemexec /begin .systemexec \
+        serverdict /.jobsavelevel get 0 eq {/quit} {/stop} ifelse .systemexec \
+        end",
         0 , &exit_code, &error_object);
     gp_readline_finit(minst->readline_data);
     i_ctx_p = minst->i_ctx_p;		/* get current interp context */
@@ -955,7 +1020,7 @@ print_resource_usage(const gs_main_instance * minst, gs_dual_memory_t * dmem,
     ulong allocated = 0, used = 0;
     long utime[2];
 
-    gp_get_realtime(utime);
+    gp_get_usertime(utime);
     {
         int i;
 

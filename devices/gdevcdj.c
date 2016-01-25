@@ -170,7 +170,7 @@ e:	param_signal_error(plist, oname, code);\
   }
 
 static int cdj_param_check_bytes(gs_param_list *, gs_param_name, const byte *, uint, bool);
-static int cdj_param_check_float(gs_param_list *, gs_param_name, floatp, bool);
+static int cdj_param_check_float(gs_param_list *, gs_param_name, double, bool);
 #define cdj_param_check_string(plist, pname, str, is_defined)\
   cdj_param_check_bytes(plist, pname, (const byte *)(str), strlen(str),\
                         is_defined)
@@ -569,7 +569,7 @@ cdj_device(cdj500_procs, "cdjmono", 300, 300, 1,
            dj500c_print_page, 4, 0, 1);
 
 gx_device_cdj far_data gs_cdeskjet_device =
-cdj_device(cdj500_procs, "cdeskjet", 300, 300, 3,
+cdj_device(cdj500_procs, "cdeskjet", 300, 300, 24,
            dj500c_print_page, 4, 2, 1);
 
 gx_device_cdj far_data gs_cdjcolor_device =
@@ -3566,7 +3566,7 @@ e:              param_signal_error(plist, pname, code);
 /* This is original code. */
 
 static int
-cdj_param_check_float(gs_param_list *plist, gs_param_name pname, floatp fval,
+cdj_param_check_float(gs_param_list *plist, gs_param_name pname, double fval,
                       bool is_defined)
 {       int code;
         float new_value;

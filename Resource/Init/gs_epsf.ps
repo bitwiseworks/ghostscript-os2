@@ -46,12 +46,31 @@
     } ifelse
 } bind def
 
-% Rescale and translate to fit the BoundingBox on the page
+% Crop the page to the BoundingBox
+/EPSBoundingBoxCrop { % llx lly urx ury --
+  EPSDEBUG {
+    (gs_epsf.ps: Setting pagesize from EPS bounding box\n) print flush
+  } if
+  exch 3 index sub exch 2 index sub % stack: llx lly urx-llx ury-lly
+  << /PageSize [ 5 -2 roll ] >> setpagedevice
+  neg exch neg exch translate
+} bind def
+
+% Rescale, translate and rotate to fit the BoundingBox on the page
 /EPSBoundingBoxFitPage { % llx lly urx ury --
   EPSDEBUG { (gs_epsf.ps: Rescaling EPS to fit page\n) print flush } if
   clippath pathbbox newpath
   % translate to new origin at lower left of clippath
   3 index 3 index translate
+  % Figure out if rotate is needed.
+  1 index 4 index sub 1 index 4 index sub eq not {
+  1 index 4 index sub 1 index 4 index sub gt	% bbox page-clipbox page-is-landscape
+  6 index 9 index sub 6 index 9 index sub gt % bbox page-clipbox page-is-landscape bbox-is-landscape
+  xor}{
+    false
+  }ifelse
+  9 1 roll	% compute need-rotate.
+  % stack: rotate-needed bbox page-clipbox
   % calculate scale to fit smaller of width or height
   exch 4 -1 roll sub 3 1 roll exch sub
   4 2 roll 5 index 5 index 4 2 roll
@@ -62,16 +81,8 @@
   dup scale
   % translate to EPS -llx,-lly
   exch neg exch neg translate
-} bind def
-
-% Crop the page to the BoundingBox
-/EPSBoundingBoxCrop { % llx lly urx ury --
-  EPSDEBUG {
-    (gs_epsf.ps: Setting pagesize from EPS bounding box\n) print flush
-  } if
-  exch 3 index sub exch 2 index sub % stack: llx lly urx-llx ury-lly
-  << /PageSize [ 5 -2 roll ] >> setpagedevice
-  neg exch neg exch translate
+  % Finally perform the rotate if needed.
+  { clippath pathbbox pop 0 exch translate 90 rotate pop pop } if
 } bind def
 
 /EPSBoundingBoxProcess { % (llx lly urx ury) state --

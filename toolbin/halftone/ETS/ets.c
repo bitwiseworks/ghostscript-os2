@@ -1,15 +1,13 @@
- /*
- * Testbed implementation of Even Better Screening. Please see
- * http://www.artofcode.com/eventone/ for more details.
+/*
+ * Testbed implementation of Even Better Screening. 
+ * Updated to function properly by Robin Watts and Michael Vrhel
  *
- * Copyright 2001-2004 Raph Levien <raph@acm.org>
+ * Code in this module is covered by US Patents 5055942 and
+ * 5917614 and corresponding international patents. Contact
+ * Artifex for more information, or see:
  *
- * Code in this module is covered by US Patents 5,055,942 and
- * 5,917,614, and corresponding international patents.  This version
- * of ETS is for commercial licensees and is governed by the licensing
- * agreement between artofcode LLC and the licensee. Please see
- * http://www.artofcode.com/eventone/ for information on licensing.
-*/
+ *   http://www.artifex.com/page/imaging-science.html
+ */
 
 #include <stdio.h>
 #include <stdlib.h>

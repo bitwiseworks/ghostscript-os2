@@ -86,20 +86,20 @@
 /Bookman-Light			/URWBookmanL-Ligh	;
 /Bookman-LightItalic		/URWBookmanL-LighItal	;
 
-/Courier			/NimbusMonL-Regu	;
-/Courier-Oblique		/NimbusMonL-ReguObli	;
-/Courier-Bold			/NimbusMonL-Bold	;
-/Courier-BoldOblique		/NimbusMonL-BoldObli	;
+/Courier			/NimbusMono-Regular	;
+/Courier-Oblique		/NimbusMono-Oblique	;
+/Courier-Bold			/NimbusMono-Bold	;
+/Courier-BoldOblique		/NimbusMono-BoldOblique	;
 
 /AvantGarde-Book		/URWGothicL-Book	;
 /AvantGarde-BookOblique		/URWGothicL-BookObli	;
 /AvantGarde-Demi		/URWGothicL-Demi	;
 /AvantGarde-DemiOblique		/URWGothicL-DemiObli	;
 
-/Helvetica			/NimbusSanL-Regu	;
-/Helvetica-Oblique		/NimbusSanL-ReguItal	;
-/Helvetica-Bold			/NimbusSanL-Bold	;
-/Helvetica-BoldOblique		/NimbusSanL-BoldItal	;
+/Helvetica			/NimbusSanL-Reg	;
+/Helvetica-Oblique		/NimbusSanL-RegIta	;
+/Helvetica-Bold			/NimbusSanL-Bol	;
+/Helvetica-BoldOblique		/NimbusSanL-BolIta	;
 
 /Helvetica-Narrow		/NimbusSanL-ReguCond	;
 /Helvetica-Narrow-Oblique	/NimbusSanL-ReguCondItal	;
@@ -116,10 +116,10 @@
 /NewCenturySchlbk-Bold		/CenturySchL-Bold	;
 /NewCenturySchlbk-BoldItalic	/CenturySchL-BoldItal	;
 
-/Times-Roman			/NimbusRomNo9L-Regu	;
-/Times-Italic			/NimbusRomNo9L-ReguItal	;
-/Times-Bold			/NimbusRomNo9L-Medi	;
-/Times-BoldItalic		/NimbusRomNo9L-MediItal	;
+/Times-Roman			/NimbusRomNo9L-Reg	;
+/Times-Italic			/NimbusRomNo9L-RegIta	;
+/Times-Bold			/NimbusRomNo9L-Med	;
+/Times-BoldItalic		/NimbusRomNo9L-MedIta	;
 
 /Symbol				/StandardSymL	;
 

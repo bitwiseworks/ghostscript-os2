@@ -177,8 +177,13 @@ const char *gp_getenv_display(void);
  * parameter, but it would break too many clients to make this change now.)
  * Note that this is the size of the buffer, not the maximum number of
  * characters: the latter is one less, because of the terminating \0.
+ *
+ * This used to be 260, the same as the MAX_PATH value on Windows,
+ * but although MAX_PATH still exists on Windows, it is no longer
+ * the maximum length of a path - doh??
+ * We now use 4k as a reasonable limit for most environments.
  */
-#define gp_file_name_sizeof 260 /* == MAX_PATH on Windows */
+#define gp_file_name_sizeof 4096
 
 /* Define the character used for separating file names in a list. */
 extern const char gp_file_name_list_separator;
@@ -226,6 +231,26 @@ FILE *gp_open_scratch_file(const gs_memory_t *mem,
 
 /* Open a file with the given name, as a stream of uninterpreted bytes. */
 FILE *gp_fopen(const char *fname, const char *mode);
+
+/* gp_stat is defined in stat_.h rather than here due to macro problems */
+
+/* Test whether this platform supports the sharing of file descriptors */
+int gp_can_share_fdesc(void);
+
+/* Create a self-deleting scratch file */
+FILE *gp_open_scratch_file_rm(const gs_memory_t *mem,
+                              const char        *prefix,
+                                    char         fname[gp_file_name_sizeof],
+                              const char        *mode);
+
+/* Create a second open FILE on the basis of a given one */
+FILE *gp_fdup(FILE *f, const char *mode);
+
+/* Read from a specified offset within a FILE into a buffer */
+int gp_fpread(char *buf, uint count, int64_t offset, FILE *f);
+
+/* Write to a specified offset within a FILE from a buffer */
+int gp_fpwrite(char *buf, uint count, int64_t offset, FILE *f);
 
 /* Force given file into binary mode (no eol translations, etc) */
 /* if 2nd param true, text mode if 2nd param false */
@@ -306,7 +331,7 @@ const char *gp_file_name_parent(void);
 /* Answer whether the platform allows parent refenences. */
 /*	unix, Win, Mac: yes */
 /*	VMS:	no.         */
-bool gp_file_name_is_partent_allowed(void);
+bool gp_file_name_is_parent_allowed(void);
 
 /* Answer whether an empty item is meanful in file names on the platform. */
 /*	unix, Win:  no	    */

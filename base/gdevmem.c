@@ -49,8 +49,8 @@ RELOC_PTRS_WITH(device_memory_reloc_ptrs, gx_device_memory *mptr)
         int y;
         int h = mptr->height;
 
-        if (mptr->num_planes > 0)
-            h *= mptr->num_planes;
+        if (mptr->is_planar)
+            h *= mptr->color_info.num_components;
 
         RELOC_PTR(gx_device_memory, base);
         reloc = base_old - mptr->base;
@@ -278,6 +278,9 @@ gs_make_mem_mono_device_with_copydevice(gx_device_memory ** ppdev, gs_memory_t *
 
     set_dev_proc(pdev, get_page_device, gx_default_get_page_device);
     gx_device_set_target((gx_device_forward *)pdev, target);
+    /* Should this be forwarding, monochrome profile, or not set? MJV. */
+    set_dev_proc(pdev, get_profile, gx_forward_get_profile);
+
     gdev_mem_mono_set_inverted(pdev, true);
     check_device_separable((gx_device *)pdev);
     gx_device_fill_in_procs((gx_device *)pdev);
@@ -295,10 +298,11 @@ gs_make_mem_mono_device(gx_device_memory * dev, gs_memory_t * mem,
                    mem, true);
     set_dev_proc(dev, get_page_device, gx_default_get_page_device);
     gx_device_set_target((gx_device_forward *)dev, target);
+    dev->raster = gx_device_raster((gx_device *)dev, 1);
     gdev_mem_mono_set_inverted(dev, true);
     check_device_separable((gx_device *)dev);
     gx_device_fill_in_procs((gx_device *)dev);
-    /* Should this be forwarding or monochrome profile? */
+    /* Should this be forwarding, monochrome profile, or not set? MJV */
     set_dev_proc(dev, get_profile, gx_forward_get_profile);
     set_dev_proc(dev, set_graphics_type_tag, gx_forward_set_graphics_type_tag);
     /* initialize to same tag as target */
@@ -330,7 +334,7 @@ gdev_mem_mono_set_inverted(gx_device_memory * dev, bool black_is_1)
 int
 gdev_mem_bits_size(const gx_device_memory * dev, int width, int height, ulong *psize)
 {
-    int num_planes = dev->num_planes;
+    int num_planes = dev->is_planar ? dev->color_info.num_components : 0;
     gx_render_plane_t plane1;
     const gx_render_plane_t *planes;
     ulong size;
@@ -341,17 +345,20 @@ gdev_mem_bits_size(const gx_device_memory * dev, int width, int height, ulong *p
     else
         planes = &plane1, plane1.depth = dev->color_info.depth, num_planes = 1;
     for (size = 0, pi = 0; pi < num_planes; ++pi)
-        size += bitmap_raster(width * planes[pi].depth);
+        size += bitmap_raster_pad_align(width * planes[pi].depth, dev->pad, dev->log2_align_mod);
     if (height != 0)
         if (size > (max_ulong - ARCH_ALIGN_PTR_MOD) / (ulong)height)
             return_error(gs_error_VMerror);
-    *psize = ROUND_UP(size * height, ARCH_ALIGN_PTR_MOD);
+    size = ROUND_UP(size * height, ARCH_ALIGN_PTR_MOD);
+    if (dev->log2_align_mod > log2_align_bitmap_mod)
+        size += 1<<dev->log2_align_mod;
+    *psize = size;
     return 0;
 }
 ulong
 gdev_mem_line_ptrs_size(const gx_device_memory * dev, int width, int height)
 {
-    return (ulong)height * sizeof(byte *) * max(dev->num_planes, 1);
+    return (ulong)height * sizeof(byte *) * (dev->is_planar ? dev->color_info.num_components : 1);
 }
 int
 gdev_mem_data_size(const gx_device_memory * dev, int width, int height, ulong *psize)
@@ -385,15 +392,15 @@ gdev_mem_max_height(const gx_device_memory * dev, int width, ulong size,
          * is only an estimate, we may exceed our desired buffer space while
          * processing the file.
          */
-        max_height = size / (bitmap_raster(width
-                * dev->color_info.depth + ESTIMATED_PDF14_ROW_SPACE(width, dev->color_info.num_components))
-                + sizeof(byte *) * max(dev->num_planes, 1));
+        max_height = size / (bitmap_raster_pad_align(width
+                * dev->color_info.depth + ESTIMATED_PDF14_ROW_SPACE(width, dev->color_info.num_components),
+                dev->pad, dev->log2_align_mod) + sizeof(byte *) * (dev->is_planar ? dev->color_info.num_components : 1));
         height = (int)min(max_height, max_int);
     } else {
         /* For non PDF 1.4 transparency, we can do an exact calculation */
         max_height = size /
-            (bitmap_raster(width * dev->color_info.depth) +
-             sizeof(byte *) * max(dev->num_planes, 1));
+            (bitmap_raster_pad_align(width * dev->color_info.depth, dev->pad, dev->log2_align_mod) +
+             sizeof(byte *) * (dev->is_planar ? dev->color_info.num_components : 1));
         height = (int)min(max_height, max_int);
         /*
          * Because of alignment rounding, the just-computed height might
@@ -417,7 +424,7 @@ mem_open(gx_device * dev)
     gx_device_memory *const mdev = (gx_device_memory *)dev;
 
     /* Check that we aren't trying to open a planar device as chunky. */
-    if (mdev->num_planes)
+    if (mdev->is_planar)
         return_error(gs_error_rangecheck);
     return gdev_mem_open_scan_lines(mdev, dev->height);
 }
@@ -430,6 +437,7 @@ gdev_mem_open_scan_lines(gx_device_memory *mdev, int setup_height)
     if (setup_height < 0 || setup_height > mdev->height)
         return_error(gs_error_rangecheck);
     if (mdev->bitmap_memory != 0) {
+        int align;
         /* Allocate the data now. */
         if (gdev_mem_bitmap_size(mdev, &size) < 0)
             return_error(gs_error_VMerror);
@@ -440,13 +448,15 @@ gdev_mem_open_scan_lines(gx_device_memory *mdev, int setup_height)
                                     "mem_open");
         if (mdev->base == 0)
             return_error(gs_error_VMerror);
+        align = 1<<mdev->log2_align_mod;
+        mdev->base += (-(int)mdev->base) & (align-1);
         mdev->foreign_bits = false;
     } else if (mdev->line_pointer_memory != 0) {
         /* Allocate the line pointers now. */
 
         mdev->line_ptrs = (byte **)
             gs_alloc_byte_array(mdev->line_pointer_memory, mdev->height,
-                                sizeof(byte *) * max(mdev->num_planes, 1),
+                                sizeof(byte *) * (mdev->is_planar ? mdev->color_info.num_components : 1),
                                 "gdev_mem_open_scan_lines");
         if (mdev->line_ptrs == 0)
             return_error(gs_error_VMerror);
@@ -457,7 +467,7 @@ gdev_mem_open_scan_lines(gx_device_memory *mdev, int setup_height)
         gdev_mem_bits_size(mdev, mdev->width, mdev->height, &size);
         mdev->line_ptrs = (byte **)(mdev->base + size);
     }
-    mdev->raster = gdev_mem_raster(mdev); /* RJW: Wrong for planar */
+    mdev->raster = gx_device_raster((gx_device *)mdev, 1);
     return gdev_mem_set_line_ptrs(mdev, NULL, 0, NULL, setup_height);
 }
 /*
@@ -470,28 +480,46 @@ int
 gdev_mem_set_line_ptrs(gx_device_memory * mdev, byte * base, int raster,
                        byte **line_ptrs, int setup_height)
 {
-    int num_planes = mdev->num_planes;
-    gx_render_plane_t plane1;
-    const gx_render_plane_t *planes;
-    byte **pline =
-        (line_ptrs ? (mdev->line_ptrs = line_ptrs) : mdev->line_ptrs);
-    byte *data =
-        (base ? (mdev->raster = raster, mdev->base = base) :
-         (raster = mdev->raster, mdev->base));
+    int num_planes = (mdev->is_planar ? mdev->color_info.num_components : 0);
+    byte **pline;
+    byte *data;
     int pi;
+
+    /* If we are supplied with line_ptrs, then assume that we don't have
+     * any already, and take them on. */
+    if (line_ptrs)
+        mdev->line_ptrs = line_ptrs;
+    pline = mdev->line_ptrs;
+
+    /* If we are supplied a base, then we are supplied a raster. Assume that
+     * we don't have any buffer already, and take these on. Assume that the
+     * base has been allocated with sufficient padding to allow for any
+     * alignment required. */
+    if (base == NULL) {
+        base = mdev->base;
+        raster = mdev->raster;
+    } else {
+        mdev->base = base;
+        mdev->raster = raster;
+    }
+
+    /* Now, pad and align as required. */
+    if (mdev->log2_align_mod > log2_align_bitmap_mod) {
+        int align = 1<<mdev->log2_align_mod;
+        align = (-(int)base) & (align-1);
+        data = base + align;
+    } else {
+        data = mdev->base;
+    }
 
     if (num_planes) {
         if (base && !mdev->plane_depth)
             return_error(gs_error_rangecheck);
-        planes = mdev->planes;
     } else {
-        planes = &plane1;
-        plane1.depth = mdev->color_info.depth;
         num_planes = 1;
     }
 
     for (pi = 0; pi < num_planes; ++pi) {
-        int raster = bitmap_raster(mdev->width * planes[pi].depth);
         byte **pptr = pline;
         byte **pend = pptr + setup_height;
         byte *scan_line = data;

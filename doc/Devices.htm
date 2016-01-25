@@ -167,6 +167,8 @@ The default value if you don't specify this options is usually 72 <abbr>dpi</abb
 for producing high quality rasterizations of the input files. The size of the subsampling
 box <em>n</em> should be 4 for optimum output, but smaller values can be used for faster
 rendering. Antialiasing is enabled separately for text and graphics content.</p></dd>
+<p>Because this feature relies upon rendering the input it is incompatible, and will generate
+an error on attempted use, with any of the vector output devices.
 
 </dl></blockquote>
 
@@ -202,8 +204,8 @@ anti-aliasing are enabled by default.</p>
 
 <h4>Options</h4>
 
-<p>The <tt>pngmonod</tt>, <tt>png16m</tt> and <tt>pnggray</tt> devices all
-respond to the following:</p>
+<p>The <tt>pngmonod</tt>, <tt>png16m</tt>, <tt>pnggray</tt> and
+<tt>pngalpha</tt> devices all respond to the following:</p>
 
 <blockquote>
 <dl>
@@ -690,6 +692,16 @@ axes before error diffusion takes place. For example rendering with
 a 200dpi image.
 </dl></blockquote>
 
+<p>
+The <tt>tiffsep</tt> TIFF
+device also provide this parameter:
+
+<blockquote><dl>
+<dt><code>-dPrintSpotCMYK=<em>boolean</em></code> defaults to false. When set to true
+the device will print (to stdout) the name of each ink used on the page, and the CMYK
+values which are equivalent to 100% of that ink. The values are 16-bits ranging from 0
+to 32760.
+
 
 <h3><a name="fax"></a>FAX</h3>
 
@@ -756,24 +768,12 @@ device options.</p>
 
 <p>The <tt>ps2write</tt> device outputs postscript language levels 2 and 3.
 Please refer to <a href="Ps2ps2.htm">Ps2ps2.htm</a> for the <tt>ps2write</tt>
-device options. It is recommnded that this device is used for PostScript output,
-unless level 1 PostScript is required in which case you must
-use the epswrite device below.</p>
+device options. It is recommnded that this device is used for PostScript output.
+There is no longer any support for creating PostScript level 1 output.</p>
 
-<h3><a name="PS"></a>EPS writer</h3>
+<h3><a name="EPS"></a>EPS writer</h3>
 
-<p>The <tt>epswrite</tt> device outputs encapsulated postscript. This device is now deprecated and
-should only be used when level 1 PostScript output is required.</p>
-
-<h4>Options</h4>
-
-<blockquote>
-<dl>
-<dt><code>-dLanguageLevel=<em>1 | 1.5 | 2 | 3</em></code> (default is 2)
-<dd>Set the language level of the generated file.
-Language level 1.5 is language level 1 with color extensions. 
-Currently language level 3 generates the same PostScript as 2.
-</dl></blockquote>
+<p>The <tt>eps2write</tt> device outputs encapsulated postscript.</p>
 
 <h3><a name="PXL"></a>PXL</h3>
 
@@ -783,8 +783,10 @@ a graphic language understood by many recent laser printers.
 <h4>Options</h4>
 <blockquote>
 <dl>
-<dt><code>-dCompressMode=<em>1 | 3</em></code> (default is 1)
-<dd>Set the compression algorithm used for bitmap graphics. RLE=1, DeltaRow=3. (JPEG=2 is unimplemented)
+<dt><code>-dCompressMode=<em>1 | 2 | 3</em></code> (default is 1)
+<dd>Set the compression algorithm used for bitmap graphics. RLE=1, JPEG=2, DeltaRow=3.
+When JPEG=2 is on, it is applied only to full-color images; indexed-color graphics
+and masks continues to be compressed with RLE.
 </dl></blockquote>
 
 <h3><a name="TXT"></a>Text output</h3>
@@ -1801,7 +1803,7 @@ or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
 San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
 
 <p>
-<small>Ghostscript version 9.10, 30 August 2013
+<small>Ghostscript version 9.18, 5 October 2015
 
 <!-- [3.0 end visible trailer] ============================================= -->
 

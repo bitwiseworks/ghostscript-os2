@@ -37,6 +37,14 @@
 #  ifdef MEMORY__NEED_MEMMOVE
 #    define memmove(dest,src,len) gs_memmove(dest,src,len)
 #  endif
+#  ifdef _MSC_VER
+#    define strcasecmp stricmp		/* MSC doesn't have the POSIX functions */
+#    define strncasecmp strnicmp
+#  endif
 #endif
+
+#include "gsstrtok.h"
+
+#define strtok DO_NOT_USE_STRTOK
 
 #endif /* string__INCLUDED */

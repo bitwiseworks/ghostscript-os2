@@ -40,6 +40,7 @@
 #include "gsicc_cache.h"
 #include "gsccolor.h"
 #include "gxcdevn.h"
+#include "gscie.h"
 
 /* ------ Exported by gdevpdfc.c for gdevpdfg.c ------ */
 int pdf_make_sampled_base_space_function(gx_device_pdf *pdev, gs_function_t **pfn,
@@ -93,8 +94,20 @@ pdf_save_viewer_state(gx_device_pdf *pdev, stream *s)
     pdev->vgstack[i].saved_stroke_color = pdev->saved_stroke_color;
     pdev->vgstack[i].line_params = pdev->state.line_params;
     pdev->vgstack[i].line_params.dash.pattern = 0; /* Use pdev->dash_pattern instead. */
-    memcpy(pdev->vgstack[i].dash_pattern, pdev->dash_pattern,
-                sizeof(pdev->vgstack[i].dash_pattern));
+    pdev->vgstack[i].soft_mask_id = pdev->state.soft_mask_id; /* Use pdev->dash_pattern instead. */
+    if (pdev->dash_pattern) {
+        if (pdev->vgstack[i].dash_pattern)
+            gs_free_object(pdev->memory->non_gc_memory, pdev->vgstack[i].dash_pattern, "free gstate copy dash");
+        pdev->vgstack[i].dash_pattern = (float *)gs_alloc_bytes(pdev->memory->non_gc_memory, pdev->dash_pattern_size * sizeof(float), "gstate copy dash");
+        memcpy(pdev->vgstack[i].dash_pattern, pdev->dash_pattern, pdev->dash_pattern_size * sizeof(float));
+        pdev->vgstack[i].dash_pattern_size = pdev->dash_pattern_size;
+    } else {
+        if (pdev->vgstack[i].dash_pattern) {
+            gs_free_object(pdev->memory->non_gc_memory, pdev->vgstack[i].dash_pattern, "free gstate copy dash");
+            pdev->vgstack[i].dash_pattern = 0;
+            pdev->vgstack[i].dash_pattern_size = 0;
+        }
+    }
     pdev->vgstack_depth++;
     if (s)
         stream_puts(s, "q\n");
@@ -128,8 +141,19 @@ pdf_load_viewer_state(gx_device_pdf *pdev, pdf_viewer_state *s)
     pdev->saved_fill_color = s->saved_fill_color;
     pdev->saved_stroke_color = s->saved_stroke_color;
     pdev->state.line_params = s->line_params;
-    memcpy(pdev->dash_pattern, s->dash_pattern,
-                sizeof(s->dash_pattern));
+    pdev->state.soft_mask_id = s->soft_mask_id;
+    if (s->dash_pattern) {
+        if (pdev->dash_pattern)
+            gs_free_object(pdev->memory->stable_memory, pdev->dash_pattern, "vector free dash pattern");
+        pdev->dash_pattern = (float *)gs_alloc_bytes(pdev->memory->stable_memory, s->dash_pattern_size * sizeof(float), "vector allocate dash pattern");
+        pdev->dash_pattern_size  = s->dash_pattern_size;
+    } else {
+        if (pdev->dash_pattern) {
+            gs_free_object(pdev->memory->stable_memory, pdev->dash_pattern, "vector free dash pattern");
+            pdev->dash_pattern = 0;
+            pdev->dash_pattern_size = 0;
+        }
+    }
 }
 
 /* Restore the viewer's graphic state. */
@@ -200,7 +224,9 @@ pdf_viewer_state_from_imager_state_aux(pdf_viewer_state *pvs, const gs_imager_st
     pvs->line_params.dot_length_absolute = pis->line_params.dot_length_absolute;
     pvs->line_params.dot_orientation = pis->line_params.dot_orientation;
     memset(&pvs->line_params.dash, 0 , sizeof(pvs->line_params.dash));
-    memset(pvs->dash_pattern, 0, sizeof(pvs->dash_pattern));
+    pvs->dash_pattern = 0;
+    pvs->dash_pattern_size = 0;
+    pvs->soft_mask_id = pis->soft_mask_id;
 }
 
 /* Copy viewer state from images state. */
@@ -267,11 +293,16 @@ pdf_reset_graphics_old(gx_device_pdf * pdev)
 void
 pdf_reset_graphics(gx_device_pdf * pdev)
 {
+    int soft_mask_id = pdev->state.soft_mask_id;
+
     if (pdev->vg_initial_set)
         pdf_load_viewer_state(pdev, &pdev->vg_initial);
     else
         pdf_reset_graphics_old(pdev);
     pdf_reset_text(pdev);
+
+    /* Not obvious, we want to preserve any extant soft mask, not reset it */
+    pdev->state.soft_mask_id = soft_mask_id;
 }
 
 /* Write client color. */
@@ -323,15 +354,16 @@ static int write_color_as_process(gx_device_pdf * pdev, const gs_imager_state * 
                         const gx_drawing_color *pdc, bool *used_process_color,
                         const psdf_set_color_commands_t *ppscc, gs_client_color *pcc)
 {
-    int code, i, j = 0;
-    gsicc_link_t *icc_link;
-    gsicc_rendering_param_t rendering_params;
+    int code, i;
     frac conc[GS_CLIENT_COLOR_MAX_COMPONENTS];
-    unsigned short Converted[GS_CLIENT_COLOR_MAX_COMPONENTS];
-    unsigned short Source[GS_CLIENT_COLOR_MAX_COMPONENTS];
     gs_color_space_index csi, csi2;
     gs_color_space *pcs2 = (gs_color_space *)pcs;
+    gx_drawing_color dc;
+    int num_des_comps;
+    cmm_dev_profile_t *dev_profile;
 
+    dc.type = gx_dc_type_pure;
+    dc.colors.pure = 0;
     csi = gs_color_space_get_index(pcs);
 
     if (csi == gs_color_space_index_Indexed ||
@@ -364,6 +396,9 @@ static int write_color_as_process(gx_device_pdf * pdev, const gs_imager_state * 
                     case 4:
                         command = ppscc->setcmykcolor;
                         break;
+                    default:
+                        /* Can't happen since we already check the colour space */
+                        return gs_error_rangecheck;
                 }
                 pprintg1(pdev->strm, "%g", psdf_round(frac2float(conc[0]), 255, 8));
                 for (i = 1; i < pdev->color_info.num_components; i++) {
@@ -373,18 +408,18 @@ static int write_color_as_process(gx_device_pdf * pdev, const gs_imager_state * 
                 return 0;
                 break;
             case gs_color_space_index_CIEDEFG:
-                j += 1;
             case gs_color_space_index_CIEDEF:
             case gs_color_space_index_CIEABC:
-                j += 2;
             case gs_color_space_index_CIEA:
-                j += 1;
-                for (i=0;i<j;i++)
-                    Source[i] = (unsigned short)(conc[i]);
-                break;
             case gs_color_space_index_ICC:
-                for (i=0;i<pdev->color_info.num_components;i++)
-                    Source[i] = (unsigned short)(conc[i]);
+                code = dev_proc((gx_device *)pdev, get_profile)((gx_device *)pdev, &dev_profile);
+                if (code < 0)
+                    return code;
+                num_des_comps = gsicc_get_device_profile_comps(dev_profile);
+                for (i = 0;i < num_des_comps;i++)
+                    dc.colors.pure = (dc.colors.pure << 8) + (int)(frac2float(conc[i]) * 255);
+                code = psdf_set_color((gx_device_vector *)pdev, &dc, ppscc, pdev->UseOldColor);
+                return code;
                 break;
             default:    /* can't happen, simply silences compiler warnings */
                 break;
@@ -393,61 +428,40 @@ static int write_color_as_process(gx_device_pdf * pdev, const gs_imager_state * 
     } else {
         if (csi >= gs_color_space_index_CIEDEFG &&
             csi <= gs_color_space_index_CIEA) {
-                int j = 0;
-
-                switch (csi) {
-                    case gs_color_space_index_CIEDEFG:
-                        j += 1;
-                    case gs_color_space_index_CIEDEF:
-                    case gs_color_space_index_CIEABC:
-                        j += 2;
-                    case gs_color_space_index_CIEA:
-                        j += 1;
-                        break;
-                    default:    /* can't happen, simply silences compiler warnings */
-                        break;
-                }
-                for (i=0;i<j;i++)
-                    Source[i] = (unsigned short)(pcc->paint.values[i] * 65535);
-        } else {
-            if (csi != gs_color_space_index_DeviceN &&
-                csi != gs_color_space_index_Separation) {
-                for (i=0;i<pcs->cmm_icc_profile_data->num_comps;i++)
-                    Source[i] = (unsigned short)(pcc->paint.values[i] * 65535);
-            } else {
-                const char *command = NULL;
-
                 memset (&conc, 0x00, sizeof(frac) * GS_CLIENT_COLOR_MAX_COMPONENTS);
                 pcs->type->concretize_color(pcc, pcs, conc, pis, (gx_device *)pdev);
-                csi = gs_color_space_get_index(pcs->base_space);
-                if (csi != gs_color_space_index_ICC) {
-                    *used_process_color = true;
-                    switch (pdev->color_info.num_components) {
-                        case 1:
-                            command = ppscc->setgray;
-                            break;
-                        case 3:
-                            command = ppscc->setrgbcolor;
-                            break;
-                        case 4:
-                            command = ppscc->setcmykcolor;
-                            break;
-                    }
-                    pprintg1(pdev->strm, "%g", psdf_round(frac2float(conc[0]), 255, 8));
-                    for (i = 1; i < pdev->color_info.num_components; i++) {
-                        pprintg1(pdev->strm, " %g", psdf_round(frac2float(conc[i]), 255, 8));
-                    }
-                    pprints1(pdev->strm, " %s\n", command);
-                    return 0;
-                } else {
-                    pcs = pcs->base_space;
-                    for (i=0;i<pdev->color_info.num_components;i++)
-                        Source[i] = (unsigned short)(conc[i]);
-                }
-            }
+                code = dev_proc((gx_device *)pdev, get_profile)((gx_device *)pdev, &dev_profile);
+                if (code < 0)
+                    return code;
+                num_des_comps = gsicc_get_device_profile_comps(dev_profile);
+                for (i = 0;i < num_des_comps;i++)
+                    dc.colors.pure = (dc.colors.pure << 8) + (int)(frac2float(conc[i]) * 255);
+                code = psdf_set_color((gx_device_vector *)pdev, &dc, ppscc, pdev->UseOldColor);
+                *used_process_color = true;
+                return code;
+        } else {
+            memset (&conc, 0x00, sizeof(frac) * GS_CLIENT_COLOR_MAX_COMPONENTS);
+            /* Special case handling for Lab spaces */
+            if (pcs->cmm_icc_profile_data->data_cs == gsCIELAB || pcs->cmm_icc_profile_data->islab) {
+                gs_client_color cc;
+                /* Get the data in a form that is concrete for the CMM */
+                cc.paint.values[0] = pcc->paint.values[0] / 100.0;
+                cc.paint.values[1] = (pcc->paint.values[1]+128)/255.0;
+                cc.paint.values[2] = (pcc->paint.values[2]+128)/255.0;
+                pcs->type->concretize_color((const gs_client_color *)&cc, pcs, conc, pis, (gx_device *)pdev);
+            } else
+                pcs->type->concretize_color(pcc, pcs, conc, pis, (gx_device *)pdev);
+            code = dev_proc((gx_device *)pdev, get_profile)((gx_device *)pdev, &dev_profile);
+            if (code < 0)
+                return code;
+            num_des_comps = gsicc_get_device_profile_comps(dev_profile);
+            for (i = 0;i < num_des_comps;i++)
+                dc.colors.pure = (dc.colors.pure << 8) + (int)(frac2float(conc[i]) * 255);
+            code = psdf_set_color((gx_device_vector *)pdev, &dc, ppscc, pdev->UseOldColor);
+            return code;
         }
     }
-    rendering_params.black_point_comp = pis->blackptcomp;
+/*    rendering_params.black_point_comp = pis->blackptcomp;
     rendering_params.graphics_type_tag = pdev->graphics_type_tag;
     rendering_params.override_icc = false;
     rendering_params.preserve_black = gsBKPRESNOTSPECIFIED;
@@ -460,12 +474,13 @@ static int write_color_as_process(gx_device_pdf * pdev, const gs_imager_state * 
     gsicc_release_link(icc_link);
     ((gx_drawing_color *)pdc)->colors.pure = 0;
     for (i = 0;i < pdev->color_info.num_components;i++)
-         ((gx_drawing_color *)pdc)->colors.pure = (pdc->colors.pure << 8) + (Converted[i] / 255);
-    code = psdf_set_color((gx_device_vector *)pdev, pdc, ppscc);
+         dc.colors.pure = (dc.colors.pure << 8) + (Converted[i] / 256);
+    code = psdf_set_color((gx_device_vector *)pdev, &dc, ppscc, pdev->UseOldColor);
     if (code < 0)
         return code;
     *used_process_color = true;
-    return 0;
+    return 0;*/
+    return gs_error_unknownerror;
 }
 
 static int write_color_unchanged(gx_device_pdf * pdev, const gs_imager_state * pis,
@@ -507,15 +522,26 @@ static int write_color_unchanged(gx_device_pdf * pdev, const gs_imager_state * p
             pprints1(pdev->strm, " %s\n", command);
             break;
         default:
-            if (!gx_hld_saved_color_same_cspace(current, psc)) {
+            csi = gs_color_space_get_index(pcs);
+            if (!gx_hld_saved_color_same_cspace(current, psc) || (csi2 >= gs_color_space_index_CIEDEFG && csi2 <= gs_color_space_index_CIEA)) {
                 cos_value_t cs_value;
 
-                code = pdf_color_space_named(pdev, &cs_value, (const gs_range_t **)&ranges, pcs,
-                                &pdf_color_space_names, true, NULL, 0);
+                code = pdf_color_space_named(pdev, pis, &cs_value, (const gs_range_t **)&ranges, pcs,
+                                &pdf_color_space_names, true, NULL, 0, false);
                 /* fixme : creates redundant PDF objects. */
                 if (code == gs_error_rangecheck) {
+                    *used_process_color = true;
+                    if (pdev->ForOPDFRead) {
+                    int save = 0;
                     /* The color space can't write to PDF. This should never happen */
-                    return write_color_as_process(pdev, pis, pcs, pdc, used_process_color, ppscc, pcc);
+                    save = pdev->UseOldColor;
+                    pdev->UseOldColor = 1;
+                    code = psdf_set_color((gx_device_vector *)pdev, pdc, ppscc, pdev->UseOldColor);
+                    pdev->UseOldColor = save;
+                    } else {
+                    code = write_color_as_process(pdev, pis, pcs, pdc, used_process_color, ppscc, pcc);
+                    }
+                    return code;
                 }
                 if (code < 0)
                     return code;
@@ -524,32 +550,46 @@ static int write_color_unchanged(gx_device_pdf * pdev, const gs_imager_state * p
                     return code;
                 pprints1(pdev->strm, " %s\n", ppscc->setcolorspace);
                 if (ranges && (csi2 >= gs_color_space_index_CIEDEFG && csi2 <= gs_color_space_index_CIEA)) {
-                    gs_client_color *dcc = (gs_client_color *)pcc;
+                    gs_client_color dcc = *pcc;
                     switch (csi2) {
                         case gs_color_space_index_CIEDEFG:
-                            rescale_cie_color(ranges, 4, pcc, dcc);
+                            rescale_cie_color(ranges, 4, pcc, &dcc);
                             break;
                         case gs_color_space_index_CIEDEF:
-                            rescale_cie_color(ranges, 3, pcc, dcc);
+                            rescale_cie_color(ranges, 3, pcc, &dcc);
                             break;
                         case gs_color_space_index_CIEABC:
-                            rescale_cie_color(ranges, 3, pcc, dcc);
+                            rescale_cie_color(ranges, 3, pcc, &dcc);
                             break;
                         case gs_color_space_index_CIEA:
-                            rescale_cie_color(ranges, 1, pcc, dcc);
+                            rescale_cie_color(ranges, 1, pcc, &dcc);
                             break;
                         default:
                             /* can't happen but silences compiler warnings */
                             break;
                     }
+                    code = pdf_write_ccolor(pdev, pis, &dcc);
+                } else {
+                    code = pdf_write_ccolor(pdev, pis, pcc);
                 }
                 *used_process_color = false;
-                code = pdf_write_ccolor(pdev, pis, pcc);
                 if (code < 0)
                     return code;
                 pprints1(pdev->strm, " %s\n", ppscc->setcolorn);
-            } else if (*used_process_color)
-                return write_color_as_process(pdev, pis, pcs, pdc, used_process_color, ppscc, pcc);
+            } else if (*used_process_color) {
+                    *used_process_color = true;
+                    if (pdev->ForOPDFRead) {
+                    int save = 0;
+                    /* The color space can't write to PDF. This should never happen */
+                    save = pdev->UseOldColor;
+                    pdev->UseOldColor = 1;
+                    code = psdf_set_color((gx_device_vector *)pdev, pdc, ppscc, pdev->UseOldColor);
+                    pdev->UseOldColor = save;
+                    } else {
+                    code = write_color_as_process(pdev, pis, pcs, pdc, used_process_color, ppscc, pcc);
+                    }
+                    return code;
+            }
             else {
                 code = pdf_write_ccolor(pdev, pis, pcc);
                 if (code < 0)
@@ -572,8 +612,8 @@ static int write_color_as_process_ICC(gx_device_pdf * pdev, const gs_imager_stat
     cos_value_t cs_value;
 
     if (!gx_hld_saved_color_same_cspace(current, psc)) {
-        code = pdf_color_space_named(pdev, &cs_value, NULL, pcs,
-                        &pdf_color_space_names, true, NULL, 0);
+        code = pdf_color_space_named(pdev, pis, &cs_value, NULL, pcs,
+                        &pdf_color_space_names, true, NULL, 0, true);
         /* fixme : creates redundant PDF objects. */
         if (code == gs_error_rangecheck) {
             /* The color space can't write to PDF. This should never happen */
@@ -590,11 +630,15 @@ static int write_color_as_process_ICC(gx_device_pdf * pdev, const gs_imager_stat
         for (i = 1; i < pcs->type->num_components(pcs); i++) {
             pprintg1(pdev->strm, " %g", psdf_round(pcc->paint.values[i], 255, 8));
         }
-        if (code < 0)
-            return code;
         pprints1(pdev->strm, " %s\n", ppscc->setcolorn);
-    } else if (*used_process_color)
-        return write_color_as_process(pdev, pis, pcs, pdc, used_process_color, ppscc, pcc);
+    } else {
+        *used_process_color = false;
+        pprintg1(pdev->strm, "%g", psdf_round(pcc->paint.values[0], 255, 8));
+        for (i = 1; i < pcs->type->num_components(pcs); i++) {
+            pprintg1(pdev->strm, " %g", psdf_round(pcc->paint.values[i], 255, 8));
+        }
+        pprints1(pdev->strm, " %s\n", ppscc->setcolorn);
+    }
     return 0;
 }
 
@@ -610,6 +654,12 @@ int convert_DeviceN_alternate(gx_device_pdf * pdev, const gs_imager_state * pis,
     byte *data_buff;
     pdf_resource_t *pres = NULL;
     gs_color_space *pcs_save = NULL;
+
+    csi = gs_color_space_get_index(pcs);
+    if (csi == gs_color_space_index_Indexed) {
+        pcs_save = (gs_color_space *)pcs;
+        pcs = pcs->base_space;
+    }
 
     pca = cos_array_alloc(pdev, "pdf_color_space");
     if (pca == 0)
@@ -667,6 +717,7 @@ int convert_DeviceN_alternate(gx_device_pdf * pdev, const gs_imager_state * pis,
         case ccs_Gray:
             code = pdf_make_sampled_base_space_function(pdev, &new_pfn, pcs->params.device_n.num_components, 1, data_buff);
             break;
+        case ccs_sRGB:
         case ccs_RGB:
             code = pdf_make_sampled_base_space_function(pdev, &new_pfn, pcs->params.device_n.num_components, 3, data_buff);
             break;
@@ -687,12 +738,6 @@ int convert_DeviceN_alternate(gx_device_pdf * pdev, const gs_imager_state * pis,
     if (code < 0) {
         COS_FREE(pca, "pdf_color_space");
         return code;
-    }
-
-    csi = gs_color_space_get_index(pcs);
-    if (csi == gs_color_space_index_Indexed) {
-        pcs_save = (gs_color_space *)pcs;
-        pcs = pcs->base_space;
     }
 
     if (code >= 0) {
@@ -722,7 +767,7 @@ int convert_DeviceN_alternate(gx_device_pdf * pdev, const gs_imager_state * pis,
                 COS_FREE(pca, "convert DeviceN");
                 return code;
             }
-            code = cos_array_add_no_copy(psna, &v);
+            code = cos_array_add(psna, &v);
             if (code < 0) {
                 COS_FREE(pca, "convert DeviceN");
                 return code;
@@ -763,7 +808,7 @@ int convert_DeviceN_alternate(gx_device_pdf * pdev, const gs_imager_state * pis,
                     COS_FREE(pca, "convert DeviceN");
                     return code;
                 }
-                code = pdf_color_space_named(pdev, &v_separation, NULL, csa->cspace, &pdf_color_space_names, false, NULL, 0);
+                code = pdf_color_space_named(pdev, pis, &v_separation, NULL, csa->cspace, &pdf_color_space_names, false, NULL, 0, false);
                 if (code < 0) {
                     COS_FREE(pca, "convert DeviceN");
                     return code;
@@ -799,6 +844,7 @@ int convert_DeviceN_alternate(gx_device_pdf * pdev, const gs_imager_state * pis,
             case ccs_Gray:
                 cos_c_string_value(&v, (const char *)pdf_color_space_names.DeviceGray);
                 break;
+            case ccs_sRGB:
             case ccs_RGB:
                 cos_c_string_value(&v, (const char *)pdf_color_space_names.DeviceRGB);
                 break;
@@ -849,12 +895,10 @@ int convert_DeviceN_alternate(gx_device_pdf * pdev, const gs_imager_state * pis,
         if (pcs_save == NULL && ppscc != NULL)
             pprints1(pdev->strm, "/%s", ppcs->rname);
     }
-    if (pres != NULL) {
-        pres->where_used |= pdev->used_mask;
-        code = pdf_add_resource(pdev, pdev->substream_Resources, "/ColorSpace", pres);
-        if (code < 0)
-            return code;
-    }
+    pres->where_used |= pdev->used_mask;
+    code = pdf_add_resource(pdev, pdev->substream_Resources, "/ColorSpace", pres);
+    if (code < 0)
+        return code;
 
     if (pcs_save != NULL) {
         cos_value_t value;
@@ -862,7 +906,7 @@ int convert_DeviceN_alternate(gx_device_pdf * pdev, const gs_imager_state * pis,
         pcs = pcs_save;
         discard(COS_OBJECT_VALUE(&value, pca));
         pca1 = cos_array_alloc(pdev, "pdf_color_space");
-        code = pdf_indexed_color_space(pdev, &value, pcs, pca1, (cos_value_t *)&value);
+        code = pdf_indexed_color_space(pdev, pis, &value, pcs, pca1, (cos_value_t *)&value);
         pca = pca1;
 
         /*
@@ -892,12 +936,10 @@ int convert_DeviceN_alternate(gx_device_pdf * pdev, const gs_imager_state * pis,
             if (ppscc != NULL)
                 pprints1(pdev->strm, "/%s", ppcs->rname);
         }
-        if (pres != NULL) {
-            pres->where_used |= pdev->used_mask;
-            code = pdf_add_resource(pdev, pdev->substream_Resources, "/ColorSpace", pres);
-            if (code < 0)
-                return code;
-        }
+        pres->where_used |= pdev->used_mask;
+        code = pdf_add_resource(pdev, pdev->substream_Resources, "/ColorSpace", pres);
+        if (code < 0)
+            return code;
     }
 
     if (ppscc != NULL) {
@@ -973,6 +1015,7 @@ int convert_separation_alternate(gx_device_pdf * pdev, const gs_imager_state * p
         case ccs_Gray:
             code = pdf_make_base_space_function(pdev, &new_pfn, 1, out_low, out_high);
             break;
+        case ccs_sRGB:
         case ccs_RGB:
             code = pdf_make_base_space_function(pdev, &new_pfn, 3, out_low, out_high);
             break;
@@ -1019,7 +1062,7 @@ int convert_separation_alternate(gx_device_pdf * pdev, const gs_imager_state * p
             return code;
         }
 
-        code = cos_array_add_no_copy(pca, &v);
+        code = cos_array_add(pca, &v);
         if (code < 0) {
             COS_FREE(pca, "pdf_color_space");
             return code;
@@ -1030,6 +1073,7 @@ int convert_separation_alternate(gx_device_pdf * pdev, const gs_imager_state * p
                     cos_c_string_value(&v, (const char *)pdf_color_space_names.DeviceGray);
                     break;
                 case ccs_RGB:
+                case ccs_sRGB:
                     cos_c_string_value(&v, (const char *)pdf_color_space_names.DeviceRGB);
                     break;
                 case ccs_CMYK:
@@ -1077,12 +1121,10 @@ int convert_separation_alternate(gx_device_pdf * pdev, const gs_imager_state * p
         if (csi != gs_color_space_index_Indexed && ppscc != NULL)
             pprints1(pdev->strm, "/%s", ppcs->rname);
     }
-    if (pres != NULL) {
-        pres->where_used |= pdev->used_mask;
-        code = pdf_add_resource(pdev, pdev->substream_Resources, "/ColorSpace", pres);
-        if (code < 0)
-            return code;
-    }
+    pres->where_used |= pdev->used_mask;
+    code = pdf_add_resource(pdev, pdev->substream_Resources, "/ColorSpace", pres);
+    if (code < 0)
+        return code;
 
     csi = gs_color_space_get_index(pcs);
     if (csi == gs_color_space_index_Indexed) {
@@ -1090,7 +1132,7 @@ int convert_separation_alternate(gx_device_pdf * pdev, const gs_imager_state * p
 
         discard(COS_OBJECT_VALUE(&value, pca));
         pca1 = cos_array_alloc(pdev, "pdf_color_space");
-        code = pdf_indexed_color_space(pdev, &value, pcs, pca1, (cos_value_t *)&value);
+        code = pdf_indexed_color_space(pdev, pis, &value, pcs, pca1, (cos_value_t *)&value);
         pca = pca1;
 
         /*
@@ -1120,12 +1162,10 @@ int convert_separation_alternate(gx_device_pdf * pdev, const gs_imager_state * p
             if (ppscc != NULL)
                 pprints1(pdev->strm, "/%s", ppcs->rname);
         }
-        if (pres != NULL) {
-            pres->where_used |= pdev->used_mask;
-            code = pdf_add_resource(pdev, pdev->substream_Resources, "/ColorSpace", pres);
-            if (code < 0)
-                return code;
-        }
+        pres->where_used |= pdev->used_mask;
+        code = pdf_add_resource(pdev, pdev->substream_Resources, "/ColorSpace", pres);
+        if (code < 0)
+            return code;
     }
 
     if (ppscc != NULL) {
@@ -1198,11 +1238,11 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
                         return gs_error_undefined;
                     }
                     code = pdf_put_colored_pattern(pdev, pdc, pcs,
-                                ppscc, pis->have_pattern_streams, &pres);
+                                ppscc, pis, &pres);
                 }
                 else if (pdc->type == &gx_dc_pure_masked) {
                     code = pdf_put_uncolored_pattern(pdev, pdc, pcs,
-                                ppscc, pis->have_pattern_streams, &pres);
+                                ppscc, pis, &pres);
                     if (code < 0 || pres == 0) {
                         /* replaced a pattern with a flat fill, but we still
                          * need to change the 'saved' colour or we will
@@ -1211,14 +1251,14 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
                         *psc = temp;
                         return code;
                     }
-                    if (pis->have_pattern_streams)
+                    if (pis && pis->have_pattern_streams)
                         code = pdf_write_ccolor(pdev, pis, pcc);
                 } else if (pdc->type == &gx_dc_pattern2) {
                     if (pdev->CompatibilityLevel <= 1.2)
                         return_error(gs_error_rangecheck);
                     if (!is_pattern2_allowed_in_strategy(pdev, pdc))
                         return_error(gs_error_rangecheck);
-                    code1 = pdf_put_pattern2(pdev, pdc, ppscc, &pres);
+                    code1 = pdf_put_pattern2(pdev, pis, pdc, ppscc, &pres);
                     if (code1 < 0)
                         return code1;
                 } else
@@ -1226,14 +1266,14 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
                 if (code < 0)
                     return code;
                 code = pdf_add_resource(pdev, pdev->substream_Resources, "/Pattern", pres);
-                if (code1 != gs_error_rangecheck) {
+                if (code >= 0) {
                     cos_value_write(cos_resource_value(&cs_value, pres->object), pdev);
                     pprints1(pdev->strm, " %s\n", ppscc->setcolorn);
                 }
-                else
+                else {
                     pres->where_used = 0;
-                if (code < 0)
                     return code;
+                }
                 *used_process_color = false;
             }
             break;
@@ -1309,10 +1349,10 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
                             case ccs_LeaveColorUnchanged:
                                 code = write_color_unchanged(pdev, pis, pcc, &temp, psc, ppscc, used_process_color, pcs, pdc);
                                 break;
-                            case ccs_sRGB:
                             case ccs_UseDeviceIndependentColor:
                                 code = write_color_as_process(pdev, pis, pcs, pdc, used_process_color, ppscc, pcc);
                                 break;
+                            case ccs_sRGB:
                             default:
                                 code = convert_separation_alternate(pdev, pis, pcs, pdc, used_process_color, ppscc, pcc, NULL, false);
                                 break;
@@ -1329,10 +1369,10 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
                             case ccs_LeaveColorUnchanged:
                                 code = write_color_unchanged(pdev, pis, pcc, &temp, psc, ppscc, used_process_color, pcs, pdc);
                                 break;
-                            case ccs_sRGB:
                             case ccs_UseDeviceIndependentColor:
                                 code = write_color_as_process(pdev, pis, pcs, pdc, used_process_color, ppscc, pcc);
                                 break;
+                            case ccs_sRGB:
                             default:
                                 code = convert_DeviceN_alternate(pdev, pis, pcs, pdc, used_process_color, ppscc, pcc, NULL, false);
                                 break;
@@ -1353,6 +1393,7 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
                                 if (pdev->params.ColorConversionStrategy == ccs_Gray ||
                                     pdev->params.ColorConversionStrategy == ccs_LeaveColorUnchanged) {
                                     code = write_color_unchanged(pdev, pis, pcc, &temp, psc, ppscc, used_process_color, pcs, pdc);
+                                    *psc = temp;
                                     return code;
                                 }
                                 break;
@@ -1360,6 +1401,7 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
                                 if (pdev->params.ColorConversionStrategy == ccs_RGB ||
                                     pdev->params.ColorConversionStrategy == ccs_LeaveColorUnchanged) {
                                     code = write_color_unchanged(pdev, pis, pcc, &temp, psc, ppscc, used_process_color, pcs, pdc);
+                                    *psc = temp;
                                     return code;
                                 }
                                 break;
@@ -1367,6 +1409,7 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
                                 if (pdev->params.ColorConversionStrategy == ccs_CMYK ||
                                     pdev->params.ColorConversionStrategy == ccs_LeaveColorUnchanged) {
                                     code = write_color_unchanged(pdev, pis, pcc, &temp, psc, ppscc, used_process_color, pcs, pdc);
+                                    *psc = temp;
                                     return code;
                                 }
                                 break;
@@ -1393,7 +1436,6 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
                     case ccs_LeaveColorUnchanged:
                         code = write_color_unchanged(pdev, pis, pcc, &temp, psc, ppscc, used_process_color, pcs, pdc);
                         break;
-                    case ccs_sRGB:
                     case ccs_UseDeviceIndependentColor:
                             code = write_color_as_process_ICC(pdev, pis, pcs, pdc, psc, used_process_color, ppscc, pcc, &temp);
                         break;
@@ -1527,6 +1569,7 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
                                 break;
                         }
                         break;
+                    case ccs_sRGB:
                     case ccs_RGB:
                         switch(csi2) {
                             case gs_color_space_index_DeviceGray:
@@ -1600,7 +1643,7 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
             break;
         default: /* must not happen. */
         case use_process_color:
-            code = psdf_set_color((gx_device_vector *)pdev, pdc, ppscc);
+            code = psdf_set_color((gx_device_vector *)pdev, pdc, ppscc, pdev->UseOldColor);
             if (code < 0)
                 return code;
             *used_process_color = true;
@@ -1712,8 +1755,8 @@ pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis,
                 scn:
                     command = ppscc->setcolorn;
                     if (!gx_hld_saved_color_same_cspace(&temp, psc)) {
-                        code = pdf_color_space_named(pdev, &cs_value, (const gs_range_t **)&ranges, pcs,
-                                        &pdf_color_space_names, true, NULL, 0);
+                        code = pdf_color_space_named(pdev, pis, &cs_value, (const gs_range_t **)&ranges, pcs,
+                                        &pdf_color_space_names, true, NULL, 0, false);
                         /* fixme : creates redundant PDF objects. */
                         if (code == gs_error_rangecheck) {
                             /* The color space can't write to PDF. */
@@ -1760,10 +1803,10 @@ pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis,
 
                 if (pdc->type == gx_dc_type_pattern)
                     code = pdf_put_colored_pattern(pdev, pdc, pcs,
-                                ppscc, pis->have_pattern_streams, &pres);
+                                ppscc, pis, &pres);
                 else if (pdc->type == &gx_dc_pure_masked) {
                     code = pdf_put_uncolored_pattern(pdev, pdc, pcs,
-                                ppscc, pis->have_pattern_streams, &pres);
+                                ppscc, pis, &pres);
                     if (code < 0 || pres == 0) {
                         /* replaced a pattern with a flat fill, but we still
                          * need to change the 'saved' colour or we will
@@ -1779,7 +1822,7 @@ pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis,
                         return_error(gs_error_rangecheck);
                     if (!is_pattern2_allowed_in_strategy(pdev, pdc))
                         return_error(gs_error_rangecheck);
-                    code1 = pdf_put_pattern2(pdev, pdc, ppscc, &pres);
+                    code1 = pdf_put_pattern2(pdev, pis, pdc, ppscc, &pres);
                 } else
                     return_error(gs_error_rangecheck);
                 if (code < 0)
@@ -1799,7 +1842,7 @@ pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis,
         default: /* must not happen. */
         case use_process_color:
         write_process_color:
-            code = psdf_set_color((gx_device_vector *)pdev, pdc, ppscc);
+            code = psdf_set_color((gx_device_vector *)pdev, pdc, ppscc, pdev->UseOldColor);
             if (code < 0)
                 return code;
             *used_process_color = true;
@@ -2036,7 +2079,7 @@ pdf_write_transfer(gx_device_pdf *pdev, const gx_transfer_map *map,
  * results.  Currently we only do this for a few of the functions.
  */
 #define HT_FUNC(name, expr)\
-  static floatp name(floatp xd, floatp yd) {\
+  static double name(double xd, double yd) {\
     float x = (float)xd, y = (float)yd;\
     return d2f(expr);\
   }
@@ -2047,13 +2090,13 @@ pdf_write_transfer(gx_device_pdf *pdev, const gx_transfer_map *map,
  * use 'inline', it doesn't work.
  */
 static float
-d2f(floatp d)
+d2f(double d)
 {
     float f = (float)d;
     return f;
 }
-static floatp
-ht_Round(floatp xf, floatp yf)
+static double
+ht_Round(double xf, double yf)
 {
     float x = (float)xf, y = (float)yf;
     float xabs = fabs(x), yabs = fabs(y);
@@ -2063,8 +2106,8 @@ ht_Round(floatp xf, floatp yf)
     xabs -= 1, yabs -= 1;
     return d2f(d2f(d2f(xabs * xabs) + d2f(yabs * yabs)) - 1);
 }
-static floatp
-ht_Diamond(floatp xf, floatp yf)
+static double
+ht_Diamond(double xf, double yf)
 {
     float x = (float)xf, y = (float)yf;
     float xabs = fabs(x), yabs = fabs(y);
@@ -2076,8 +2119,8 @@ ht_Diamond(floatp xf, floatp yf)
     xabs -= 1, yabs -= 1;
     return d2f(d2f(d2f(xabs * xabs) + d2f(yabs * yabs)) - 1);
 }
-static floatp
-ht_Ellipse(floatp xf, floatp yf)
+static double
+ht_Ellipse(double xf, double yf)
 {
     float x = (float)xf, y = (float)yf;
     float xabs = fabs(x), yabs = fabs(y);
@@ -2130,7 +2173,7 @@ HT_FUNC(ht_Double, (d2fsin_d(x * 180) + d2fsin_d(y * 360)) / 2)
 HT_FUNC(ht_InvertedDouble, -(d2fsin_d(x * 180) + d2fsin_d(y * 360)) / 2)
 typedef struct ht_function_s {
     const char *fname;
-    floatp (*proc)(floatp, floatp);
+    double (*proc)(double, double);
 } ht_function_t;
 static const ht_function_t ht_functions[] = {
     {"Round", ht_Round},
@@ -2274,7 +2317,7 @@ pdf_write_spot_halftone(gx_device_pdf *pdev, const gs_spot_halftone *psht,
         if (code < 0)
             goto notrec;
         for (i = 0; i < countof(ht_functions); ++i) {
-            floatp (*spot_proc)(floatp, floatp) = ht_functions[i].proc;
+            double (*spot_proc)(double, double) = ht_functions[i].proc;
             gs_point pt;
 
             gs_screen_enum_init_memory(&senum, &order, NULL, &psht->screen,
@@ -2726,15 +2769,21 @@ pdf_update_alpha(gx_device_pdf *pdev, const gs_imager_state *pis,
                  pdf_resource_t **ppres)
 {
     bool ais;
-    floatp alpha;
+    double alpha;
     int code;
 
     if (pdev->state.soft_mask_id != pis->soft_mask_id) {
         char buf[20];
 
-        if (pis->soft_mask_id == 0)
-            strcpy(buf, "/None");
-        else
+        if (pis->soft_mask_id == 0) {
+            code = pdf_open_contents(pdev, PDF_IN_STREAM);
+            if (code < 0)
+                return code;
+            code = pdf_restore_viewer_state(pdev, pdev->strm);
+            if (code < 0)
+                return code;
+        }
+        else{
             gs_sprintf(buf, "%ld 0 R", pis->soft_mask_id);
         code = pdf_open_gstate(pdev, ppres);
         if (code < 0)
@@ -2743,6 +2792,8 @@ pdf_update_alpha(gx_device_pdf *pdev, const gs_imager_state *pis,
                     "/SMask", (byte *)buf, strlen(buf));
         if (code < 0)
             return code;
+        pdf_save_viewer_state(pdev, pdev->strm);
+        }
         pdev->state.soft_mask_id = pis->soft_mask_id;
     }
     if (pdev->state.opacity.alpha != pis->opacity.alpha) {

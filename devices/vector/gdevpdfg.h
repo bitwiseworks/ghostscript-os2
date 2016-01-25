@@ -95,14 +95,15 @@ int pdf_convert_ICC(gx_device_pdf *pdev,
  * to be scaled (to convert a CIEBased space to ICCBased), store a pointer
  * to the ranges in *ppranges, otherwise set *ppranges to 0.
  */
-int pdf_color_space_named(gx_device_pdf *pdev, cos_value_t *pvalue,
+int pdf_color_space_named(gx_device_pdf *pdev, const gs_imager_state * pis,
+                    cos_value_t *pvalue,
                     const gs_range_t **ppranges,
                     const gs_color_space *pcs,
                     const pdf_color_space_names_t *pcsn,
-                    bool by_name, const byte *res_name, int name_length);
+                    bool by_name, const byte *res_name, int name_length, bool keepICC);
 
 int free_color_space(gx_device_pdf *pdev, pdf_resource_t *pres);
-int pdf_indexed_color_space(gx_device_pdf *pdev, cos_value_t *pvalue,
+int pdf_indexed_color_space(gx_device_pdf *pdev, const gs_imager_state * pis, cos_value_t *pvalue,
                         const gs_color_space *pcs, cos_array_t *pca, cos_value_t *cos_base);
 
 int convert_separation_alternate(gx_device_pdf * pdev, const gs_imager_state * pis, const gs_color_space *pcs,
@@ -115,7 +116,7 @@ int convert_DeviceN_alternate(gx_device_pdf * pdev, const gs_imager_state * pis,
 int pdf_cs_Pattern_colored(gx_device_pdf *pdev, cos_value_t *pvalue);
 int pdf_cs_Pattern_uncolored(gx_device_pdf *pdev, cos_value_t *pvalue);
 int pdf_cs_Pattern_uncolored_hl(gx_device_pdf *pdev,
-        const gs_color_space *pcs, cos_value_t *pvalue);
+        const gs_color_space *pcs, cos_value_t *pvalue, const gs_imager_state * pis);
 
 /* Set the ProcSets bits corresponding to an image color space. */
 void pdf_color_space_procsets(gx_device_pdf *pdev,
@@ -241,7 +242,7 @@ void pdf_make_bitmap_matrix(gs_matrix * pmat, int x, int y, int w, int h,
 
 /* Put out the gsave and matrix for an image. */
 void pdf_put_image_matrix(gx_device_pdf * pdev, const gs_matrix * pmat,
-                          floatp y_scale);
+                          double y_scale);
 
 /* Put out a reference to an image resource. */
 int pdf_do_image_by_id(gx_device_pdf * pdev, double scale,
@@ -333,16 +334,16 @@ int pdf_store_pattern1_params(gx_device_pdf *pdev, pdf_resource_t *pres,
 int pdf_put_colored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
                         const gs_color_space *pcs,
                         const psdf_set_color_commands_t *ppscc,
-                        bool have_pattern_streams, pdf_resource_t **ppres);
+                        const gs_imager_state * pis, pdf_resource_t **ppres);
 
 /* Write an uncolored Pattern color. */
 int pdf_put_uncolored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
                           const gs_color_space *pcs,
                           const psdf_set_color_commands_t *ppscc,
-                          bool have_pattern_streams, pdf_resource_t **ppres);
+                          const gs_imager_state *pis, pdf_resource_t **ppres);
 
 /* Write a PatternType 2 (shading pattern) color. */
-int pdf_put_pattern2(gx_device_pdf *pdev, const gx_drawing_color *pdc,
+int pdf_put_pattern2(gx_device_pdf *pdev, const gs_imager_state * pis, const gx_drawing_color *pdc,
                  const psdf_set_color_commands_t *ppscc,
                  pdf_resource_t **ppres);
 

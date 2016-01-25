@@ -623,11 +623,14 @@ ac_subst_vars='LTLIBOBJS
 GCFLAGS
 DBG_CFLAGS
 OPT_CFLAGS
+SRCDIR
 AUXDIRPOSTFIX
+SUB_MAKE_OPTION
 ORDER_ONLY
 HAVE_BYTESWAP_H
 HAVE_BSWAP32
 SQRTF_SUBST
+LCMS2_PTR_ALIGNMENT
 LCMS2_ENDIAN
 LCMS_ENDIAN
 HAVE_STRERROR
@@ -651,11 +654,24 @@ PNG_DEVS
 IJS_DEVS
 JBIG2_DEVS
 XPS_DEVS
-SVG_DEVS
 CUPS_DEVS
 F_DEVS
 P_DEVS
 COMPILE_INITS
+GPDL_MAK
+GPDL_TARGET
+GPDL
+XPSROMFS_MAK
+XPS_MAK
+XPS_TARGET
+XPS
+PXL_MAK
+PCL_TOP_MAK
+PCL_MAK
+PL_MAK
+PLROMFS_MAK
+PCL_TARGET
+PCL
 GS
 XLIBS
 X_LDFLAGS
@@ -701,7 +717,6 @@ LIBTIFFCONFDIR
 LIBTIFFDIR
 SHARE_LIBTIFF
 LCMS2DIR
-LCMSDIR
 WHICHLCMS
 SHARELCMS
 LIBPNGDIR
@@ -730,8 +745,10 @@ FONTCONFIG_CFLAGS
 HAVE_FONTCONFIG
 UTF8DEVS
 HAVE_LIBIDN
+RECURSIVE_MUTEXATTR
 PTHREAD_LIBS
 SYNC
+HAVE_PREAD_PWRITE
 LIBOBJS
 OBJDIR_BSDMAKE_WORKAROUND
 EGREP
@@ -799,6 +816,8 @@ enable_big_endian
 enable_little_endian
 enable_sse2
 enable_threadsafe
+with_large_color_index
+enable_threading
 with_libiconv
 with_libidn
 with_libpaper
@@ -807,7 +826,6 @@ enable_dbus
 enable_freetype
 enable_fapi
 with_ufst
-with_lcms
 with_system_libtiff
 enable_cups
 with_pdftoraster
@@ -823,14 +841,19 @@ enable_gtk
 with_omni
 with_x
 with_gs
+with_pcl
+with_xps
+with_gpdl
 enable_compile_inits
 with_drivers
 with_driversfile
 enable_dynamic
 with_fontpath
+with_memory_alignment
 enable_bswap32
 enable_byteswap_h
 with_gnu_make
+with_exe_ext
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1459,6 +1482,7 @@ Optional Features:
   --disable-sse2          Do not use sse2 instrinsics
   --enable-threadsafe     enable a thread safe build - NOTE: this will exclude
                           non-threadsafe devices
+  --disable-threading     disable support for multithreaded rendering
   --disable-fontconfig    Do not use fontconfig to list system fonts
   --disable-dbus          Do not use dbus to communicate with external
                           services
@@ -1476,14 +1500,13 @@ Optional Features:
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
+
   --with-libiconv=[no/gnu/native]
                           use the libiconv library
   --without-libidn        Do not use libidn to support Unicode passwords
   --without-libpaper      disable libpaper support
   --with-ufst=UFST_ROOT_DIR
                           Use UFST
-  --with-lcms             try to use LittleCMS 1.x instead of the default of
-                          LittleCMS 2.x
   --with-system-libtiff   Force using the systems libtiff
   --without-pdftoraster   Do not include CUPS' pdftoraster filter
   --with-local-cups       Force using the GS supplied cups code - only useful
@@ -1498,6 +1521,12 @@ Optional Packages:
   --with-omni             enable the omni driver
   --with-x                use the X Window System
   --with-gs=NAME          name of the Ghostscript executible [[gs]]
+  --with-pcl=NAME         name of the GhostPCL executible (if the source is
+                          available, ignored otherwise) [[gpcl6]]
+  --with-xps=NAME         name of the GhostXPS executible (if the source is
+                          available, ignored otherwise) [[gxps]]
+  --with-gpdl=NAME        name of the GhostPDL executible (if the source is
+                          available, ignored otherwise) [[gpdl]]
   --with-drivers=LIST     Drivers to support, separated by commas.
                           Either list the drivers or use aliases:
                           ALL      = all drivers
@@ -1531,7 +1560,11 @@ Optional Packages:
                           Default: ALL
   --with-driversfile=FILE Drivers to support from file, separated by newlines.
   --with-fontpath         set font search path for gs
+  --with-memory-alignment Allows setting minimum alignment for the memory
+                          manager (4 or 8 bytes)
   --without-gnu-make      disable GNU make features
+  --with-exe-ext=EXT      set the file name executable extension (must include
+                          any separator e.g. the period in ".exe")
 
 Some influential environment variables:
   CC          C compiler command
@@ -2265,6 +2298,52 @@ $as_echo "$ac_res" >&6; }
   eval $as_lineno_stack; ${as_lineno_stack:+:} unset as_lineno
 
 } # ac_fn_c_check_func
+
+# ac_fn_c_check_decl LINENO SYMBOL VAR INCLUDES
+# ---------------------------------------------
+# Tests whether SYMBOL is declared in INCLUDES, setting cache variable VAR
+# accordingly.
+ac_fn_c_check_decl ()
+{
+  as_lineno=${as_lineno-"$1"} as_lineno_stack=as_lineno_stack=$as_lineno_stack
+  as_decl_name=`echo $2|sed 's/ *(.*//'`
+  as_decl_use=`echo $2|sed -e 's/(/((/' -e 's/)/) 0&/' -e 's/,/) 0& (/g'`
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $as_decl_name is declared" >&5
+$as_echo_n "checking whether $as_decl_name is declared... " >&6; }
+if eval \${$3+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+$4
+int
+main ()
+{
+#ifndef $as_decl_name
+#ifdef __cplusplus
+  (void) $as_decl_use;
+#else
+  (void) $as_decl_name;
+#endif
+#endif
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  eval "$3=yes"
+else
+  eval "$3=no"
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+eval ac_res=\$$3
+	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+$as_echo "$ac_res" >&6; }
+  eval $as_lineno_stack; ${as_lineno_stack:+:} unset as_lineno
+
+} # ac_fn_c_check_decl
 cat >config.log <<_ACEOF
 This file contains any messages produced by compilers while
 running configure, to aid debugging if configure makes a mistake.
@@ -3859,6 +3938,13 @@ case `uname` in
             CC_DBG_FLAGS_TO_TRY="-g -O0"
         fi
         ;;
+        AIX)
+        if test $ac_cv_c_compiler_gnu = yes; then
+            CC_OPT_FLAGS_TO_TRY="-O2"
+            CC_DBG_FLAGS_TO_TRY="-gdwarf-2 -g3 -O0"
+            SET_DT_SONAME="so"
+        fi
+        ;;
 esac
 
 
@@ -3867,8 +3953,8 @@ esac
 if test $ac_cv_c_compiler_gnu = yes; then
     cflags_to_try="-Wall -Wstrict-prototypes -Wundef \
 -Wmissing-declarations -Wmissing-prototypes -Wwrite-strings \
--Wno-strict-aliasing -Wdeclaration-after-statement \
--fno-builtin -fno-common"
+-Wno-strict-aliasing -Werror=declaration-after-statement \
+-fno-builtin -fno-common -Werror=return-type"
     optflags_to_try="$CC_OPT_FLAGS_TO_TRY"
     dbgflags_to_try="$CC_DBG_FLAGS_TO_TRY"
 else
@@ -3997,10 +4083,8 @@ fi
 
 if test x$BIGENDIAN = x ; then
   if test "$cross_compiling" = yes; then :
-  { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
-$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
-as_fn_error $? "cannot run test program while cross compiling
-See \`config.log' for more details" "$LINENO" 5; }
+  BIGENDIAN=1;{ $as_echo "$as_me:${as_lineno-$LINENO}: result: cross compiling: assuming big engian" >&5
+$as_echo "cross compiling: assuming big engian" >&6; }
 else
   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
@@ -4901,8 +4985,18 @@ if test "x$ac_cv_header_inttypes_h" = xyes; then
         GCFLAGS="$GCFLAGS -DHAVE_INTTYPES_H=1"
 fi
 
-uint64_type="none"
- # The cast to long int works around a bug in the HP C Compiler
+large_color_index=1
+
+
+# Check whether --with-large_color_index was given.
+if test "${with_large_color_index+set}" = set; then :
+  withval=$with_large_color_index; large_color_index="$with_large_color_index"
+fi
+
+
+if test x"$large_color_index" != "x0"; then
+    color_ind_type="none"
+   # The cast to long int works around a bug in the HP C Compiler
 # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
 # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
 # This bug is HP SR number 8606223364.
@@ -4935,10 +5029,10 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
- if test $ac_cv_sizeof_unsigned_long_int = 8; then
-        uint64_type="unsigned long int"
- else
-  # The cast to long int works around a bug in the HP C Compiler
+   if test $ac_cv_sizeof_unsigned_long_int = 8; then
+          color_ind_type="unsigned long int"
+   else
+    # The cast to long int works around a bug in the HP C Compiler
 # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
 # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
 # This bug is HP SR number 8606223364.
@@ -4971,10 +5065,10 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-  if test $ac_cv_sizeof_unsigned_long_long = 8; then
-        uint64_type="unsigned long long"
-  else
-   # The cast to long int works around a bug in the HP C Compiler
+    if test $ac_cv_sizeof_unsigned_long_long = 8; then
+          color_ind_type="unsigned long long"
+    else
+     # The cast to long int works around a bug in the HP C Compiler
 # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
 # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
 # This bug is HP SR number 8606223364.
@@ -5007,10 +5101,10 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-   if test $ac_cv_sizeof_unsigned___int64 = 8; then
-        uint64_type="unsigned __int64"
-   else
-    # The cast to long int works around a bug in the HP C Compiler
+     if test $ac_cv_sizeof_unsigned___int64 = 8; then
+          color_ind_type="unsigned __int64"
+     else
+      # The cast to long int works around a bug in the HP C Compiler
 # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
 # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
 # This bug is HP SR number 8606223364.
@@ -5043,14 +5137,165 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-    if test $ac_cv_sizeof_u_int64_t = 8; then
-        uint64_type="u_int64_t"
+      if test $ac_cv_sizeof_u_int64_t = 8; then
+          color_ind_type="u_int64_t"
+      fi
+     fi
     fi
    fi
-  fi
- fi
-if test "$uint64_type" != "none"; then
-        GCFLAGS="$GCFLAGS -DGX_COLOR_INDEX_TYPE=\"$uint64_type\""
+else
+    color_ind_type="none"
+   # The cast to long int works around a bug in the HP C Compiler
+# version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
+# declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
+# This bug is HP SR number 8606223364.
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking size of unsigned long int" >&5
+$as_echo_n "checking size of unsigned long int... " >&6; }
+if ${ac_cv_sizeof_unsigned_long_int+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if ac_fn_c_compute_int "$LINENO" "(long int) (sizeof (unsigned long int))" "ac_cv_sizeof_unsigned_long_int"        "$ac_includes_default"; then :
+
+else
+  if test "$ac_cv_type_unsigned_long_int" = yes; then
+     { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error 77 "cannot compute sizeof (unsigned long int)
+See \`config.log' for more details" "$LINENO" 5; }
+   else
+     ac_cv_sizeof_unsigned_long_int=0
+   fi
+fi
+
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_sizeof_unsigned_long_int" >&5
+$as_echo "$ac_cv_sizeof_unsigned_long_int" >&6; }
+
+
+
+cat >>confdefs.h <<_ACEOF
+#define SIZEOF_UNSIGNED_LONG_INT $ac_cv_sizeof_unsigned_long_int
+_ACEOF
+
+
+   if test $ac_cv_sizeof_unsigned_long_int = 4; then
+          color_ind_type="unsigned long int"
+   else
+    # The cast to long int works around a bug in the HP C Compiler
+# version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
+# declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
+# This bug is HP SR number 8606223364.
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking size of unsigned int" >&5
+$as_echo_n "checking size of unsigned int... " >&6; }
+if ${ac_cv_sizeof_unsigned_int+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if ac_fn_c_compute_int "$LINENO" "(long int) (sizeof (unsigned int))" "ac_cv_sizeof_unsigned_int"        "$ac_includes_default"; then :
+
+else
+  if test "$ac_cv_type_unsigned_int" = yes; then
+     { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error 77 "cannot compute sizeof (unsigned int)
+See \`config.log' for more details" "$LINENO" 5; }
+   else
+     ac_cv_sizeof_unsigned_int=0
+   fi
+fi
+
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_sizeof_unsigned_int" >&5
+$as_echo "$ac_cv_sizeof_unsigned_int" >&6; }
+
+
+
+cat >>confdefs.h <<_ACEOF
+#define SIZEOF_UNSIGNED_INT $ac_cv_sizeof_unsigned_int
+_ACEOF
+
+
+    if test $ac_cv_sizeof_unsigned_int = 4; then
+          color_ind_type="unsigned int"
+    else
+     # The cast to long int works around a bug in the HP C Compiler
+# version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
+# declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
+# This bug is HP SR number 8606223364.
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking size of unsigned __int32" >&5
+$as_echo_n "checking size of unsigned __int32... " >&6; }
+if ${ac_cv_sizeof_unsigned___int32+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if ac_fn_c_compute_int "$LINENO" "(long int) (sizeof (unsigned __int32))" "ac_cv_sizeof_unsigned___int32"        "$ac_includes_default"; then :
+
+else
+  if test "$ac_cv_type_unsigned___int32" = yes; then
+     { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error 77 "cannot compute sizeof (unsigned __int32)
+See \`config.log' for more details" "$LINENO" 5; }
+   else
+     ac_cv_sizeof_unsigned___int32=0
+   fi
+fi
+
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_sizeof_unsigned___int32" >&5
+$as_echo "$ac_cv_sizeof_unsigned___int32" >&6; }
+
+
+
+cat >>confdefs.h <<_ACEOF
+#define SIZEOF_UNSIGNED___INT32 $ac_cv_sizeof_unsigned___int32
+_ACEOF
+
+
+     if test $ac_cv_sizeof_unsigned___int32 = 4; then
+          color_ind_type="unsigned __int32"
+     else
+      # The cast to long int works around a bug in the HP C Compiler
+# version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
+# declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
+# This bug is HP SR number 8606223364.
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking size of u_int32_t" >&5
+$as_echo_n "checking size of u_int32_t... " >&6; }
+if ${ac_cv_sizeof_u_int32_t+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if ac_fn_c_compute_int "$LINENO" "(long int) (sizeof (u_int32_t))" "ac_cv_sizeof_u_int32_t"        "$ac_includes_default"; then :
+
+else
+  if test "$ac_cv_type_u_int32_t" = yes; then
+     { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error 77 "cannot compute sizeof (u_int32_t)
+See \`config.log' for more details" "$LINENO" 5; }
+   else
+     ac_cv_sizeof_u_int32_t=0
+   fi
+fi
+
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_sizeof_u_int32_t" >&5
+$as_echo "$ac_cv_sizeof_u_int32_t" >&6; }
+
+
+
+cat >>confdefs.h <<_ACEOF
+#define SIZEOF_U_INT32_T $ac_cv_sizeof_u_int32_t
+_ACEOF
+
+
+      if test $ac_cv_sizeof_u_int32_t = 4; then
+          color_ind_type="u_int32_t"
+      fi
+     fi
+    fi
+   fi
+fi
+
+if test "$color_ind_type" != "none"; then
+        GCFLAGS="$GCFLAGS -DGX_COLOR_INDEX_TYPE=\"$color_ind_type\""
 fi
 
 
@@ -5108,16 +5353,83 @@ _ACEOF
 fi
 
 
+for ac_func in pread pwrite
+do :
+  as_ac_var=`$as_echo "ac_cv_func_$ac_func" | $as_tr_sh`
+ac_fn_c_check_func "$LINENO" "$ac_func" "$as_ac_var"
+if eval test \"x\$"$as_ac_var"\" = x"yes"; then :
+  cat >>confdefs.h <<_ACEOF
+#define `$as_echo "HAVE_$ac_func" | $as_tr_cpp` 1
+_ACEOF
+ HAVE_PREAD_PWRITE="-DHAVE_PREAD_PWRITE=1"
+else
+  HAVE_PREAD_PWRITE=
+fi
+done
+
+
+if test "x$HAVE_PREAD_PWRITE" != "x"; then
+  save_cflags=$CFLAGS
+  CFLAGS="$CFLAGS -D__USE_UNIX98=1 -D_XOPEN_SOURCE=500"
+  ac_fn_c_check_decl "$LINENO" "pwrite" "ac_cv_have_decl_pwrite" "$ac_includes_default"
+if test "x$ac_cv_have_decl_pwrite" = xyes; then :
+  ac_have_decl=1
+else
+  ac_have_decl=0
+fi
+
+cat >>confdefs.h <<_ACEOF
+#define HAVE_DECL_PWRITE $ac_have_decl
+_ACEOF
+if test $ac_have_decl = 1; then :
+
+else
+  HAVE_PREAD_PWRITE=
+fi
+ac_fn_c_check_decl "$LINENO" "pread" "ac_cv_have_decl_pread" "$ac_includes_default"
+if test "x$ac_cv_have_decl_pread" = xyes; then :
+  ac_have_decl=1
+else
+  ac_have_decl=0
+fi
+
+cat >>confdefs.h <<_ACEOF
+#define HAVE_DECL_PREAD $ac_have_decl
+_ACEOF
+if test $ac_have_decl = 1; then :
+
+else
+  HAVE_PREAD_PWRITE=
+fi
+
+  CFLAGS=$save_cflags
+  if test "x$HAVE_PREAD_PWRITE" != "x"; then
+    GCFLAGS="$GCFLAGS -D__USE_UNIX98=1"
+  fi
+fi
+
+
+
 SYNC="nosync"
 PTHREAD_LIBS=""
+RECURSIVE_MUTEXATTR=""
 
-case `uname` in
-    MINGW*)
-      { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: disabling support for pthreads......" >&5
+# Check whether --enable-threading was given.
+if test "${enable_threading+set}" = set; then :
+  enableval=$enable_threading;
+fi
+
+
+# if you haven't got pread/pwrite, we can't use multithreading
+if test "x$HAVE_PREAD_PWRITE" != "x"; then
+  if test "$enable_threading" != "no"; then
+    case `uname` in
+      MINGW*)
+        { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: disabling support for pthreads......" >&5
 $as_echo "$as_me: WARNING: disabling support for pthreads......" >&2;}
-    ;;
-    *)
-      { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_create in -lpthread" >&5
+      ;;
+      *)
+        { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_create in -lpthread" >&5
 $as_echo_n "checking for pthread_create in -lpthread... " >&6; }
 if ${ac_cv_lib_pthread_pthread_create+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -5155,13 +5467,71 @@ fi
 $as_echo "$ac_cv_lib_pthread_pthread_create" >&6; }
 if test "x$ac_cv_lib_pthread_pthread_create" = xyes; then :
 
-        SYNC=posync;
-        PTHREAD_LIBS="-lpthread"
+          SYNC=posync;
+          PTHREAD_LIBS="-lpthread"
 
 fi
 
-    ;;
-esac
+        { $as_echo "$as_me:${as_lineno-$LINENO}: checking recursive mutexes......." >&5
+$as_echo_n "checking recursive mutexes.......... " >&6; }
+        cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <pthread.h>
+int
+main ()
+{
+
+                static int k = PTHREAD_MUTEX_RECURSIVE;
+                #ifndef pthread_mutexattr_settype
+                #ifdef __cplusplus
+                  (void) pthread_mutexattr_settype;
+                #else
+                  (void) pthread_mutexattr_settype;
+                #endif
+                #endif
+                ;
+                return 0;
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  RECURSIVE_MUTEXATTR="-DGS_RECURSIVE_MUTEXATTR=PTHREAD_MUTEX_RECURSIVE"
+else
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <pthread.h>
+int
+main ()
+{
+
+                  static int k = PTHREAD_MUTEX_RECURSIVE_NP;
+                  #ifndef pthread_mutexattr_settype
+                  #ifdef __cplusplus
+                    (void) pthread_mutexattr_settype;
+                  #else
+                    (void) pthread_mutexattr_settype;
+                  #endif
+                  #endif
+                  ;
+                  return 0;
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  RECURSIVE_MUTEXATTR="-DGS_RECURSIVE_MUTEXATTR=PTHREAD_MUTEX_RECURSIVE_NP"
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+      ;;
+    esac
+  fi
+fi
+
 
 
 
@@ -5748,7 +6118,7 @@ fi
 
 FT_BRIDGE=0
 SHARE_FT=0
-FTSRCDIR=
+FTSRCDIR=src
 FT_CFLAGS=
 FT_LIBS=
 
@@ -5756,7 +6126,7 @@ INSERT_UFST_BRIDGE_EQUAL_ONE=
 UFST_ROOT=
 UFST_CFLAGS=
 UFST_LIB_EXT=
-FAPIUFST_MAK="\$(GLSRCDIR)/stub.mak"
+FAPIUFST_MAK="\$(GLSRCDIR)\$(D)stub.mak"
 
 # Check whether --enable-fapi was given.
 if test "${enable_fapi+set}" = set; then :
@@ -5783,7 +6153,16 @@ fi
          *) UFST_ROOT=`pwd`/$with_ufst ;;
       esac
 
-      FAPIUFST_MAK="\$(UFST_ROOT)/fapiufst.mak"
+      # Various versions of UFST fail to build with -Werror=return-type so
+      # strip that off our GCFLAGS if it's there.
+      tmp_cflags=""
+      for tmp_cflag in $GCFLAGS ; do
+        echo $tmp_cflag
+        tmp_cflags="$tmp_cflags $(echo $tmp_cflag | grep -v "Werror=return-type")"
+      done
+      GCFLAGS="$tmp_cflags"
+
+      FAPIUFST_MAK="\$(UFST_ROOT)\$(D)fapiufst.mak"
 
       if ! test -f $UFST_ROOT/fapiufst.mak ; then
         echo $UFST_ROOT/fapiufst.mak
@@ -6256,30 +6635,25 @@ fi
 
 WHICHLCMS=
 
-
-# Check whether --with-lcms was given.
-if test "${with_lcms+set}" = set; then :
-  withval=$with_lcms;
-fi
-
-
-if test x$with_lcms != xyes; then
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for local lcms2 library source" >&5
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for local lcms2 library source" >&5
 $as_echo_n "checking for local lcms2 library source... " >&6; }
-  LCMS2DIR=$srcdir/lcms2
-  if test -f $LCMS2DIR/include/lcms2.h; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+LCMS2DIR=src
+
+LCMS2SRC=$srcdir/lcms2
+if test -f $LCMS2SRC/include/lcms2.h; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 $as_echo "yes" >&6; }
-        SHARELCMS=0
-        WHICHLCMS=lcms2
-  else
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+      SHARELCMS=0
+      WHICHLCMS=lcms2
+      LCMS2DIR=$LCMS2SRC
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for system lcms2 library" >&5
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for system lcms2 library" >&5
 $as_echo_n "checking for system lcms2 library... " >&6; }
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for cmsGetTransformOutputFormat in -llcms2" >&5
-$as_echo_n "checking for cmsGetTransformOutputFormat in -llcms2... " >&6; }
-if ${ac_cv_lib_lcms2_cmsGetTransformOutputFormat+:} false; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for _cmsCreateMutex in -llcms2" >&5
+$as_echo_n "checking for _cmsCreateMutex in -llcms2... " >&6; }
+if ${ac_cv_lib_lcms2__cmsCreateMutex+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_lib_save_LIBS=$LIBS
@@ -6293,36 +6667,36 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 #ifdef __cplusplus
 extern "C"
 #endif
-char cmsGetTransformOutputFormat ();
+char _cmsCreateMutex ();
 int
 main ()
 {
-return cmsGetTransformOutputFormat ();
+return _cmsCreateMutex ();
   ;
   return 0;
 }
 _ACEOF
 if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_lcms2_cmsGetTransformOutputFormat=yes
+  ac_cv_lib_lcms2__cmsCreateMutex=yes
 else
-  ac_cv_lib_lcms2_cmsGetTransformOutputFormat=no
+  ac_cv_lib_lcms2__cmsCreateMutex=no
 fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_lcms2_cmsGetTransformOutputFormat" >&5
-$as_echo "$ac_cv_lib_lcms2_cmsGetTransformOutputFormat" >&6; }
-if test "x$ac_cv_lib_lcms2_cmsGetTransformOutputFormat" = xyes; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_lcms2__cmsCreateMutex" >&5
+$as_echo "$ac_cv_lib_lcms2__cmsCreateMutex" >&6; }
+if test "x$ac_cv_lib_lcms2__cmsCreateMutex" = xyes; then :
 
-           for ac_header in lcms2.h
+         for ac_header in lcms2.h
 do :
   ac_fn_c_check_header_mongrel "$LINENO" "lcms2.h" "ac_cv_header_lcms2_h" "$ac_includes_default"
 if test "x$ac_cv_header_lcms2_h" = xyes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_LCMS2_H 1
 _ACEOF
- LCMS2DIR="";SHARELCMS=1;WHICHLCMS=lcms2
+ SHARELCMS=1;WHICHLCMS=lcms2
 fi
 
 done
@@ -6330,32 +6704,10 @@ done
 
 fi
 
-    if test x$WHICHLCMS = x; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: lcms2 not found, or too old" >&5
-$as_echo "$as_me: WARNING: lcms2 not found, or too old" >&2;}
-    fi
+  if test x$WHICHLCMS = x; then
+    as_fn_error $? "lcms2 not found, or too old" "$LINENO" 5
   fi
 fi
-
-if test x$WHICHLCMS = x; then
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for local lcms library source" >&5
-$as_echo_n "checking for local lcms library source... " >&6; }
-  LCMSDIR=$srcdir/lcms
-  SHARELCMS=0
-  if test -f $LCMSDIR/include/lcms.h; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
-$as_echo "yes" >&6; }
-        SHARELCMS=0
-        WHICHLCMS=lcms
-  else
-
-    as_fn_error $? "LittleCMS source not found!" "$LINENO" 5
-    #AC_CHECK_LIB(lcms, cmsCreateXYZProfile, [
-    #          AC_CHECK_HEADERS([lcms.h], [SHARELCMS=1;LCMSDIR=""])
-    #        ])
-  fi
-fi
-
 
 
 
@@ -6371,12 +6723,15 @@ fi
 
 TIFFDEVS=''
 FAX_DEVS=''
+XPSWRITEDEVICE=''
 
-LIBTIFFDIR=''
+
+LIBTIFFDIR='src'
 LIBTIFFCONFDIR=''
 
-TIFFDEVS_ALL='tiffs tiff12nc tiff24nc tiff48nc tiff32nc tiff64nc tiffcrle tifflzw tiffpack tiffgray tiffsep tiffsep1 tiffscaled'
+TIFFDEVS_ALL='tiffs tiff12nc tiff24nc tiff48nc tiff32nc tiff64nc tiffcrle tifflzw tiffpack tiffgray tiffsep tiffsep1 tiffscaled tiffscaled4 tiffscaled8 tiffscaled24 tiffscaled32'
 FAX_DEVS_ALL='cfax dfaxlow dfaxhigh fax faxg3 faxg32d faxg4 tiffg3 tiffg32d tiffg4 tfax'
+
 case "x$with_system_libtiff" in
     xcheck)
         if test -d $srcdir/tiff; then
@@ -6454,13 +6809,12 @@ fi
             fi
         fi
         if test "x$HAVE_LOCAL_LIBTIFF" = x && test "x$HAVE_SYSTEM_LIBTIFF" = x; then
-            { $as_echo "$as_me:${as_lineno-$LINENO}: Could not find a copy of libtiff on your system.
-Disabling tiff output devices." >&5
-$as_echo "$as_me: Could not find a copy of libtiff on your system.
-Disabling tiff output devices." >&6;}
+            { $as_echo "$as_me:${as_lineno-$LINENO}: Could not find a copy of libtiff on your system. Disabling tiff and xps output devices." >&5
+$as_echo "$as_me: Could not find a copy of libtiff on your system. Disabling tiff and xps output devices." >&6;}
         else
             TIFFDEVS="$TIFFDEVS_ALL"
             FAX_DEVS="$FAX_DEVS_ALL"
+            XPSWRITEDEVICE='xpswrite'
         fi
         ;;
     xyes)
@@ -6535,11 +6889,10 @@ fi
             SHARE_LIBTIFF=1
             TIFFDEVS="$TIFFDEVS_ALL"
             FAX_DEVS="$FAX_DEVS_ALL"
+            XPSWRITEDEVICE='xpswrite'
        else
-            { $as_echo "$as_me:${as_lineno-$LINENO}: Could not find a copy of libtiff on your system.
-Disabling tiff output devices." >&5
-$as_echo "$as_me: Could not find a copy of libtiff on your system.
-Disabling tiff output devices." >&6;}
+            { $as_echo "$as_me:${as_lineno-$LINENO}: Could not find a copy of libtiff on your system. Disabling tiff and xps output devices." >&5
+$as_echo "$as_me: Could not find a copy of libtiff on your system. Disabling tiff and xps output devices." >&6;}
         fi
         ;;
     xno)
@@ -6553,13 +6906,12 @@ $as_echo "yes" >&6; }
             SHARE_LIBTIFF=0
             TIFFDEVS="$TIFFDEVS_ALL"
             FAX_DEVS="$FAX_DEVS_ALL"
+            XPSWRITEDEVICE='xpswrite'
         else
             { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
-            { $as_echo "$as_me:${as_lineno-$LINENO}: Could not find local copy of libtiff.
-Disabling tiff output devices." >&5
-$as_echo "$as_me: Could not find local copy of libtiff.
-Disabling tiff output devices." >&6;}
+            { $as_echo "$as_me:${as_lineno-$LINENO}: Could not find local copy of libtiff. Disabling tiff and xps output devices." >&5
+$as_echo "$as_me: Could not find local copy of libtiff. Disabling tiff and xps output devices." >&6;}
         fi
         ;;
 esac
@@ -6568,10 +6920,10 @@ if test $SHARE_LIBTIFF -eq 0; then
       echo
       echo "Running libtiff configure script..."
       olddir=`pwd`
-      if ! test -d $LIBTIFFCONFDIR ; then
-        mkdir $LIBTIFFCONFDIR
+      if ! test -d "$LIBTIFFCONFDIR" ; then
+        mkdir "$LIBTIFFCONFDIR"
       fi
-      cd "$LIBTIFFCONFDIR" && $olddir/$LIBTIFFDIR/configure --disable-jbig --disable-lzma $SUBCONFIG_OPTS
+      cd "$LIBTIFFCONFDIR" && ../"$LIBTIFFDIR"/configure --disable-jbig --disable-lzma $SUBCONFIG_OPTS
       status=$?
       if test "$status" -ne 0 ; then
         as_fn_error $status "libtiff configure script failed" "$LINENO" 5
@@ -6696,7 +7048,18 @@ $as_echo "no" >&6; }
 fi
 
 
-            ac_fn_c_check_header_mongrel "$LINENO" "cups/raster.h" "ac_cv_header_cups_raster_h" "$ac_includes_default"
+            # check for a libcups header
+            ac_fn_c_check_header_mongrel "$LINENO" "cups/cups.h" "ac_cv_header_cups_cups_h" "$ac_includes_default"
+if test "x$ac_cv_header_cups_cups_h" = xyes; then :
+
+else
+  CUPSCONFIG=""
+fi
+
+
+            # And check for a libcupsimage header
+            if test "x$CUPSCONFIG" != x; then
+                ac_fn_c_check_header_mongrel "$LINENO" "cups/raster.h" "ac_cv_header_cups_raster_h" "$ac_includes_default"
 if test "x$ac_cv_header_cups_raster_h" = xyes; then :
 
 else
@@ -6704,10 +7067,14 @@ else
 fi
 
 
+            fi
+
             if test "x$CUPSCONFIG" != x; then
                                 CUPSCFLAGS="`$CUPSCONFIG --cflags` $CFLAGS"
 #                CUPSLINK="`$CUPSCONFIG --ldflags` `$CUPSCONFIG --static --image --libs | sed -e '1,$s/-lssl//'` $LIBS"
                 CUPSLINK="`$CUPSCONFIG --ldflags` `$CUPSCONFIG --image --libs`"
+                CUPSAPIVERSION="`$CUPSCONFIG --api-version`"
+
 
 # the makefile wants a list of just the library names
 for gs_item in $CUPSLINK; do
@@ -6746,7 +7113,15 @@ done
 
                 CUPSINCLUDE="include $srcdir/cups/cups.mak"
                 CUPSDEV="cups"
+
+                echo "\n\n\n $CUPSAPIVERSION \n\n\n"
+                # pwgraster support arrived in cups 1.5.x
+                if test "$CUPSAPIVERSION" ">" "1.4" ; then
+                  CUPSDEV="$CUPSDEV pwgraster"
+                fi
+
                 CUPSVERSION="`$CUPSCONFIG --version`"
+
                 LCUPSINCLUDE="include \$(GLSRCDIR)/lcups.mak"
                 LCUPSIINCLUDE="include \$(GLSRCDIR)/lcupsi.mak"
                 if ( test x$with_pdftoraster != xno ); then
@@ -6764,7 +7139,7 @@ $as_echo "$as_me: WARNING: * USING LOCAL CUPS SOURCE *" >&2;}
                 LCUPSBUILDTYPE=linux
                 LCUPSINCLUDE="include \$(GLSRCDIR)/lcups.mak"
                 LCUPSIINCLUDE="include \$(GLSRCDIR)/lcupsi.mak"
-                CUPSDEV="cups"
+                CUPSDEV="cups pwgraster"
             fi
         fi
     fi
@@ -7095,6 +7470,7 @@ SHARE_JPX=0
 JPXDEVS=''
 JPX_DECODER=
 JPX_AUTOCONF_CFLAGS=
+JPX_LRINTF_SUBST=
 
 if test x$with_luratech != xno; then
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for local Luratech JPEG2K library source" >&5
@@ -7131,6 +7507,39 @@ fi
 
 OPENJPEGDIR=$srcdir/openjpeg
 
+if test "x$ac_cv_header_stdint_h" = "xyes"; then
+  CFLAGS_OPJ_HAVE_STDINT_H="-DOPJ_HAVE_STDINT_H=1"
+else
+  CFLAGS_OPJ_HAVE_STDINT_H=
+fi
+
+
+if test "x$ac_cv_header_inttypes_h" = "xyes"; then
+  CFLAGS_OPJ_HAVE_INTTYPES_H="-DOPJ_HAVE_INTTYPES_H=1"
+else
+  CFLAGS_OPJ_HAVE_INTTYPES_H=
+fi
+
+if test "x$BIGENDIAN" != "x0"; then
+  CFLAGS_OPJ_BIGENDIAN="-DOPJ_BIG_ENDIAN"
+else
+  CFLAGS_OPJ_BIGENDIAN=
+fi
+
+for ac_func in fseeko
+do :
+  ac_fn_c_check_func "$LINENO" "fseeko" "ac_cv_func_fseeko"
+if test "x$ac_cv_func_fseeko" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_FSEEKO 1
+_ACEOF
+ CFLAGS_OPJ_HAVE_FSEEKO="-DOPJ_HAVE_FSEEKO=1"
+else
+  CFLAGS_OPJ_HAVE_STDINT_H=
+fi
+done
+
+
 JPX_SSE_CFLAGS=""
 
 if test "x$HAVE_SSE2" = "x" ; then
@@ -7138,6 +7547,15 @@ if test "x$HAVE_SSE2" = "x" ; then
     JPX_SSE_CFLAGS="-U__SSE__"
   fi
 fi
+
+ac_fn_c_check_decl "$LINENO" "lrintf" "ac_cv_have_decl_lrintf" "#include <math.h>
+"
+if test "x$ac_cv_have_decl_lrintf" = xyes; then :
+
+else
+  OPJ_LRINTF_SUBST="-D\"lrintf(a)\"=\"((long)(a+0.5))\""
+fi
+
 
 # Check whether --enable-openjpeg was given.
 if test "${enable_openjpeg+set}" = set; then :
@@ -7149,7 +7567,7 @@ if test "x$JPX_DECODER" = "x"; then
   if test "x$enable_openjpeg" != "xno"; then
     { $as_echo "$as_me:${as_lineno-$LINENO}: checking for local OpenJPEG library source" >&5
 $as_echo_n "checking for local OpenJPEG library source... " >&6; }
-    if test -e $OPENJPEGDIR/libopenjpeg/openjpeg.h; then
+    if test -e $OPENJPEGDIR/src/lib/openjp2/openjpeg.h; then
       { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 $as_echo "yes" >&6; }
       JPXDIR="$OPENJPEGDIR"
@@ -7168,10 +7586,12 @@ done
 
 
       if test "x$have_memalign" = "x1"; then
-        JPX_AUTOCONF_CFLAGS="-DUSE_OPENJPEG_JP2 $JPX_SSE_CFLAGS"
+        JPX_AUTOCONF_CFLAGS=""
       else
-        JPX_AUTOCONF_CFLAGS="-DUSE_OPENJPEG_JP2 $JPX_SSE_CFLAGS -D\"memalign(a,b)=malloc(b)\""
+        JPX_AUTOCONF_CFLAGS="-D\"memalign(a,b)=malloc(b)\""
       fi
+
+      JPX_AUTOCONF_CFLAGS="$JPX_AUTOCONF_CFLAGS $OPJ_LRINTF_SUBST -DUSE_JPIP -DUSE_OPENJPEG_JP2 $CFLAGS_OPJ_HAVE_STDINT_H $CFLAGS_OPJ_HAVE_INTTYPES_H $CFLAGS_OPJ_BIGENDIAN $CFLAGS_OPJ_HAVE_FSEEKO"
 
       JPXDEVS='$(PSD)jpx.dev'
     else
@@ -8140,6 +8560,96 @@ fi
 
 
 
+PCL=
+PCL_TARGET=
+
+PLROMFS_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+PL_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+PCL_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+PCL_TOP_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+PXL_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+
+if test -f $srcdir/pcl/pl/pl.mak; then
+
+# Check whether --with-pcl was given.
+if test "${with_pcl+set}" = set; then :
+  withval=$with_pcl; PCL="$with_pcl"
+else
+  PCL='gpcl6'
+fi
+
+
+  PCL_TARGET=gpcl6
+
+  PLROMFS_MAK="\$(PLSRCDIR)\$(D)plromfs.mak"
+  PL_MAK="\$(PLSRCDIR)\$(D)pl.mak"
+  PCL_MAK="\$(PCL5SRCDIR)\$(D)pcl.mak"
+  PCL_TOP_MAK="\$(PCL5SRCDIR)\$(D)pcl_top.mak"
+  PXL_MAK="\$(PXLSRCDIR)\$(D)pxl.mak"
+fi
+
+
+
+
+
+
+
+
+
+
+XPS=
+XPS_TARGET=
+
+XPS_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+XPSROMFS_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+# gxps currently depends on code in pl
+if test "x$PCL_TARGET" != "x" ; then
+  if test -f $srcdir/xps/xps.mak; then
+
+# Check whether --with-xps was given.
+if test "${with_xps+set}" = set; then :
+  withval=$with_xps; XPS="$with_xps"
+else
+  XPS='gxps'
+fi
+
+
+    XPS_TARGET=gxps
+    XPS_MAK="\$(XPSSRCDIR)\$(D)xps.mak"
+    XPSROMFS_MAK="\$(XPSSRCDIR)\$(D)xpsromfs.mak"
+  fi
+fi
+
+
+
+
+
+
+GPDL=
+GPDL_TARGET=
+
+GPDL_MAK="\$(GLSRCDIR)\$(D)stub.mak"
+# in order to build gpdl we need the pdls available
+
+if test "x$XPS_TARGET" != "x" && test "x$PCL_TARGET" != "x" ; then
+  if test -f $srcdir/gpdl/gpdl.mak; then
+
+# Check whether --with-gpdl was given.
+if test "${with_gpdl+set}" = set; then :
+  withval=$with_gpdl; GPDL="$with_gpdl"
+else
+  GPDL='gpdl'
+fi
+
+
+#    GPDL_TARGET=gpdl
+    GPDL_MAK="\$(GPDLSRCDIR)\$(D)gpdl.mak"
+  fi
+fi
+
+
+
+
 COMPILE_INITS="1"
 # Check whether --enable-compile-inits was given.
 if test "${enable_compile_inits+set}" = set; then :
@@ -8177,7 +8687,6 @@ fi
 P_DEVS0=""
 F_DEVS0=""
 CUPS_DEVS0=""
-SVG_DEVS0=""
 XPS_DEVS0=""
 JBIG2_DEVS=""
 IJS_DEVS0=""
@@ -8195,7 +8704,7 @@ APPLE_DEVS='appledmp iwhi iwlo iwlq'
 IBM_DEVS='ibmpro jetp3852'
 OKI_DEVS='oki182 okiibm oki4w'
 JAPAN_DEVS='lips4 lips4v ljet4pjl lj4dithp dj505j picty180 lips2p bjc880j pr201 pr150 pr1000 pr1000_4 jj100 bj10v bj10vh mj700v2c mj500c mj6000c mj8000c fmpr fmlbp ml600 lbp310 lbp320 md50Mono md50Eco md1xMono escpage lp2000 npdl rpdl'
-MISC_PDEVS='uniprint ap3250 atx23 atx24 atx38 coslw2p coslwxl cp50 declj250 fs600 imagen lj250 m8510 necp6 oce9050 r4081 sj48 tek4696 t4693d2 t4693d4 t4693d8 dl2100 la50 la70 la75 la75plus ln03 xes md2k md5k gdi samsunggdi'
+MISC_PDEVS='uniprint ap3250 atx23 atx24 atx38 itk24i itk38 coslw2p coslwxl cp50 declj250 fs600 imagen lj250 m8510 necp6 oce9050 r4081 sj48 tek4696 t4693d2 t4693d4 t4693d8 dl2100 la50 la70 la75 la75plus ln03 xes md2k md5k gdi samsunggdi'
 OPVP_DEVS='opvp oprp'
 
 ETS_HALFTONING_DEVS='rinkj'
@@ -8207,10 +8716,9 @@ JPEG_DEVS='jpeg jpeggray jpegcmyk'
 
 PCX_DEVS='pcxmono pcxgray pcx16 pcx256 pcx24b pcxcmyk pcx2up'
 PBM_DEVS='pbm pbmraw pgm pgmraw pgnm pgnmraw pnm pnmraw ppm ppmraw pkm pkmraw pksm pksmraw pam pamcmyk4 pamcmyk32 plan plang planm planc plank'
-PS_DEVS='psdf psdcmyk psdrgb pdfwrite ps2write epswrite bbox txtwrite inkcov'
-MISC_FDEVS='ccr cif inferno mag16 mag256 mgr4 mgr8 mgrgray2 mgrgray4 mgrgray8 mgrmono miff24 plan9bm sgirgb sunhmono bit bitrgb bitrgbtags bitcmyk devicen spotcmyk xcf'
-SVGDEV='svgwrite'
-XPSDEV='xpswrite'
+PS_DEVS='psdf psdcmyk psdrgb pdfwrite ps2write eps2write bbox txtwrite inkcov ink_cov psdcmykog fpng'
+MISC_FDEVS='ccr cif inferno mag16 mag256 mgr4 mgr8 mgrgray2 mgrgray4 mgrgray8 mgrmono miff24 plan9bm sgirgb sunhmono bit bitrgb bitrgbtags bitcmyk devicen spotcmyk xcf plib plibg plibm plibc plibk gprf'
+XPSDEV=$XPSWRITEDEVICE
 
 while test -n "$drivers"; do
         if echo $drivers |grep "," >/dev/null; then
@@ -8241,7 +8749,7 @@ $as_echo "$as_me: WARNING: Unable to include opvp/oprp driver due to missing or 
                 fi
                 ;;
         FILES)
-                F_DEVS0="$F_DEVS0 $BMP_DEVS $FAX_DEVS $JPEG_DEVS $TIFFDEVS $PCX_DEVS $PBM_DEVS $PS_DEVS $MISC_FDEVS $SVGDEV $XPSDEV"
+                F_DEVS0="$F_DEVS0 $BMP_DEVS $FAX_DEVS $JPEG_DEVS $TIFFDEVS $PCX_DEVS $PBM_DEVS $PS_DEVS $MISC_FDEVS $XPSDEV"
                 CUPS_DEVS0="$CUPSDEV"
                 JBIG2_DEVS="$JBIG2FILEDEVS"
                 PNG_DEVS0="$PNGDEVS"
@@ -8330,12 +8838,8 @@ $as_echo "$as_me: WARNING: Unable to include opvp/oprp driver due to missing or 
                 # PostScript/PDF writing
                 F_DEVS0="$F_DEVS0 $PS_DEVS"
                 ;;
-        SVG)
-                # SVG writing
-                SVG_DEVS0="$SVGDEV"
-                ;;
         XPS)
-                # SVG writing
+                # XPS writing
                 XPS_DEVS0="$XPSDEV"
                 ;;
 
@@ -8378,11 +8882,6 @@ if test x$enable_threadsafe = xyes; then
   for ntsdev in $NTS_DEVS ; do
     NTS_EXCLUDES="$(echo \"$CUPS_DEVS0{@:0}\" | grep -o $ntsdev) $NTS_EXCLUDES"
     CUPS_DEVS0=`echo $CUPS_DEVS0 | sed "s/\b$ntsdev\b//g"`
-  done
-
-  for ntsdev in $NTS_DEVS ; do
-    NTS_EXCLUDES="$(echo \"$SVG_DEVS0{@:0}\" | grep -o $ntsdev) $NTS_EXCLUDES"
-    SVG_DEVS0=`echo $SVG_DEVS0 | sed "s/\b$ntsdev\b//g"`
   done
 
   for ntsdev in $NTS_DEVS ; do
@@ -8436,10 +8935,6 @@ if test -n "$CUPS_DEVS0"; then
     CUPS_DEVS=`(for i in $CUPS_DEVS0; do d='$(DD)'${i}.dev; if ( grep '^'$d $noncontribmakefiles  2>&1 >/dev/null) || ( ! test -z "$CONTRIBINCLUDE" ); then echo $d; fi; done) | sort | uniq | tr '\012\015' '  '`
 fi
 
-if test -n "$SVG_DEVS0"; then
-    SVG_DEVS=`(for i in $SVG_DEVS0; do d='$(DD)'${i}.dev; if ( grep '^'$d $noncontribmakefiles  2>&1 >/dev/null) || ( ! test -z "$CONTRIBINCLUDE" ); then echo $d; fi; done) | sort | uniq | tr '\012\015' '  '`
-fi
-
 if test -n "$XPS_DEVS0"; then
     XPS_DEVS=`(for i in $XPS_DEVS0; do d='$(DD)'${i}.dev; if ( grep '^'$d $noncontribmakefiles  2>&1 >/dev/null) || ( ! test -z "$CONTRIBINCLUDE" ); then echo $d; fi; done) | sort | uniq | tr '\012\015' '  '`
 fi
@@ -8455,7 +8950,6 @@ fi
 if test -n "$X11_DEVS0"; then
     X11_DEVS=`(for i in $X11_DEVS0; do d='$(DD)'${i}.dev; if ( grep '^'$d $noncontribmakefiles  2>&1 >/dev/null) || ( ! test -z "$CONTRIBINCLUDE" ); then echo $d; fi; done) | sort | uniq | tr '\012\015' '  '`
 fi
-
 
 
 
@@ -8517,6 +9011,18 @@ case `uname` in
 
           DYNAMIC_LDFLAGS="-G -shared -Wl,\$(LD_SET_DT_SONAME)\$(LDFLAGS_SO_PREFIX)\$(GS_SONAME_MAJOR)"
           DYNAMIC_LIBS=""
+          SO_LIB_EXT=".so"
+        ;;
+        AIX)
+          DYNAMIC_CFLAGS="-fPIC"
+          GCFLAGS="-Wl,-brtl $GCFLAGS"
+          DYNAMIC_LDFLAGS="-shared -Wl,-brtl,-G -fPIC"
+          if test $ac_cv_c_compiler_gnu = yes; then
+            # GCC high level flag
+            DYNAMIC_LIBS="-ldl"
+          else
+            DYNAMIC_LIBS=""
+          fi
           SO_LIB_EXT=".so"
         ;;
 esac
@@ -9265,14 +9771,119 @@ done
 
 
 
-if test "x$BIGENDIAN" != "x0"; then
-  LCMS_ENDIAN="-DUSE_BIG_ENDIAN=$BIGENDIAN"
-  LCMS2_ENDIAN="-DCMS_USE_BIG_ENDIAN=$BIGENDIAN"
+case `uname -a` in
+        *sparc*)
+	  GCFLAGS="$GCFLAGS -DGS_USE_MEMORY_HEADER_ID=0"
+        ;;
+esac
+
+
+LCMS_ENDIAN="-DUSE_BIG_ENDIAN=$BIGENDIAN"
+LCMS2_ENDIAN="-DCMS_USE_BIG_ENDIAN=$BIGENDIAN"
+
+
+
+
+
+ALIGN_TEXT_PROG_INCS="\
+#include <stdio.h> \
+#include <stdlib.h>"
+
+
+ALIGN_TEXT_PROG="\
+    struct altest \
+    { \
+      char a; \
+      int b; \
+      long c; \
+      long long d; \
+      float e; \
+      double f; \
+      void *g; \
+    }; \
+    struct altest *a; \
+    struct altest d; \
+    char *b, *c, *lim; \
+    int ret = 0; \
+    c = b = malloc(64 * sizeof(struct altest)); \
+    lim = b + (64 * sizeof(struct altest)); \
+    do \
+    { \
+        b++; \
+        if ((b >= lim) || \
+            ((((unsigned int)b) & 4) == 0 && (((unsigned int)b) & 8) != 0)) \
+        { \
+          break; \
+        } \
+    } while(1); \
+    if (b >= lim) \
+    { \
+        ret = -1; \
+    } \
+    else \
+    { \
+        a = (struct altest *)b; \
+        b = a->g; \
+        ret = 0; \
+    } \
+    free(c); \
+    exit(ret);"
+
+
+GS_MEMPTR_ALIGNMENT=
+
+
+# Check whether --with-memory-alignment was given.
+if test "${with_memory_alignment+set}" = set; then :
+  withval=$with_memory_alignment; GS_MEMPTR_ALIGNMENT=$with_memory_alignment
 else
-  LCMS_ENDIAN=
-  LCMS2_ENDIAN=
+  GS_MEMPTR_ALIGNMENT=check
 fi
 
+
+if test x"$GS_MEMPTR_ALIGNMENT" = xcheck ; then
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking minimum memory pointer alignment" >&5
+$as_echo_n "checking minimum memory pointer alignment... " >&6; }
+   if test "$cross_compiling" = yes; then :
+  GS_MEMPTR_ALIGNMENT=4;{ $as_echo "$as_me:${as_lineno-$LINENO}: result: cross compiling: assuming 4 byte - otherwise use \"--with-memory-alignment=\"" >&5
+$as_echo "cross compiling: assuming 4 byte - otherwise use \"--with-memory-alignment=\"" >&6; }
+else
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+$ALIGN_TEXT_PROG_INCS
+int
+main ()
+{
+
+      $ALIGN_TEXT_PROG
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_run "$LINENO"; then :
+  GS_MEMPTR_ALIGNMENT=4;{ $as_echo "$as_me:${as_lineno-$LINENO}: result: done" >&5
+$as_echo "done" >&6; }
+else
+  GS_MEMPTR_ALIGNMENT=8;{ $as_echo "$as_me:${as_lineno-$LINENO}: result: done" >&5
+$as_echo "done" >&6; }
+fi
+rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
+  conftest.$ac_objext conftest.beam conftest.$ac_ext
+fi
+
+
+fi
+
+if test x"$GS_MEMPTR_ALIGNMENT" != x4 && test x"$GS_MEMPTR_ALIGNMENT" != x8 ; then
+    as_fn_error -1 "4 and 8 are the only valid values for \"--with-memory-alignment\"" "$LINENO" 5
+fi
+
+if test x"$GS_MEMPTR_ALIGNMENT" != x4  || test x"$with_memory_alignment" != x ; then
+  LCMS2_PTR_ALIGNMENT="-DCMS_PTR_ALIGNMENT=$GS_MEMPTR_ALIGNMENT"
+
+  GCFLAGS="$GCFLAGS -DGS_MEMPTR_ALIGNMENT=$GS_MEMPTR_ALIGNMENT"
+fi
 
 
 
@@ -9285,6 +9896,23 @@ else
 fi
 
 
+
+
+for ac_func in strnlen
+do :
+  ac_fn_c_check_func "$LINENO" "strnlen" "ac_cv_func_strnlen"
+if test "x$ac_cv_func_strnlen" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_STRNLEN 1
+_ACEOF
+ HAVE_STRNLEN=
+else
+  HAVE_STRNLEN="-D\"strnlen(a,b)=strlen(a)\""
+fi
+done
+
+
+GCFLAGS="$GCFLAGS $HAVE_STRNLEN"
 
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking byteswap support" >&5
@@ -9391,10 +10019,13 @@ fi
 
 
 if test "x$gnu_make" != "xno"; then
+  SUB_MAKE_OPTION="-f \$(MAKEFILE)"
   ORDER_ONLY="|"
 else
+  SUB_MAKE_OPTION=
   ORDER_ONLY=""
 fi
+
 
 
 
@@ -9412,7 +10043,34 @@ case `uname` in
 esac
 
 
+# --------------------------------------------------
+# Set executable name extention
+# usually empty on Unix-like systems
+# --------------------------------------------------
+EXEEXT=""
 
+
+# Check whether --with-exe-ext was given.
+if test "${with_exe_ext+set}" = set; then :
+  withval=$with_exe_ext;
+else
+  exe_ext=
+fi
+
+
+if test "x"$with_exe_ext != "x"; then
+  EXEEXT="$with_exe_ext"
+else
+  case `uname` in
+    MINGW*)
+      EXEEXT=".exe"
+    ;;
+  esac
+fi
+
+
+
+SRCDIR="$srcdir"
 
 
 

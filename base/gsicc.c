@@ -54,6 +54,7 @@ static cs_proc_final(gx_final_ICC);
 static cs_proc_serialize(gx_serialize_ICC);
 static cs_proc_is_linear(gx_cspace_is_linear_ICC);
 static cs_proc_set_overprint(gx_set_overprint_ICC);
+static cs_proc_polarity(gx_polarity_ICC);
 cs_proc_remap_color(gx_remap_ICC_imagelab);
 
 const gs_color_space_type gs_color_space_type_ICC = {
@@ -73,7 +74,8 @@ const gs_color_space_type gs_color_space_type_ICC = {
     gx_final_ICC,                   /* final */
     gx_no_adjust_color_count,       /* adjust_color_count */
     gx_serialize_ICC,               /* serialize */
-    gx_cspace_is_linear_ICC
+    gx_cspace_is_linear_ICC,
+    gx_polarity_ICC
 };
 
 static inline void
@@ -235,6 +237,27 @@ gx_num_components_ICC(const gs_color_space * pcs)
     return pcs->cmm_icc_profile_data->num_comps;
 }
 
+/* Get the polarity of the ICC Based space */
+static gx_color_polarity_t
+gx_polarity_ICC(const gs_color_space * pcs)
+{
+    switch (pcs->cmm_icc_profile_data->data_cs) {
+        case gsUNDEFINED:
+        case gsNAMED:
+            return GX_CINFO_POLARITY_UNKNOWN;
+        case gsGRAY:
+        case gsRGB:
+        case gsCIELAB:
+        case gsCIEXYZ:
+            return GX_CINFO_POLARITY_ADDITIVE;
+        case gsCMYK:
+        case gsNCHANNEL:
+            return GX_CINFO_POLARITY_SUBTRACTIVE;
+        default:
+            return GX_CINFO_POLARITY_UNKNOWN;
+    }
+}
+
 /*
  * Set the initial client color for an ICCBased color space. The convention
  * suggested by the ICC specification is to set all components to 0.
@@ -261,8 +284,8 @@ gx_restrict_ICC(gs_client_color * pcc, const gs_color_space * pcs)
     const gs_range *    ranges = pcs->cmm_icc_profile_data->Range.ranges;
 
     for (i = 0; i < ncomps; ++i) {
-        floatp  v = pcc->paint.values[i];
-        floatp  rmin = ranges[i].rmin, rmax = ranges[i].rmax;
+        double  v = pcc->paint.values[i];
+        double  rmin = ranges[i].rmin, rmax = ranges[i].rmax;
 
         if (v < rmin)
             pcc->paint.values[i] = rmin;
@@ -289,11 +312,11 @@ gx_remap_concrete_icc_devicen(const frac * pconc, const gs_color_space * pcs,
            up the equivalent CMYK colors for the spot colors that are present.
            This allows us to have some sort of composite viewing of the spot
            colors as they would colorimetrically appear. */
-        gsicc_set_devicen_equiv_colors(dev, pis, dev_profile->device_profile[0]);
+        code = gsicc_set_devicen_equiv_colors(dev, pis, dev_profile->device_profile[0]);
         dev_profile->spotnames->equiv_cmyk_set = true;
     }
     gx_remap_concrete_devicen(pconc, pdc, pis, dev, select);
-    return 0;
+    return code;
 }
 
 /* If the color is already concretized, then we are in the color space
@@ -354,6 +377,8 @@ gx_remap_ICC(const gs_client_color * pcc, const gs_color_space * pcs,
     cmm_dev_profile_t *dev_profile;
 
     code = dev_proc(dev, get_profile)(dev, &dev_profile);
+    if (dev_profile == NULL)
+        return gs_throw(gs_error_Fatal, "Attempting to do ICC remap with no profile");
     num_des_comps = gsicc_get_device_profile_comps(dev_profile);
     rendering_params.black_point_comp = pis->blackptcomp;
     rendering_params.graphics_type_tag = dev->graphics_type_tag;
@@ -452,7 +477,7 @@ gx_remap_ICC_imagelab(const gs_client_color * pcc, const gs_color_space * pcs,
     rendering_params.cmm = gsCMM_DEFAULT;
     /* Need to clear out psrc_cm in case we have separation bands that are
        not color managed */
-    memset(psrc_cm,0,sizeof(unsigned short)*GS_CLIENT_COLOR_MAX_COMPONENTS);
+    memset(psrc_cm, 0, sizeof(unsigned short)*GS_CLIENT_COLOR_MAX_COMPONENTS);
 
     for (k = 0; k < pcs->cmm_icc_profile_data->num_comps; k++)
         psrc[k] = (unsigned short) (pcc->paint.values[k]*65535.0);
@@ -611,6 +636,8 @@ gx_set_overprint_ICC(const gs_color_space * pcs, gs_state * pgs)
     cmm_dev_profile_t *dev_profile;
     int code = dev_proc(dev, get_profile)(dev, &dev_profile);
 
+    if (code < 0)
+        return code;
     /* check if we require special handling */
     if ( !pgs->overprint                      ||
          pgs->overprint_mode != 1             ||

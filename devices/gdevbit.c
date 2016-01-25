@@ -42,6 +42,7 @@ static dev_proc_map_rgb_color(bit_mono_map_color);
 #if 0 /* unused */
 static dev_proc_map_rgb_color(bit_forcemono_map_rgb_color);
 #endif
+static dev_proc_map_rgb_color(bitrgb_rgb_map_rgb_color);
 static dev_proc_map_color_rgb(bit_map_color_rgb);
 static dev_proc_map_cmyk_color(bit_map_cmyk_color);
 static dev_proc_get_params(bit_get_params);
@@ -135,7 +136,7 @@ const gx_device_bit gs_bit_device =
 };
 
 static const gx_device_procs bitrgb_procs =
-bit_procs(gx_default_rgb_map_rgb_color);
+bit_procs(bitrgb_rgb_map_rgb_color);
 const gx_device_bit gs_bitrgb_device =
 {prn_device_body(gx_device_bit, bitrgb_procs, "bitrgb",
                  DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
@@ -234,6 +235,9 @@ const gx_device_bit gs_bitrgbtags_device =
         0 ,                             /* finalize */
         { 0 } ,                         /* rc header */
         0 ,                             /* retained */
+        0 ,                             /* parent */
+        0 ,                             /* child */
+        0 ,                             /* subclass data */
         0 ,                             /* is open */
         0,                              /* max_fill_band */
         {                               /* color infor */
@@ -254,7 +258,7 @@ const gx_device_bit gs_bitrgbtags_device =
             ( "DeviceRGBT" ),            /* color model name */
             GX_CINFO_OPMODE_UNKNOWN ,   /* overprint mode */
             0,                           /* process comps */
-            0                            /* icc_locations */    
+            0                            /* icc_locations */
         },
         {
             ((gx_color_index)(~0)),
@@ -262,6 +266,9 @@ const gx_device_bit gs_bitrgbtags_device =
         },
         (int)((float)(85) * (X_DPI) / 10 + 0.5),
         (int)((float)(110) * (Y_DPI) / 10 + 0.5),
+        0, /* Pad */
+        0, /* Align */
+        0, /* Num planes */
         0,
         {
             (float)(((((int)((float)(85) * (X_DPI) / 10 + 0.5)) * 72.0 + 0.5) - 0.5) / (X_DPI)) ,
@@ -281,18 +288,30 @@ const gx_device_bit gs_bitrgbtags_device =
          (float)((0) * 72.0),
          (float)((0) * 72.0),
          (float)((0) * 72.0)},
-        0 ,
-        0 ,
-        1 ,
-        0 ,
-        0 ,
-        0 ,
-        0 ,
-        0,
-        0,
-        {false},
-        0,
-        0,
+        0 , /*FirstPage*/
+        0 , /*LastPage*/
+        0 , /*PageHandlerPushed*/
+        0 , /*DisablePageHandler*/
+        0 , /*ObjectFilter*/
+        0 , /*ObjectHandlerPushed*/
+        0 , /*PageCount*/
+        0 , /*ShowPageCount*/
+        1 , /*NumCopies*/
+        0 , /*NumCopiesSet*/
+        0 , /*IgnoreNumCopies*/
+        0 , /*UseCIEColor*/
+        0 , /*LockSafetyParams*/
+        0,  /*band_offset_x*/
+        0,  /*band_offset_*/
+        {false}, /*sgr*/
+        0, /*MaxPatternBitmap*/
+        0, /*page_uses_transparency*/
+        { MAX_BITMAP, BUFFER_SPACE,
+          { BAND_PARAMS_INITIAL_VALUES },
+          0/*false*/, /* params_are_read_only */
+          BandingAuto /* banding_type */
+        }, /*space_params*/
+        0, /*icc_struct*/
         GS_UNKNOWN_TAG,         /* this device supports tags */
         {
             gx_default_install,
@@ -312,12 +331,6 @@ const gx_device_bit gs_bitrgbtags_device =
           gx_default_open_render_device,
           gx_default_close_render_device,
           gx_default_buffer_page },
-        {
-            PRN_MAX_BITMAP,
-            PRN_BUFFER_SPACE,
-            { 0, 0, 0 },
-            0 ,
-            BandingAuto },
         { 0 },
         0 ,
         0 ,
@@ -433,6 +446,25 @@ bit_forcemono_map_rgb_color(gx_device * dev, const gx_color_value cv[])
     return color;
 }
 #endif
+
+gx_color_index
+bitrgb_rgb_map_rgb_color(gx_device * dev, const gx_color_value cv[])
+{
+    if (dev->color_info.depth == 24)
+        return gx_color_value_to_byte(cv[2]) +
+            ((uint) gx_color_value_to_byte(cv[1]) << 8) +
+            ((ulong) gx_color_value_to_byte(cv[0]) << 16);
+    else {
+        COLROUND_VARS;
+        /* The following needs special handling to avoid bpc=5 when depth=16 */
+        int bpc = dev->color_info.depth == 16 ? 4 : dev->color_info.depth / 3;
+        COLROUND_SETUP(bpc);
+
+        return (((COLROUND_ROUND(cv[0]) << bpc) +
+                 COLROUND_ROUND(cv[1])) << bpc) +
+               COLROUND_ROUND(cv[2]);
+    }
+}
 
 /* Map color to RGB.  This has 3 separate cases, but since it is rarely */
 /* used, we do a case test rather than providing 3 separate routines. */
@@ -553,16 +585,19 @@ bit_put_params(gx_device * pdev, gs_param_list * plist)
     gx_device_color_info save_info;
     int ncomps = pdev->color_info.num_components;
     int real_ncomps = REAL_NUM_COMPONENTS(pdev);
-    int bpc = pdev->color_info.depth / real_ncomps;
     int v;
     int ecode = 0;
     int code;
-    static const byte depths[4][16] = {
-        {1, 2, 0, 4, 8, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 16},
-        {0},
-        {4, 8, 0, 16, 16, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 48},
-        {4, 8, 0, 16, 32, 0, 0, 32, 0, 0, 0, 48, 0, 0, 0, 64}
+    /* map to depths that we actually have memory devices to support */
+    static const byte depths[4 /* ncomps - 1 */][16 /* bpc - 1 */] = {
+        {1, 2, 0, 4, 8, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 16}, /* ncomps = 1 */
+        {0}, /* ncomps = 2, not supported */
+        {4, 8, 0, 16, 16, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 48}, /* ncomps = 3 (rgb) */
+        {4, 8, 0, 16, 32, 0, 0, 32, 0, 0, 0, 48, 0, 0, 0, 64}  /* ncomps = 4 (cmyk) */
     };
+    /* map back from depth to the actual bits per component */
+    static int real_bpc[17] = { 0, 1, 2, 2, 4, 4, 4, 4, 8, 8, 8, 8, 12, 12, 12, 12, 16 };
+    int bpc = real_bpc[pdev->color_info.depth / real_ncomps];
     const char *vname;
     int FirstLine = ((gx_device_bit *)pdev)->FirstLine;
     int LastLine = ((gx_device_bit *)pdev)->LastLine;
@@ -585,7 +620,6 @@ bit_put_params(gx_device * pdev, gs_param_list * plist)
                 case   2: bpc = 1; break;
                 case   4: bpc = 2; break;
                 case  16: bpc = 4; break;
-                case  32: bpc = 5; break;
                 case 256: bpc = 8; break;
                 case 4096: bpc = 12; break;
                 case 65536: bpc = 16; break;

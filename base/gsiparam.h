@@ -22,6 +22,7 @@
 #include "gsccolor.h"		/* for GS_CLIENT_COLOR_MAX_COMPONENTS */
 #include "gsmatrix.h"
 #include "gsstype.h"		/* for extern_st */
+#include "gxbitmap.h"
 
 /* ---------------- Image parameters ---------------- */
 
@@ -299,8 +300,21 @@ void gs_image_t_init_mask_adjust(gs_image_t * pim, bool write_1s,
  * 16 though, due to increased time in image_render_mono_ht in the loop
  * that copies data from scanlines to scancolumns. It seems that writing to
  * the buffer in positions [0] [16] [32] [48] etc is faster than writing in
- * positions [0] [32] [64] [96] etc. For now we leave LAND_BITS set to 16. */
-#define LAND_BITS 16
+ * positions [0] [32] [64] [96] etc. We would therefore like to leave
+ * LAND_BITS set to 16.
+ *
+ * Unfortunately, we call through the device interface to copy_mono with the
+ * results of these buffers, and various copy_mono implementations assume
+ * that the raster given is a multiple of align_bitmap_mod bits. In order to
+ * ensure safely, we therefore set LAND_BITS to max(16, align_bitmap_mod). We
+ * are guaranteed that align_bitmap_mod is a multiple of 16.
+ */
+#define LAND_BITS_MIN 16
+#if LAND_BITS_MIN < (align_bitmap_mod*8)
+#define LAND_BITS (align_bitmap_mod*8)
+#else
+#define LAND_BITS LAND_BITS_MIN
+#endif
 
 /* Used for bookkeeping ht buffer information in landscape mode */
 typedef struct ht_landscape_info_s {

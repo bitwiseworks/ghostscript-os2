@@ -121,7 +121,7 @@
 
 #include "gdevprn.h"
 #include "gdevpccm.h"
-
+#include "string_.h"
 #include "windows_.h"
 #include <shellapi.h>
 #include "gp_mswin.h"
@@ -402,6 +402,22 @@ win_pr2_open(gx_device * dev)
                                  wdev->fname, "wb");
     fclose(pfile);
     code = gdev_prn_open(dev);
+
+    /* If we subclassed the device, with a FirstPage LastPage device,
+     * update the stored pointer copy here, if we don't then this whole
+     * device stops working, not sure why.
+     */
+    if (dev->child) {
+        gx_device_win_pr2 *windev;
+
+        while (dev->child)
+            dev = dev->child;
+
+        windev = (gx_device_win_pr2 *)dev;
+
+        windev->original_device = (gx_device_win_pr2 *)dev;
+    }
+
     if ((code < 0) && wdev->fname[0])
         unlink(wdev->fname);
 
@@ -954,7 +970,7 @@ static int
 win_pr2_getdc(gx_device_win_pr2 * wdev)
 {
     char *device;
-    char driverbuf[512];
+    char driverbuf[512], *dbuflast = NULL;
     char *driver;
     char *output;
     char *devcap;
@@ -1044,8 +1060,8 @@ win_pr2_getdc(gx_device_win_pr2 * wdev)
         wchar_to_utf8(driverbuf, unidrvbuf);
     }
 #endif
-    driver = strtok(driverbuf, ",");
-    output = strtok(NULL, ",");
+    driver = gs_strtok(driverbuf, ",", &dbuflast);
+    output = gs_strtok(NULL, ",", dbuflast);
 
     if (!gp_OpenPrinter(device, &hprinter))
         return FALSE;

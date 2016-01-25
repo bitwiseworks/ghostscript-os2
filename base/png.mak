@@ -78,10 +78,10 @@ png.config-clean :
 	$(RM_) $(pnglibconf_h)
 	$(RM_) $(PNGGEN)lpg*.dev
 
-$(pnglibconf_h) : $(PNGSRC)scripts$(D)pnglibconf.h.prebuilt
+$(pnglibconf_h) : $(PNGSRC)scripts$(D)pnglibconf.h.prebuilt $(MAKEDIRS)
 	$(CP_)  $(PNGSRC)scripts$(D)pnglibconf.h.prebuilt $(pnglibconf_h)
 
-PDEP=$(AK) $(pnglibconf_h)
+PDEP=$(AK) $(pnglibconf_h) $(MAKEDIRS)
 
 png_1=$(PNGOBJ)png.$(OBJ) $(PNGOBJ)pngmem.$(OBJ) $(PNGOBJ)pngerror.$(OBJ) $(PNGOBJ)pngset.$(OBJ)
 png_2=$(PNGOBJ)pngtrans.$(OBJ) $(PNGOBJ)pngwrite.$(OBJ) $(PNGOBJ)pngwtran.$(OBJ) $(PNGOBJ)pngwutil.$(OBJ) $(PNGOBJ)pngwio.$(OBJ)
@@ -133,18 +133,19 @@ $(PNGOBJ)pngget.$(OBJ) : $(PNGSRC)pngget.c $(PDEP)
 
 
 # Define the version of libpng.dev that we are actually using.
-$(PNGGEN)libpng.dev : $(TOP_MAKEFILES) $(PNGGEN)libpng_$(SHARE_LIBPNG).dev
+$(PNGGEN)libpng.dev : $(TOP_MAKEFILES) $(PNGGEN)libpng_$(SHARE_LIBPNG).dev $(MAKEDIRS)
 	$(CP_) $(PNGGEN)libpng_$(SHARE_LIBPNG).dev $(PNGGEN)libpng.dev
 
 # Define the shared version of libpng.
 # Note that it requires libz, which must be searched *after* libpng.
-$(PNGGEN)libpng_1.dev : $(TOP_MAKEFILES) $(LIBPNG_MAK) $(ECHOGS_XE) $(PZGEN)zlibe.dev
+$(PNGGEN)libpng_1.dev : $(TOP_MAKEFILES) $(LIBPNG_MAK) $(ECHOGS_XE) $(PZGEN)zlibe.dev \
+ $(MAKEDIRS)
 	$(SETMOD) $(PNGGEN)libpng_1 -lib $(LIBPNG_NAME)
 	$(ADDMOD) $(PNGGEN)libpng_1 -include $(PZGEN)zlibe.dev
 
 # Define the non-shared version of libpng.
 $(PNGGEN)libpng_0.dev : $(LIBPNG_MAK) $(ECHOGS_XE) $(png_1) $(png_2) $(png_3)\
- $(PZGEN)zlibe.dev $(PNGOBJ)pngwio.$(OBJ) $(PZGEN)crc32.dev
+ $(PZGEN)zlibe.dev $(PNGOBJ)pngwio.$(OBJ) $(PZGEN)crc32.dev $(MAKEDIRS)
 	$(SETMOD) $(PNGGEN)libpng_0 $(png_1)
 	$(ADDMOD) $(PNGGEN)libpng_0 $(png_2)
 	$(ADDMOD) $(PNGGEN)libpng_0 $(png_3)

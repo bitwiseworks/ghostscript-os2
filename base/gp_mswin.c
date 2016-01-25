@@ -612,11 +612,12 @@ FILE *mswin_popen(const char *cmd, const char *mode)
 
 /* Create and open a scratch file with a given name prefix. */
 /* Write the actual file name at fname. */
-FILE *
-gp_open_scratch_file(const gs_memory_t *mem,
-                     const char        *prefix,
-                           char        *fname,
-                     const char        *mode)
+static FILE *
+gp_open_scratch_file_generic(const gs_memory_t *mem,
+                             const char        *prefix,
+                                   char        *fname,
+                             const char        *mode,
+                                   int          remove)
 {
     UINT n;
     DWORD l;
@@ -625,21 +626,35 @@ gp_open_scratch_file(const gs_memory_t *mem,
     FILE *f = NULL;
     char sTempDir[_MAX_PATH];
     char sTempFileName[_MAX_PATH];
+#if defined(METRO) || !defined(GS_NO_UTF8)
+    wchar_t wTempDir[_MAX_PATH];
+    wchar_t wTempFileName[_MAX_PATH];
+    wchar_t wPrefix[_MAX_PATH];
+#endif
 
     memset(fname, 0, gp_file_name_sizeof);
     if (!gp_file_name_is_absolute(prefix, strlen(prefix))) {
-        int plen = sizeof(sTempDir);
+        int plen = _MAX_PATH;
 
-        if (gp_gettmpdir(sTempDir, &plen) != 0)
-#if METRO
-            l = GetTempPathWRT(sizeof(sTempDir), sTempDir);
+        /* gp_gettmpdir will always return a UTF8 encoded string unless
+         * GS_NO_UTF8 is defined, due to the windows specific version of
+         * gp_getenv being called (in gp_wgetv.c, not gp_getnv.c) */
+        if (gp_gettmpdir(sTempDir, &plen) != 0) {
+#ifdef METRO
+            /* METRO always uses UTF8 for 'ascii' - there is no concept of
+             * local encoding, so GS_NO_UTF8 makes no difference here. */
+            l = GetTempPathWRT(_MAX_PATH, wTempDir);
+            l = wchar_to_utf8(sTempDir, wTempDir);
+#elif defined(GS_NO_UTF8)
+            l = GetTempPathA(_MAX_PATH, sTempDir);
 #else
-            l = GetTempPath(sizeof(sTempDir), sTempDir);
+            GetTempPathW(_MAX_PATH, wTempDir);
+            l = wchar_to_utf8(sTempDir, wTempDir);
 #endif
-        else
+        } else
             l = strlen(sTempDir);
     } else {
-        strncpy(sTempDir, prefix, sizeof(sTempDir));
+        strncpy(sTempDir, prefix, _MAX_PATH);
         prefix = "";
         l = strlen(sTempDir);
     }
@@ -647,11 +662,19 @@ gp_open_scratch_file(const gs_memory_t *mem,
     if (sTempDir[l-1] == '/')
         sTempDir[l-1] = '\\';		/* What Windoze prefers */
 
-    if (l <= sizeof(sTempDir)) {
+    if (l <= _MAX_PATH) {
 #ifdef METRO
-        n = GetTempFileNameWRT(sTempDir, prefix, sTempFileName);
+        utf8_to_wchar(wTempDir, sTempDir);
+        utf8_to_wchar(wPrefix, prefix);
+        n = GetTempFileNameWRT(wTempDir, wPrefix, wTempFileName);
+        n = wchar_to_utf8(sTempFileName, wTempFileName);
+#elif defined(GS_NO_UTF8)
+        n = GetTempFileNameA(sTempDir, prefix, 0, sTempFileName);
 #else
-        n = GetTempFileName(sTempDir, prefix, 0, sTempFileName);
+        utf8_to_wchar(wTempDir, sTempDir);
+        utf8_to_wchar(wPrefix, prefix);
+        GetTempFileNameW(wTempDir, wPrefix, 0, wTempFileName);
+        n = wchar_to_utf8(sTempFileName, wTempFileName);
 #endif
         if (n == 0) {
             /* If 'prefix' is not a directory, it is a path prefix. */
@@ -666,12 +689,19 @@ gp_open_scratch_file(const gs_memory_t *mem,
                     break;
                 }
             }
-            if (i > 0)
+            if (i > 0) {
 #ifdef METRO
-                n = GetTempFileNameWRT(sTempDir, sTempDir + i, sTempFileName);
+                utf8_to_wchar(wPrefix, sTempDir + i);
+                GetTempFileNameWRT(wTempDir, wPrefix, wTempFileName);
+                n = wchar_to_utf8(sTempFileName, wTempFileName);
+#elif defined(GS_NO_UTF8)
+                n = GetTempFileNameA(sTempDir, sTempDir + i, 0, sTempFileName);
 #else
-                n = GetTempFileName(sTempDir, sTempDir + i, 0, sTempFileName);
+                utf8_to_wchar(wPrefix, sTempDir + i);
+                GetTempFileNameW(wTempDir, wPrefix, 0, wTempFileName);
+                n = wchar_to_utf8(sTempFileName, wTempFileName);
 #endif
+            }
         }
         if (n != 0) {
 #ifdef GS_NO_UTF8
@@ -692,26 +722,19 @@ gp_open_scratch_file(const gs_memory_t *mem,
                 hfile = CreateFile2(uni,
                                     GENERIC_READ | GENERIC_WRITE | DELETE,
                                     FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                    CREATE_ALWAYS,
+                                    CREATE_ALWAYS | (remove ? FILE_FLAG_DELETE_ON_CLOSE : 0),
                                     NULL);
 #else
                 hfile = CreateFileW(uni,
                                     GENERIC_READ | GENERIC_WRITE | DELETE,
                                     FILE_SHARE_READ | FILE_SHARE_WRITE,
                                     NULL, CREATE_ALWAYS,
-                                    FILE_ATTRIBUTE_NORMAL /* | FILE_FLAG_DELETE_ON_CLOSE */,
+                                    FILE_ATTRIBUTE_NORMAL | (remove ? FILE_FLAG_DELETE_ON_CLOSE : 0),
                                     NULL);
 #endif
                 free(uni);
             }
 #endif
-            /*
-             * Can't apply FILE_FLAG_DELETE_ON_CLOSE due to
-             * the logics of clist_fclose. Also note that
-             * gdev_prn_render_pages requires multiple temporary files
-             * to exist simultaneousely, so that keeping all them opened
-             * may exceed available CRTL file handles.
-             */
         }
     }
     if (hfile != INVALID_HANDLE_VALUE) {
@@ -740,6 +763,24 @@ gp_open_scratch_file(const gs_memory_t *mem,
     return f;
 }
 
+FILE *
+gp_open_scratch_file(const gs_memory_t *mem,
+                     const char        *prefix,
+                           char        *fname,
+                     const char        *mode)
+{
+    return gp_open_scratch_file_generic(mem, prefix, fname, mode, 0);
+}
+
+FILE *
+gp_open_scratch_file_rm(const gs_memory_t *mem,
+                        const char        *prefix,
+                              char        *fname,
+                        const char        *mode)
+{
+    return gp_open_scratch_file_generic(mem, prefix, fname, mode, 1);
+}
+
 /* Open a file with the given name, as a stream of uninterpreted bytes. */
 FILE *
 gp_fopen(const char *fname, const char *mode)
@@ -763,6 +804,87 @@ gp_fopen(const char *fname, const char *mode)
     free(uni);
     return file;
 #endif
+}
+
+int gp_stat(const char *path, struct _stat *buf)
+{
+#ifdef GS_NO_UTF8
+    return stat(path, buf);
+#else
+    int len = utf8_to_wchar(NULL, path);
+    wchar_t *uni;
+    int ret;
+
+    if (len <= 0)
+        return -1;
+    uni = malloc(len*sizeof(wchar_t));
+    if (uni == NULL)
+        return -1;
+    utf8_to_wchar(uni, path);
+    ret = _wstat(uni, buf);
+    free(uni);
+    return ret;
+#endif
+}
+
+/* test whether gp_fdup is supported on this platform  */
+int gp_can_share_fdesc(void)
+{
+    return 1;
+}
+
+/* Create a second open FILE on the basis of a given one */
+FILE *gp_fdup(FILE *f, const char *mode)
+{
+    int fd = fileno(f);
+    if (fd < 0)
+        return NULL;
+
+    fd = dup(fd);
+    if (fd < 0)
+        return NULL;
+
+    return fdopen(fd, mode);
+}
+
+/* Read from a specified offset within a FILE into a buffer */
+int gp_fpread(char *buf, uint count, int64_t offset, FILE *f)
+{
+    OVERLAPPED overlapped;
+    DWORD ret;
+    HANDLE hnd = (HANDLE)_get_osfhandle(fileno(f));
+
+    if (hnd == INVALID_HANDLE_VALUE)
+        return -1;
+
+    memset(&overlapped, 0, sizeof(OVERLAPPED));
+    overlapped.Offset = (DWORD)offset;
+    overlapped.OffsetHigh = (DWORD)(offset >> 32);
+
+    if (!ReadFile((HANDLE)hnd, buf, count, &ret, &overlapped))
+        return -1;
+
+    return ret;
+}
+
+/* Write to a specified offset within a FILE from a buffer */
+int gp_fpwrite(char *buf, uint count, int64_t offset, FILE *f)
+{
+    OVERLAPPED overlapped;
+    DWORD ret;
+    HANDLE hnd = (HANDLE)_get_osfhandle(fileno(f));
+
+    if (hnd == INVALID_HANDLE_VALUE)
+        return -1;
+
+    memset(&overlapped, 0, sizeof(OVERLAPPED));
+    overlapped.Offset = (DWORD)offset;
+    overlapped.OffsetHigh = (DWORD)(offset >> 32);
+
+    if (!WriteFile((HANDLE)hnd, buf, count, &ret, &overlapped))
+        return -1;
+
+    return ret;
 }
 
 /* ------ Font enumeration ------ */
@@ -853,14 +975,14 @@ int gp_fseek_64(FILE *strm, gs_offset_t offset, int origin)
 
 bool gp_fseekable (FILE *f)
 {
-    struct stat s;
+    struct __stat64 s;
     int fno;
     
     fno = fileno(f);
     if (fno < 0)
         return(false);
     
-    if (fstat(fno, &s) < 0)
+    if (_fstat64(fno, &s) < 0)
         return(false);
 
     return((bool)S_ISREG(s.st_mode));
@@ -868,6 +990,9 @@ bool gp_fseekable (FILE *f)
 
 /* -------------------------  _snprintf -----------------------------*/
 
+#if defined(_MSC_VER) && _MSC_VER>=1900 /* VS 2014 and later have (finally) snprintf */
+#  define STDC99
+#else
 /* Microsoft Visual C++ 2005  doesn't properly define snprintf,
    which is defined in the C standard ISO/IEC 9899:1999 (E) */
 
@@ -885,3 +1010,4 @@ int snprintf(char *buffer, size_t count, const char *format, ...)
     } else
         return 0;
 }
+#endif

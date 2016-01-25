@@ -36,6 +36,8 @@
 #include "gxhldevc.h"
 #include "gxdevsop.h"
 #include "gsicc_manage.h"
+#include "gsform1.h"
+#include "gxpath.h"
 
 /* Forward references */
 static image_enum_proc_plane_data(pdf_image_plane_data);
@@ -398,6 +400,9 @@ pdf_begin_typed_image_impl(gx_device_pdf *pdev, const gs_imager_state * pis,
                        prect->q.y == pim3->Height))
             goto nyi;
         if (pdev->CompatibilityLevel < 1.3 && !pdev->PatternImagemask) {
+            code = pdf_check_soft_mask(pdev, (gs_imager_state *)pis);
+            if (code < 0)
+                return code;
             if (pdf_must_put_clip_path(pdev, pcpath))
                 code = pdf_unclip(pdev);
             else
@@ -496,6 +501,9 @@ pdf_begin_typed_image_impl(gx_device_pdf *pdev, const gs_imager_state * pis,
             gs_matrix m, m1, mi;
             gs_image4_t pi4 = *(const gs_image4_t *)pic;
 
+            code = pdf_check_soft_mask(pdev, (gs_imager_state *)pis);
+            if (code < 0)
+                return code;
             if (pdf_must_put_clip_path(pdev, pcpath))
                 code = pdf_unclip(pdev);
             else
@@ -563,6 +571,9 @@ pdf_begin_typed_image_impl(gx_device_pdf *pdev, const gs_imager_state * pis,
     pcs = pim->ColorSpace;
     num_components = (is_mask ? 1 : gs_color_space_num_components(pcs));
 
+    code = pdf_check_soft_mask(pdev, (gs_imager_state *)pis);
+    if (code < 0)
+        return code;
     if (pdf_must_put_clip_path(pdev, pcpath))
         code = pdf_unclip(pdev);
     else
@@ -681,8 +692,8 @@ pdf_begin_typed_image_impl(gx_device_pdf *pdev, const gs_imager_state * pis,
             }
             code = pdf_convert_ICC(pdev, pcs, &cs_value, names);
             if (code == 0) {
-                code = pdf_color_space_named(pdev, &cs_value, &pranges, pcs, names,
-                                         in_line, NULL, 0);
+                code = pdf_color_space_named(pdev, pis, &cs_value, &pranges, pcs, names,
+                                         in_line, NULL, 0, false);
             }
             if (pcs->cmm_icc_profile_data != NULL &&
                 pcs->cmm_icc_profile_data->islab) {
@@ -979,6 +990,9 @@ static int setup_type3_image(gx_device_pdf *pdev, const gs_imager_state * pis,
     int code;
 
     if (pdev->CompatibilityLevel < 1.3 && !pdev->PatternImagemask) {
+        code = pdf_check_soft_mask(pdev, (gs_imager_state *)pis);
+        if (code < 0)
+            return code;
         if (pdf_must_put_clip_path(pdev, pcpath))
             code = pdf_unclip(pdev);
         else
@@ -1079,6 +1093,9 @@ static int convert_type4_to_masked_image(gx_device_pdf *pdev, const gs_imager_st
         int code;
         pdf_lcvd_t *cvd = NULL;
 
+        code = pdf_check_soft_mask(pdev, (gs_imager_state *)pis);
+        if (code < 0)
+            return code;
         if (pdf_must_put_clip_path(pdev, pcpath))
             code = pdf_unclip(pdev);
         else
@@ -1171,7 +1188,7 @@ static int setup_image_colorspace(gx_device_pdf *pdev, image_union_t *image, con
                 break;
             case gs_color_space_index_DeviceRGB:
                 if (pdev->params.ColorConversionStrategy == ccs_LeaveColorUnchanged ||
-                    pdev->params.ColorConversionStrategy == ccs_RGB)
+                    pdev->params.ColorConversionStrategy == ccs_RGB || pdev->params.ColorConversionStrategy == ccs_sRGB)
                     return 0;
                 else {
                     code = setup_image_process_colorspace(pdev, image, pcs_orig, names->DeviceRGB, cs_value);
@@ -1250,7 +1267,7 @@ static int setup_image_colorspace(gx_device_pdf *pdev, image_union_t *image, con
                             return 0;
                         break;
                     case gs_color_space_index_DeviceRGB:
-                        if (pdev->params.ColorConversionStrategy == ccs_RGB ||
+                        if (pdev->params.ColorConversionStrategy == ccs_RGB || pdev->params.ColorConversionStrategy == ccs_sRGB ||
                             pdev->params.ColorConversionStrategy == ccs_LeaveColorUnchanged)
                             return 0;
                         break;
@@ -1299,7 +1316,6 @@ static int setup_image_colorspace(gx_device_pdf *pdev, image_union_t *image, con
             case ccs_LeaveColorUnchanged:
                 return 0;
                 break;
-            case ccs_sRGB:
             case ccs_UseDeviceIndependentColor:
                 return 2;
                 break;
@@ -1474,6 +1490,7 @@ static int setup_image_colorspace(gx_device_pdf *pdev, image_union_t *image, con
                         break;
                 }
                 break;
+            case ccs_sRGB:
             case ccs_RGB:
                 switch(csi2) {
                     case gs_color_space_index_DeviceGray:
@@ -1572,7 +1589,7 @@ new_pdf_begin_typed_image(gx_device_pdf *pdev, const gs_imager_state * pis,
 {
     int code, i;
     unsigned int use_fallback  = 0, in_line = 0, is_mask = 0,
-        force_lossless = 0, convert_to_process_colors = 0, reduce_bits = 0;
+        force_lossless = 0, convert_to_process_colors = 0;
     int width, height;
     cos_dict_t *pnamed = 0;
     image_union_t *image;
@@ -1704,8 +1721,6 @@ new_pdf_begin_typed_image(gx_device_pdf *pdev, const gs_imager_state * pis,
             break;
         case 12:
         case 16:
-            use_fallback = 1;
-//            reduce_bits = pim->BitsPerComponent;
             break;
         default:
             gs_free(mem->non_gc_memory, image, 4, sizeof(image_union_t),
@@ -1723,6 +1738,74 @@ new_pdf_begin_typed_image(gx_device_pdf *pdev, const gs_imager_state * pis,
         (is_mask && pim->CombineWithColor))
         use_fallback = 1;
 
+    if (pdev->Eps2Write) {
+        gs_rect sbox, dbox, *Box;
+        gs_point corners[4];
+        gs_fixed_rect ibox;
+        gs_matrix * pmat1 = (gs_matrix *)pmat;
+        gs_matrix mat;
+
+        if (!pdev->accumulating_charproc)
+            Box = &pdev->BBox;
+        else
+            Box = &pdev->charproc_BBox;
+        if (pmat1 == 0)
+            pmat1 = (gs_matrix *)&ctm_only(pis);
+        if ((code = gs_matrix_invert(&pic->ImageMatrix, &mat)) < 0 ||
+            (code = gs_matrix_multiply(&mat, pmat1, &mat)) < 0)
+            return code;
+        sbox.p.x = rect.p.x;
+        sbox.p.y = rect.p.y;
+        sbox.q.x = rect.q.x;
+        sbox.q.y = rect.q.y;
+        gs_bbox_transform_only(&sbox, &mat, corners);
+        gs_points_bbox(corners, &dbox);
+        ibox.p.x = float2fixed(dbox.p.x);
+        ibox.p.y = float2fixed(dbox.p.y);
+        ibox.q.x = float2fixed(dbox.q.x);
+        ibox.q.y = float2fixed(dbox.q.y);
+        if (pcpath != NULL &&
+            !gx_cpath_includes_rectangle(pcpath, ibox.p.x, ibox.p.y,
+            ibox.q.x, ibox.q.y)
+            ) {
+            /* Let the target do the drawing, but drive two triangles */
+            /* through the clipping path to get an accurate bounding box. */
+            gx_device_clip cdev;
+            gx_drawing_color devc;
+
+            fixed x0 = float2fixed(corners[0].x), y0 = float2fixed(corners[0].y);
+            fixed bx2 = float2fixed(corners[2].x) - x0, by2 = float2fixed(corners[2].y) - y0;
+
+            pdev->AccumulatingBBox++;
+            gx_make_clip_device_on_stack(&cdev, pcpath, (gx_device *)pdev);
+            set_nonclient_dev_color(&devc, gx_device_black((gx_device *)pdev));  /* any non-white color will do */
+            gx_default_fill_triangle((gx_device *) & cdev, x0, y0,
+                float2fixed(corners[1].x) - x0,
+                float2fixed(corners[1].y) - y0,
+                bx2, by2, &devc, lop_default);
+            gx_default_fill_triangle((gx_device *) & cdev, x0, y0,
+                float2fixed(corners[3].x) - x0,
+                float2fixed(corners[3].y) - y0,
+                bx2, by2, &devc, lop_default);
+            pdev->AccumulatingBBox--;
+        } else {
+            /* Just use the bounding box. */
+            float x0, y0, x1, y1;
+            x0 = fixed2float(ibox.p.x) / (pdev->HWResolution[0] / 72.0);
+            y0 = fixed2float(ibox.p.y) / (pdev->HWResolution[1] / 72.0);
+            x1 = fixed2float(ibox.q.x) / (pdev->HWResolution[0] / 72.0);
+            y1 = fixed2float(ibox.q.y) / (pdev->HWResolution[1] / 72.0);
+            if (Box->p.x > x0)
+                Box->p.x = x0;
+            if (Box->p.y > y0)
+                Box->p.y = y0;
+            if (Box->q.x < x1)
+                Box->q.x = x1;
+            if (Box->q.y < y1)
+                Box->q.y = y1;
+        }
+    }
+
     if (use_fallback) {
         gs_free(mem->non_gc_memory, image, 4, sizeof(image_union_t),
                                               "pdf_begin_typed_image(image)");
@@ -1734,6 +1817,9 @@ new_pdf_begin_typed_image(gx_device_pdf *pdev, const gs_imager_state * pis,
     pcs = pim->ColorSpace;
     num_components = (is_mask ? 1 : gs_color_space_num_components(pcs));
 
+    code = pdf_check_soft_mask(pdev, (gs_imager_state *)pis);
+    if (code < 0)
+        return code;
     if (pdf_must_put_clip_path(pdev, pcpath))
         code = pdf_unclip(pdev);
     else
@@ -1791,7 +1877,7 @@ new_pdf_begin_typed_image(gx_device_pdf *pdev, const gs_imager_state * pis,
     pie->width = width;
     height = rect.q.y - rect.p.y;
     pie->bits_per_pixel =
-        (reduce_bits ? reduce_bits : pim->BitsPerComponent) * num_components / pie->num_planes;
+        pim->BitsPerComponent * num_components / pie->num_planes;
     pie->rows_left = height;
     if (pnamed != 0) /* Don't in-line the image if it is named. */
         in_line = false;
@@ -1850,12 +1936,18 @@ new_pdf_begin_typed_image(gx_device_pdf *pdev, const gs_imager_state * pis,
         pdev->transfer_not_identity)
         force_lossless = true;
 
+    if ((image[0].pixel.ColorSpace != NULL && image[0].pixel.ColorSpace->type->index == gs_color_space_index_Indexed)
+        || force_lossless)
+        pie->writer.alt_writer_count = 1;
+
     names = (in_line ? &pdf_color_space_names_short : &pdf_color_space_names);
 
     /* We don't want to change the colour space of a mask, or an SMask (both of which are Gray) */
     if (!is_mask) {
         if (image[0].pixel.ColorSpace != NULL && !(context == PDF_IMAGE_TYPE3_MASK))
             convert_to_process_colors = setup_image_colorspace(pdev, &image[0], pcs, &pcs_orig, names, &cs_value);
+        if (pim->BitsPerComponent > 8 && convert_to_process_colors)
+            goto fail_and_fallback;
         if (convert_to_process_colors == 4) {
             code = convert_DeviceN_alternate(pdev, pis, pcs, NULL, NULL, NULL, NULL, &cs_value, in_line);
             if (code < 0)
@@ -1871,20 +1963,24 @@ new_pdf_begin_typed_image(gx_device_pdf *pdev, const gs_imager_state * pis,
             if (code < 0)
                 goto fail_and_fallback;
             image[0].pixel.ColorSpace = pcs_device;
-            code = pdf_color_space_named(pdev, &cs_value, &pranges, pcs_device, names,
-                                     in_line, NULL, 0);
+            code = pdf_color_space_named(pdev, pis, &cs_value, &pranges, pcs_device, names,
+                                     in_line, NULL, 0, false);
             if (code < 0)
                 goto fail_and_fallback;
         } else {
-            convert_to_process_colors = 0;
-            if (pcs->cmm_icc_profile_data != NULL &&
-                pcs->cmm_icc_profile_data->islab) {
-                    gscms_set_icc_range((cmm_profile_t **)&(pcs->cmm_icc_profile_data));
+            if (convert_to_process_colors == 2) {
+                convert_to_process_colors = 0;
+                code = pdf_color_space_named(pdev, pis, &cs_value, &pranges, pcs, names,
+                                     in_line, NULL, 0, true);
+                if (code < 0)
+                    goto fail_and_fallback;
+            } else {
+                convert_to_process_colors = 0;
+                code = pdf_color_space_named(pdev, pis, &cs_value, &pranges, pcs, names,
+                                     in_line, NULL, 0, false);
+                if (code < 0)
+                    goto fail_and_fallback;
             }
-            code = pdf_color_space_named(pdev, &cs_value, &pranges, pcs, names,
-                                     in_line, NULL, 0);
-            if (code < 0)
-                goto fail_and_fallback;
         }
     }
 
@@ -1949,12 +2045,6 @@ new_pdf_begin_typed_image(gx_device_pdf *pdev, const gs_imager_state * pis,
         image[0].pixel.ColorSpace = pcs_device;
     }
 
-    if (reduce_bits) {
-        code = new_resize_input(&pie->writer.binary[0], pim->Width, gs_color_space_num_components(pim->ColorSpace), reduce_bits, 8);
-        if (code < 0)
-            goto fail_and_fallback;
-    }
-
     if (pie->writer.alt_writer_count > 1) {
         code = pdf_make_alt_stream(pdev, &pie->writer.binary[1]);
         if (code) {
@@ -1987,11 +2077,6 @@ new_pdf_begin_typed_image(gx_device_pdf *pdev, const gs_imager_state * pis,
                 goto fail_and_fallback;
             }
             image[1].pixel.ColorSpace = pcs_device;
-        }
-        if (reduce_bits) {
-            code = new_resize_input(&pie->writer.binary[0], pim->Width, gs_color_space_num_components(pim->ColorSpace), reduce_bits, 8);
-            if (code < 0)
-                goto fail_and_fallback;
         }
     }
 
@@ -2093,10 +2178,10 @@ pdf_image_plane_data_alt(gx_image_enum_common_t * info,
     /****** DOESN'T HANDLE IMAGES WITH VARYING WIDTH PER PLANE ******/
     uint width_bits = pie->width * pie->plane_depths[0];
     /****** DOESN'T HANDLE NON-ZERO data_x CORRECTLY ******/
-    uint bcount = (width_bits + 7) >> 3;
     uint ignore;
     int nplanes = pie->num_planes;
     int status = 0;
+    uint bcount = (width_bits + 7) >> 3;
 
     if (h > pie->rows_left)
         h = pie->rows_left;
@@ -2125,13 +2210,16 @@ pdf_image_plane_data_alt(gx_image_enum_common_t * info,
                 uint flip_count;
                 uint flipped_count;
 
-                if (count >= block_bytes) {
+                if (count > block_bytes) {
                     flip_count = block_bytes;
                     flipped_count = block_bytes * nplanes;
                 } else {
                     flip_count = count;
                     flipped_count =
                         (width_bits % (block_bytes * 8) * nplanes + 7) >> 3;
+                    /* In case the width of the image is a precise multiple of our block size */
+                    if (flipped_count == 0)
+                        flipped_count = block_bytes * nplanes;
                 }
                 image_flip_planes(row, bit_planes, offset, flip_count,
                                   nplanes, pie->plane_depths[0]);
@@ -2164,6 +2252,7 @@ pdf_image_plane_data(gx_image_enum_common_t * info,
 {
     pdf_image_enum *pie = (pdf_image_enum *) info;
     int i;
+
     for (i = 0; i < pie->writer.alt_writer_count; i++) {
         int code = pdf_image_plane_data_alt(info, planes, height, rows_used, i);
         if (code)
@@ -2172,6 +2261,7 @@ pdf_image_plane_data(gx_image_enum_common_t * info,
     pie->rows_left -= *rows_used;
     if (pie->writer.alt_writer_count > 2)
         pdf_choose_compression(&pie->writer, false);
+
     return !pie->rows_left;
 }
 
@@ -2201,16 +2291,31 @@ use_image_as_pattern(gx_device_pdf *pdev, pdf_resource_t *pres1,
     inst.templat.BBox.q.y = 1;
     inst.templat.XStep = 2; /* Set 2 times bigger step against artifacts. */
     inst.templat.YStep = 2;
-    code = (*dev_proc(pdev, dev_spec_op))((gx_device *)pdev,
-        gxdso_pattern_start_accum, &inst, id);
+
+    {
+        pattern_accum_param_s param;
+        param.pinst = (void *)&inst;
+        param.graphics_state = (void *)&s;
+        param.pinst_id = inst.id;
+
+        code = (*dev_proc(pdev, dev_spec_op))((gx_device *)pdev,
+            gxdso_pattern_start_accum, &param, sizeof(pattern_accum_param_s));
+    }
+
     if (code >= 0)
         pprintld1(pdev->strm, "/R%ld Do\n", pdf_resource_id(pres1));
     pres = pdev->accumulating_substream_resource;
     if (code >= 0)
         code = pdf_add_resource(pdev, pdev->substream_Resources, "/XObject", pres1);
-    if (code >= 0)
+    if (code >= 0) {
+        pattern_accum_param_s param;
+        param.pinst = (void *)&inst;
+        param.graphics_state = (void *)&s;
+        param.pinst_id = inst.id;
+
         code = (*dev_proc(pdev, dev_spec_op))((gx_device *)pdev,
-            gxdso_pattern_finish_accum, &inst, id);
+            gxdso_pattern_finish_accum, &param, id);
+    }
     if (code >= 0)
         code = (*dev_proc(pdev, dev_spec_op))((gx_device *)pdev,
             gxdso_pattern_load, &inst, id);
@@ -2305,10 +2410,12 @@ pdf_image_end_image_data(gx_image_enum_common_t * info, bool draw_last,
     else if (data_height > 0)
         pdf_put_image_matrix(pdev, &pie->mat, (double)data_height / height);
     if (data_height > 0) {
-        code = pdf_complete_image_data(pdev, &pie->writer, data_height,
+        if (pie->writer.pres) {
+            code = pdf_complete_image_data(pdev, &pie->writer, data_height,
                         pie->width, pie->bits_per_pixel);
-        if (code < 0)
-            return code;
+            if (code < 0)
+                return code;
+        }
         code = pdf_end_image_binary(pdev, &pie->writer, data_height);
         /* The call above possibly decreases pie->writer.alt_writer_count in 2. */
         if (code < 0)
@@ -2549,7 +2656,7 @@ pdf_image3x_make_mcde(gx_device *dev, const gs_imager_state *pis,
         int num_components =
             gs_color_space_num_components(pim->ColorSpace);
 
-        code = cos_dict_put_c_key_floats(
+        code = cos_dict_put_c_key_floats((gx_device_pdf *)dev,
                                 (cos_dict_t *)pmie->writer.pres->object,
                                 "/Matte", pixm->Matte,
                                 num_components);
@@ -2595,27 +2702,171 @@ int
 gdev_pdf_dev_spec_op(gx_device *pdev1, int dev_spec_op, void *data, int size)
 {
     gx_device_pdf *pdev = (gx_device_pdf *)pdev1;
-    int code;
+    int code=0;
     pdf_resource_t *pres, *pres1;
     gx_bitmap_id id = (gx_bitmap_id)size;
-    gs_pattern1_instance_t *pinst = (gs_pattern1_instance_t *)data;
 
     switch (dev_spec_op) {
         case gxdso_pattern_can_accum:
             return 1;
+        case gxdso_form_begin:
+            if (pdev->HighLevelForm == 0 && pdev->PatternDepth == 0) {
+                gs_form_template_t *tmplate = (gs_form_template_t *)data;
+                float arry[6];
+                cos_dict_t *pcd = NULL, *pcd_Resources = NULL;
+
+                /* Make sure the document and page stream are open */
+                code = pdfwrite_pdf_open_document(pdev);
+                if (code < 0)
+                    return code;
+                code = pdf_open_contents(pdev, PDF_IN_STREAM);
+                if (code < 0)
+                    return code;
+                /* Put any extant clip out before we start the form */
+                code = pdf_put_clip_path(pdev, tmplate->pcpath);
+                if (code < 0)
+                    return code;
+                /* Set the CTM to be the one passed in from the interpreter,
+                 * this allows us to spot forms even when translation/rotation takes place
+                 * as we remove the CTN from the form stream before capture
+                 */
+                pprintg6(pdev->strm, "q %g %g %g %g %g %g cm\n", tmplate->CTM.xx, tmplate->CTM.xy,
+                         tmplate->CTM.yx, tmplate->CTM.yy, tmplate->CTM.tx, tmplate->CTM.ty);
+
+                /* star capturing the form stream */
+                code = pdf_enter_substream(pdev, resourceXObject, id, &pres, false,
+                        pdev->CompressFonts/* Have no better switch.*/);
+                if (code < 0)
+                    return code;
+                pcd = cos_stream_dict((cos_stream_t *)pres->object);
+                pcd_Resources = cos_dict_alloc(pdev, "pdf_pattern(Resources)");
+                if (pcd == NULL || pcd_Resources == NULL)
+                    return_error(gs_error_VMerror);
+                code = cos_dict_put_c_strings(pcd, "/Type", "/XObject");
+                if (code >= 0)
+                    code = cos_dict_put_c_strings(pcd, "/Subtype", "/Form");
+                if (code >= 0)
+                    code = cos_dict_put_c_strings(pcd, "/FormType", "1");
+                if (code >= 0)
+                    code = cos_dict_put_c_key_object(pcd, "/Resources", COS_OBJECT(pcd_Resources));
+                arry[0] = tmplate->BBox.p.x;
+                arry[1] = tmplate->BBox.p.y;
+                arry[2] = tmplate->BBox.q.x;
+                arry[3] = tmplate->BBox.q.y;
+                if (code >= 0)
+                    code = cos_dict_put_c_key_floats(pdev, pcd, "/BBox", arry, 4);
+                if (code < 0)
+                    return code;
+
+                arry[0] = tmplate->form_matrix.xx;
+                arry[1] = tmplate->form_matrix.xy;
+                arry[2] = tmplate->form_matrix.yx;
+                arry[3] = tmplate->form_matrix.yy;
+                arry[4] = tmplate->form_matrix.tx;
+                arry[5] = tmplate->form_matrix.ty;
+                code = cos_dict_put_c_key_floats(pdev, pcd, "/Matrix", arry, 6);
+                pprintg2(pdev->strm, "%g 0 0 %g 0 0 cm\n",
+                         72.0 / pdev->HWResolution[0], 72.0 / pdev->HWResolution[1]);
+
+                /* We'll return this to the interpreter and have it set
+                 * as the CTM, so that we remove the prior CTM before capturing the form.
+                 * This is safe because forms are always run inside a gsave/grestore, so
+                 * CTM will be put back for us.
+                 */
+                tmplate->CTM.xx = pdev->HWResolution[0] / 72;
+                tmplate->CTM.xy = 0.0;
+                tmplate->CTM.yx = 0.0;
+                tmplate->CTM.yy = pdev->HWResolution[0] / 72;
+                tmplate->CTM.tx = 0.0;
+                tmplate->CTM.ty = 0.0;
+
+                pdev->substream_Resources = pcd_Resources;
+                pres->rid = id;
+                if (code >= 0)
+                    pdev->HighLevelForm++;
+                return 1;
+            }
+            return code;
+        case gxdso_form_end:
+            /* This test must be the same as the one in gxdso_form_begin, above */
+            if (pdev->HighLevelForm == 1 && pdev->PatternDepth == 0) {
+                code = pdf_add_procsets(pdev->substream_Resources, pdev->procsets);
+                if (code < 0)
+                    return code;
+                pres = pres1 = pdev->accumulating_substream_resource;
+                code = pdf_exit_substream(pdev);
+                if (code < 0)
+                    return code;
+                code = pdf_find_same_resource(pdev, resourceXObject, &pres, check_unsubstituted2);
+                if (code < 0)
+                    return code;
+                if (code > 0) {
+                    code = pdf_cancel_resource(pdev, pres1, resourceXObject);
+                    if (code < 0)
+                        return code;
+                    pres->where_used |= pdev->used_mask;
+                } else if (pres->object->id < 0)
+                    pdf_reserve_object_id(pdev, pres, 0);
+                pprintld1(pdev->strm, "/R%ld Do Q\n", pdf_resource_id(pres));
+                pdev->HighLevelForm--;
+                pdev->LastFormID = pdf_resource_id(pres);
+            }
+            return 0;
+        case gxdso_get_form_ID:
+            {
+                int *ID = data;
+                *ID = pdev->LastFormID;
+            }
+            return 0;
+        case gxdso_repeat_form:
+            {
+                gs_form_template_t *tmplate = (gs_form_template_t *)data;
+
+                /* Make sure the document and page stream are open */
+                code = pdfwrite_pdf_open_document(pdev);
+                if (code < 0)
+                    return code;
+                code = pdf_open_contents(pdev, PDF_IN_STREAM);
+                if (code < 0)
+                    return code;
+                /* Put any extant clip out before we start the form */
+                code = pdf_put_clip_path(pdev, tmplate->pcpath);
+                if (code < 0)
+                    return code;
+                /* Set the CTM to be the one passed in from the interpreter,
+                 * this allows us to spot forms even when translation/rotation takes place
+                 * as we remove the CTN from the form stream before capture
+                 */
+                pprintg6(pdev->strm, "q %g %g %g %g %g %g cm\n", tmplate->CTM.xx, tmplate->CTM.xy,
+                         tmplate->CTM.yx, tmplate->CTM.yy, tmplate->CTM.tx, tmplate->CTM.ty);
+                pprintld1(pdev->strm, "/R%ld Do Q\n", tmplate->FormID);
+                pres = pdf_find_resource_by_resource_id(pdev, resourceXObject, tmplate->FormID);
+                pres->where_used |= pdev->used_mask;
+            }
+            return 0;
         case gxdso_pattern_start_accum:
-            code = pdf_enter_substream(pdev, resourcePattern, id, &pres, false,
-                    pdev->CompressFonts/* Have no better switch.*/);
-            if (code < 0)
-                return code;
-            pres->rid = id;
-            code = pdf_store_pattern1_params(pdev, pres, pinst);
-            if (code < 0)
-                return code;
-            /* Scale the coordinate system, because object handlers assume so. See none_to_stream. */
-            pprintg2(pdev->strm, "%g 0 0 %g 0 0 cm\n",
-                     72.0 / pdev->HWResolution[0], 72.0 / pdev->HWResolution[1]);
-            pdev->PatternDepth++;
+            {
+                pattern_accum_param_s *param = (pattern_accum_param_s *)data;
+                gs_pattern1_instance_t *pinst = param->pinst;
+                gs_state *pgs = param->graphics_state;
+
+                id = param->pinst_id;
+                code = pdf_check_soft_mask(pdev, (gs_imager_state *)pgs);
+                if (code < 0)
+                    return code;
+                code = pdf_enter_substream(pdev, resourcePattern, id, &pres, false,
+                        pdev->CompressFonts/* Have no better switch.*/);
+                if (code < 0)
+                    return code;
+                pres->rid = id;
+                code = pdf_store_pattern1_params(pdev, pres, pinst);
+                if (code < 0)
+                    return code;
+                /* Scale the coordinate system, because object handlers assume so. See none_to_stream. */
+                pprintg2(pdev->strm, "%g 0 0 %g 0 0 cm\n",
+                         72.0 / pdev->HWResolution[0], 72.0 / pdev->HWResolution[1]);
+                pdev->PatternDepth++;
+            }
             return 1;
         case gxdso_pattern_finish_accum:
             code = pdf_add_procsets(pdev->substream_Resources, pdev->procsets);
@@ -2683,6 +2934,14 @@ gdev_pdf_dev_spec_op(gx_device *pdev1, int dev_spec_op, void *data, int size)
              * palette entries after the colour space has been set.
              */
             return 1;
+        case gxdso_get_dev_param:
+            {
+                int code;
+                dev_param_req_t *request = (dev_param_req_t *)data;
+                code = gdev_pdf_get_param(pdev1, request->Param, request->list);
+                if (code != gs_error_undefined)
+                    return code;
+            }
     }
     return gx_default_dev_spec_op(pdev1, dev_spec_op, data, size);
 }

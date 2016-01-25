@@ -185,12 +185,13 @@ currentdict /known_symbolic_fonts undef
       exch pop /Subtype knownoget {/Type1C eq}{//false} ifelse
       exch /Flags knownoget {4 and 4 eq not}{false}ifelse and
     } {//false} ifelse
+
     1 index /FontType get 2 eq and
     {
-        StandardEncoding 2 index getencoding
+        2 index /Encoding knownoget {pop StandardEncoding 2 index getencoding} { //null } ifelse
     }
     {
-      1 index /Encoding known {
+      2 index /Encoding known {
         dup /Encoding knownoget { 2 index getencoding } { //null } ifelse
       } {
         //null
@@ -551,9 +552,11 @@ currentdict end readonly def
 {
   % Currently pdfwrite is only device which can handle GlyphNames2Unicoide to
   % generate a ToUnicode CMaps. So don't bother with other devices.
-  currentdevice 1 dict dup /WantsToUnicode dup put .getdeviceparams
-  dup type /booleantype eq not {cleartomark false}{3 1 roll cleartomark}ifelse
-%  currentdevice .devicename /pdfwrite eq
+  /WantsToUnicode /GetDeviceParam .special_op {
+      exch pop
+  }{
+      //false
+  }ifelse
   {
     PDFDEBUG {
       (.processToUnicode beg) =
@@ -762,7 +765,11 @@ setglobal
                 % fonts with no properties are handled correctly.
       //.pdfdfndict begin .substitutefontname end
                 % Stack: font-res fontname fontdesc substname|null
-      Fontmap 1 index known not {
+      Fontmap 1 index known
+      {//false}
+      { .buildnativefontmap pop NativeFontmap 1 index known not} ifelse
+
+      {
                 % No available good substitution, use the standard one.
         pop 1 index .substitutefont
       } if
@@ -1176,6 +1183,7 @@ currentdict /eexec_pdf_param_dict .undef
                 % Stack: filepos fontres stream
   1 index /CIDSystemInfo oknown {
     1 index /CIDSystemInfo get dup type /packedarraytype eq {exec}if
+    oforce_recursive
     3 1 roll
     1 index /Subtype knownoget {
       /CIDFontType2 ne {
@@ -1721,7 +1729,8 @@ currentdict /CMap_read_dict undef
     } if
     exch pop
     dup /CIDFont resourcestatus {
-      pop pop /CIDFont findresource exit
+      pop pop /CIDFont { findresource } stopped
+      {pop}{exit} ifelse
     } if
     QUIET not {
       (The substitute CID font ") print dup =string cvs print
@@ -1773,7 +1782,15 @@ currentdict /CMap_read_dict undef
             % if the above fails, try just using the CIDFallBack font directly
             stopped
             {
-              pop pop
+              pop
+              % First, since it didn't work, remove the entry from the CIDFont category
+              % .map dictionary.
+              currentglobal exch
+              /CIDFont /Category findresource /.map get
+              dup gcheck setglobal
+              exch undef
+              setglobal
+
               (Warning: falling back to Identity ordering\n) print flush
               /CIDFallBack /CIDFont findresource
             } if
@@ -1845,9 +1862,14 @@ currentdict /CMap_read_dict undef
       } loop
       2 idiv
         % Stack: filepos fontres font mapstream array/string CIDCount
-      3 index exch /CIDCount exch put
-      exch closefile exch
-      dup /CIDMap 4 -1 roll put
+      dup 0 ne {
+        3 index exch /CIDCount exch put
+        exch closefile exch
+        dup /CIDMap 4 -1 roll put
+      }{
+        % If CIDCount is zero, ignore it
+        pop pop closefile
+      }ifelse
     } ifelse
     3 2 roll PDFfile exch setfileposition
   } if
@@ -1889,8 +1911,16 @@ currentdict /CMap_read_dict undef
   3 index /FontDescriptor oget /FontName oget
   1 index
   /FontSetInit /ProcSet findresource begin //true //false ReadData
-  { exch pop exit } forall
-  7 1 roll
+  %% We need to be careful not to corrupt the stack if something went wrong.
+  %% Previously, if the dict was length 0 (an error occured) we would end up
+  %% unable to recover the stack in the calling procedure.
+  %% Bug #695819.
+  dup length 0 ne {
+    { exch pop exit } forall
+    7 1 roll
+  }{
+    /invalidfont signalerror
+  } ifelse
   closefile closefile pop
   PDFfile 3 -1 roll setfileposition
   pop pop

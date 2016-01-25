@@ -64,6 +64,392 @@ gs_get_device_or_hw_params(gx_device * orig_dev, gs_param_list * plist,
     return code;
 }
 
+int gx_default_get_param(gx_device *dev, char *Param, void *list)
+{
+    gs_param_list * plist = (gs_param_list *)list;
+    int k, colors = dev->color_info.num_components;
+    gs_param_string profile_array[NUM_DEVICE_PROFILES];
+    gs_param_string postren_profile;
+    gs_param_string proof_profile, link_profile, icc_colorants;
+    gsicc_rendering_intents_t profile_intents[NUM_DEVICE_PROFILES];
+    gsicc_blackptcomp_t blackptcomps[NUM_DEVICE_PROFILES];
+    gsicc_blackpreserve_t blackpreserve[NUM_DEVICE_PROFILES];
+    int depth = dev->color_info.depth;
+    cmm_dev_profile_t *dev_profile;
+    char null_str[1]={'\0'};
+#define set_param_array(a, d, s)\
+  (a.data = d, a.size = s, a.persistent = false);
+    bool devicegraytok = true;  /* Default if device profile stuct not set */
+    bool graydetection = false;
+    bool usefastcolor = false;  /* set for unmanaged color */
+    bool sim_overprint = false;  /* By default do not simulate overprinting */
+    bool prebandthreshold = true, temp_bool = false;
+
+    if(strcmp(Param, "OutputDevice") == 0){
+        gs_param_string dns;
+        param_string_from_string(dns, dev->dname);
+        return param_write_name(plist, "OutputDevice", &dns);
+    }
+#ifdef PAGESIZE_IS_MEDIASIZE
+    if (strcmp(Param, "PageSize") == 0) {
+        gs_param_float_array msa;
+        set_param_array(msa, dev->MediaSize, 2);
+        return param_write_float_array(plist, "PageSize", &msa);
+    }
+#endif
+    if (strcmp(Param, "ProcessColorModel") == 0) {
+        const char *cms = get_process_color_model_name(dev);
+
+        /* We might have an uninitialized device with */
+        /* color_info.num_components = 0.... */
+        if ((cms != NULL) && (*cms != '\0')) {
+            gs_param_string pcms;
+            param_string_from_string(pcms, cms);
+            return param_write_name(plist, "ProcessColorModel", &pcms);
+        }
+    }
+    if (strcmp(Param, "HWResolution") == 0) {
+        gs_param_float_array hwra;
+        set_param_array(hwra, dev->HWResolution, 2);
+        return param_write_float_array(plist, "HWResolution", &hwra);
+    }
+    if (strcmp(Param, "ImagingBBox") == 0) {
+        gs_param_float_array ibba;
+        set_param_array(ibba, dev->ImagingBBox, 4);
+        if (dev->ImagingBBox_set)
+            return param_write_float_array(plist, "ImagingBBox", &ibba);
+        else
+            return param_write_null(plist, "ImagingBBox");
+    }
+    if (strcmp(Param, "Margins") == 0) {
+        gs_param_float_array ma;
+        set_param_array(ma, dev->Margins, 2);
+        return param_write_float_array(plist, "Margins", &ma);
+    }
+    if (strcmp(Param, "MaxSeparations") == 0) {
+        return param_write_int(plist, "MaxSeparations", &dev->color_info.max_components);
+    }
+    if (strcmp(Param, "NumCopies") == 0) {
+        if (dev->NumCopies_set < 0 || (*dev_proc(dev, get_page_device))(dev) == 0) {
+            return gs_error_undefined;
+        } else {
+            if (dev->NumCopies_set)
+                return param_write_int(plist, "NumCopies", &dev->NumCopies);
+            else
+                return param_write_null(plist, "NumCopies");
+        }
+    }
+    if (strcmp(Param, "SeparationColorNames") == 0) {
+        gs_param_string_array scna;
+        set_param_array(scna, NULL, 0);
+        return param_write_name_array(plist, "SeparationColorNames", &scna);
+    }
+    if (strcmp(Param, "Separations") == 0) {
+        bool seprs = false;
+        return param_write_bool(plist, "Separations", &seprs);
+    }
+    if (strcmp(Param, "UseCIEColor") == 0) {
+        return param_write_bool(plist, "UseCIEColor", &dev->UseCIEColor);
+    }
+
+    /* Non-standard parameters */
+    if (strcmp(Param, "HWSize") == 0) {
+        int HWSize[2];
+        gs_param_int_array hwsa;
+
+        HWSize[0] = dev->width;
+        HWSize[1] = dev->height;
+        set_param_array(hwsa, HWSize, 2);
+        return param_write_int_array(plist, "HWSize", &hwsa);
+    }
+    if (strcmp(Param, ".HWMargins") == 0) {
+        gs_param_float_array hwma;
+        set_param_array(hwma, dev->HWMargins, 4);
+        return param_write_float_array(plist, ".HWMargins", &hwma);
+    }
+    if (strcmp(Param, ".MarginsHWResolution") == 0) {
+        gs_param_float_array mhwra;
+        set_param_array(mhwra, dev->MarginsHWResolution, 2);
+        return param_write_float_array(plist, ".MarginsHWResolution", &mhwra);
+    }
+    if (strcmp(Param, ".MediaSize") == 0) {
+        gs_param_float_array msa;
+        set_param_array(msa, dev->MediaSize, 2);
+        return param_write_float_array(plist, ".MediaSize", &msa);
+    }
+    if (strcmp(Param, "Name") == 0) {
+        gs_param_string dns;
+        param_string_from_string(dns, dev->dname);
+        return param_write_string(plist, "Name", &dns);
+    }
+    if (strcmp(Param, "Colors") == 0) {
+        return param_write_int(plist, "Colors", &dev->color_info.num_components);
+    }
+    if (strcmp(Param, "BitsPerPixel") == 0) {
+        return param_write_int(plist, "BitsPerPixel", &depth);
+    }
+    if (strcmp(Param, "GrayValues") == 0) {
+        int GrayValues = dev->color_info.max_gray + 1;
+        return param_write_int(plist, "GrayValues", &GrayValues);
+    }
+    if (strcmp(Param, "PageCount") == 0) {
+        return param_write_long(plist, "PageCount", &dev->PageCount);
+    }
+    if (strcmp(Param, ".IgnoreNumCopies") == 0) {
+        return param_write_bool(plist, ".IgnoreNumCopies", &dev->IgnoreNumCopies);
+    }
+    if (strcmp(Param, "TextAlphaBits") == 0) {
+        return param_write_int(plist, "TextAlphaBits",
+                                &dev->color_info.anti_alias.text_bits);
+    }
+    if (strcmp(Param, "GraphicsAlphaBits") == 0) {
+        return param_write_int(plist, "GraphicsAlphaBits",
+                                &dev->color_info.anti_alias.graphics_bits);
+    }
+    if (strcmp(Param, ".LockSafetyParams") == 0) {
+        return param_write_bool(plist, ".LockSafetyParams", &dev->LockSafetyParams);
+    }
+    if (strcmp(Param, "MaxPatternBitmap") == 0) {
+        return param_write_int(plist, "MaxPatternBitmap", &dev->MaxPatternBitmap);
+    }
+    if (strcmp(Param, "PageUsesTransparency") == 0) {
+        param_write_bool(plist, "PageUsesTransparency", &dev->page_uses_transparency);
+    }
+    if (strcmp(Param, "MaxBitmap") == 0) {
+        return param_write_long(plist, "MaxBitmap", &(dev->space_params.MaxBitmap));
+    }
+    if (strcmp(Param, "BandBufferSpace") == 0) {
+        return param_write_long(plist, "BandBufferSpace", &dev->space_params.band.BandBufferSpace);
+    }
+    if (strcmp(Param, "BandHeight") == 0) {
+        return param_write_int(plist, "BandHeight", &dev->space_params.band.BandHeight);
+    }
+    if (strcmp(Param, "BandWidth") == 0) {
+        return param_write_int(plist, "BandWidth", &dev->space_params.band.BandWidth);
+    }
+    if (strcmp(Param, "BufferSpace") == 0) {
+        return param_write_long(plist, "BufferSpace", &dev->space_params.BufferSpace);
+    }
+    if (strcmp(Param, "LeadingEdge") == 0) {
+        if (dev->LeadingEdge & LEADINGEDGE_SET_MASK) {
+            int leadingedge = dev->LeadingEdge & LEADINGEDGE_MASK;
+            return param_write_int(plist, "LeadingEdge", &leadingedge);
+        }
+    }
+
+    if (dev->color_info.num_components > 1) {
+        int RGBValues = dev->color_info.max_color + 1;
+        long ColorValues = (depth >= 32 ? -1 : 1L << depth); /* value can only be 32 bits */
+
+        if (strcmp(Param, "RedValues") == 0) {
+            return param_write_int(plist, "RedValues", &RGBValues);
+        }
+        if (strcmp(Param, "GreenValues") == 0) {
+            return param_write_int(plist, "GreenValues", &RGBValues);
+        }
+        if (strcmp(Param, "BlueValues") == 0) {
+            return param_write_int(plist, "BlueValues", &RGBValues);
+        }
+        if (strcmp(Param, "ColorValues") == 0) {
+            return param_write_long(plist, "ColorValues", &ColorValues);
+        }
+    }
+    if (strcmp(Param, "HWColorMap") == 0) {
+        byte palette[3 << 8];
+
+        if (param_HWColorMap(dev, palette)) {
+            gs_param_string hwcms;
+
+            hwcms.data = palette, hwcms.size = colors << depth,
+                hwcms.persistent = false;
+            return param_write_string(plist, "HWColorMap", &hwcms);
+        }
+    }
+
+    /* ICC profiles */
+    /* Check if the device profile is null.  If it is, then we need to
+       go ahead and get it set up at this time.  If the proc is not
+       set up yet then we are not going to do anything yet */
+    if (dev->procs.get_profile != NULL) {
+        int code;
+        code = dev_proc(dev, get_profile)(dev,  &dev_profile);
+        if (code < 0)
+            return code;
+        if (dev_profile == NULL) {
+            code = gsicc_init_device_profile_struct(dev, NULL, 0);
+            if (code < 0)
+                return code;
+            code = dev_proc(dev, get_profile)(dev,  &dev_profile);
+            if (code < 0)
+                return code;
+        }
+        for (k = 0; k < NUM_DEVICE_PROFILES; k++) {
+            if (dev_profile->device_profile[k] == NULL
+                || dev_profile->device_profile[k]->name == NULL) {
+                param_string_from_string(profile_array[k], null_str);
+                profile_intents[k] = gsRINOTSPECIFIED;
+                blackptcomps[k] = gsBPNOTSPECIFIED;
+                blackpreserve[k] = gsBKPRESNOTSPECIFIED;
+            } else {
+                param_string_from_transient_string(profile_array[k],
+                    dev_profile->device_profile[k]->name);
+                profile_intents[k] = dev_profile->rendercond[k].rendering_intent;
+                blackptcomps[k] = dev_profile->rendercond[k].black_point_comp;
+                blackpreserve[k] = dev_profile->rendercond[k].preserve_black;
+            }
+        }
+        if (dev_profile->postren_profile == NULL) {
+            param_string_from_string(postren_profile, null_str);
+        } else {
+            param_string_from_transient_string(postren_profile,
+                dev_profile->postren_profile->name);
+        }
+        if (dev_profile->proof_profile == NULL) {
+            param_string_from_string(proof_profile, null_str);
+        } else {
+            param_string_from_transient_string(proof_profile,
+                                     dev_profile->proof_profile->name);
+        }
+        if (dev_profile->link_profile == NULL) {
+            param_string_from_string(link_profile, null_str);
+        } else {
+            param_string_from_transient_string(link_profile,
+                                     dev_profile->link_profile->name);
+        }
+        devicegraytok = dev_profile->devicegraytok;
+        graydetection = dev_profile->graydetection;
+        usefastcolor = dev_profile->usefastcolor;
+        sim_overprint = dev_profile->sim_overprint;
+        prebandthreshold = dev_profile->prebandthreshold;
+        /* With respect to Output profiles that have non-standard colorants,
+           we rely upon the default profile to give us the colorants if they do
+           exist. */
+        if (dev_profile->spotnames == NULL) {
+            param_string_from_string(icc_colorants, null_str);
+        } else {
+            char *colorant_names;
+
+            colorant_names =
+                gsicc_get_dev_icccolorants(dev_profile);
+            if (colorant_names != NULL) {
+                param_string_from_transient_string(icc_colorants, colorant_names);
+            } else {
+                param_string_from_string(icc_colorants, null_str);
+            }
+        }
+    } else {
+        for (k = 0; k < NUM_DEVICE_PROFILES; k++) {
+            param_string_from_string(profile_array[k], null_str);
+            profile_intents[k] = gsRINOTSPECIFIED;
+            blackptcomps[k] = gsBPNOTSPECIFIED;
+            blackpreserve[k] = gsBKPRESNOTSPECIFIED;
+        }
+        param_string_from_string(postren_profile, null_str);
+        param_string_from_string(proof_profile, null_str);
+        param_string_from_string(link_profile, null_str);
+        param_string_from_string(icc_colorants, null_str);
+    }
+    if (strcmp(Param, "DeviceGrayToK") == 0) {
+        return param_write_bool(plist, "DeviceGrayToK", &devicegraytok);
+    }
+    if (strcmp(Param, "GrayDetection") == 0) {
+        return param_write_bool(plist, "GrayDetection", &graydetection);
+    }
+    if (strcmp(Param, "UseFastColor") == 0) {
+        return param_write_bool(plist, "UseFastColor", &usefastcolor);
+    }
+    if (strcmp(Param, "SimulateOverprint") == 0) {
+        return param_write_bool(plist, "SimulateOverprint", &sim_overprint);
+    }
+    if (strcmp(Param, "PreBandThreshold") == 0) {
+        return param_write_bool(plist, "PreBandThreshold", &prebandthreshold);
+    }  
+    if (strcmp(Param, "PostRenderProfile") == 0) {
+        return param_write_string(plist, "PostRenderProfile", &(postren_profile));
+    }
+    if (strcmp(Param, "ProofProfile") == 0) {
+        return param_write_string(plist,"ProofProfile", &(proof_profile));
+    }
+    if (strcmp(Param, "DeviceLinkProfile") == 0) {
+        return param_write_string(plist,"DeviceLinkProfile", &(link_profile));
+    }
+    if (strcmp(Param, "ICCOutputColors") == 0) {
+        return param_write_string(plist,"ICCOutputColors", &(icc_colorants));
+    }
+    if (strcmp(Param, "OutputICCProfile") == 0) {
+        return param_write_string(plist,"OutputICCProfile", &(profile_array[0]));
+    }
+    if (strcmp(Param, "GraphicICCProfile") == 0) {
+        return param_write_string(plist,"GraphicICCProfile", &(profile_array[1]));
+    }
+    if (strcmp(Param, "ImageICCProfile") == 0) {
+        return param_write_string(plist,"ImageICCProfile", &(profile_array[2]));
+    }
+    if (strcmp(Param, "TextICCProfile") == 0) {
+        return param_write_string(plist,"TextICCProfile", &(profile_array[3]));
+    }
+    if (strcmp(Param, "RenderIntent") == 0) {
+        return param_write_int(plist,"RenderIntent", (const int *) (&(profile_intents[0])));
+    }
+    if (strcmp(Param, "GraphicIntent") == 0) {
+        return param_write_int(plist,"GraphicIntent", (const int *) &(profile_intents[1]));
+    }
+    if (strcmp(Param, "ImageIntent") == 0) {
+        return param_write_int(plist,"ImageIntent", (const int *) &(profile_intents[2]));
+    }
+    if (strcmp(Param, "TextIntent") == 0) {
+        return param_write_int(plist,"TextIntent", (const int *) &(profile_intents[3]));
+    }
+    if (strcmp(Param, "BlackPtComp") == 0) {
+        return param_write_int(plist,"BlackPtComp", (const int *) (&(blackptcomps[0])));
+    }
+    if (strcmp(Param, "GraphicBlackPt") == 0) {
+        return param_write_int(plist,"GraphicBlackPt", (const int *) &(blackptcomps[1]));
+    }
+    if (strcmp(Param, "ImageBlackPt") == 0) {
+        return param_write_int(plist,"ImageBlackPt", (const int *) &(blackptcomps[2]));
+    }
+    if (strcmp(Param, "TextBlackPt") == 0) {
+        return param_write_int(plist,"TextBlackPt", (const int *) &(blackptcomps[3]));
+    }
+    if (strcmp(Param, "KPreserve") == 0) {
+        return param_write_int(plist,"KPreserve", (const int *) (&(blackpreserve[0])));
+    }
+    if (strcmp(Param, "GraphicKPreserve") == 0) {
+        return param_write_int(plist,"GraphicKPreserve", (const int *) &(blackpreserve[1]));
+    }
+    if (strcmp(Param, "ImageKPreserve") == 0) {
+        return param_write_int(plist,"ImageKPreserve", (const int *) &(blackpreserve[2]));
+    }
+    if (strcmp(Param, "TextKPreserve") == 0) {
+        return param_write_int(plist,"TextKPreserve", (const int *) &(blackpreserve[3]));
+    }
+    if (strcmp(Param, "FirstPage") == 0) {
+        return param_write_int(plist, "FirstPage", &dev->FirstPage);
+    }
+    if (strcmp(Param, "LastPage") == 0) {
+        return param_write_int(plist, "LastPage", &dev->LastPage);
+    }
+    if (strcmp(Param, "DisablePageHandler") == 0) {
+        temp_bool = dev->DisablePageHandler;
+        return param_write_bool(plist, "DisablePageHandler", &temp_bool);
+    }
+    if (strcmp(Param, "FILTERIMAGE") == 0) {
+        temp_bool = dev->ObjectFilter & FILTERIMAGE;
+        return param_write_bool(plist, "FILTERIMAGE", &temp_bool);
+    }
+    if (strcmp(Param, "FILTERTEXT") == 0) {
+        temp_bool = dev->ObjectFilter & FILTERTEXT;
+        return param_write_bool(plist, "FILTERTEXT", &temp_bool);
+    }
+    if (strcmp(Param, "FILTERVECTOR") == 0) {
+        temp_bool = dev->ObjectFilter & FILTERVECTOR;
+        return param_write_bool(plist, "FILTERVECTOR", &temp_bool);
+    }
+
+    return gs_error_undefined;
+}
+
 /* Get standard parameters. */
 int
 gx_default_get_params(gx_device * dev, gs_param_list * plist)
@@ -74,6 +460,7 @@ gx_default_get_params(gx_device * dev, gs_param_list * plist)
 
     bool seprs = false;
     gs_param_string dns, pcms, profile_array[NUM_DEVICE_PROFILES];
+    gs_param_string postren_profile;
     gs_param_string proof_profile, link_profile, icc_colorants;
     gsicc_rendering_intents_t profile_intents[NUM_DEVICE_PROFILES];
     gsicc_blackptcomp_t blackptcomps[NUM_DEVICE_PROFILES];
@@ -81,8 +468,8 @@ gx_default_get_params(gx_device * dev, gs_param_list * plist)
     bool devicegraytok = true;  /* Default if device profile stuct not set */
     bool graydetection = false;
     bool usefastcolor = false;  /* set for unmanaged color */
-    bool sim_overprint = true;  /* By default simulate overprinting */
-    bool prebandthreshold = true;
+    bool sim_overprint = false;  /* By default do not simulate overprinting */
+    bool prebandthreshold = true, temp_bool;
     int k;
     gs_param_float_array msa, ibba, hwra, ma;
     gs_param_string_array scna;
@@ -132,41 +519,47 @@ gx_default_get_params(gx_device * dev, gs_param_list * plist)
        set up yet then we are not going to do anything yet */
     if (dev->procs.get_profile != NULL) {
         code = dev_proc(dev, get_profile)(dev,  &dev_profile);
-        if (dev_profile == NULL) { 
+        if (dev_profile == NULL) {
             code = gsicc_init_device_profile_struct(dev, NULL, 0);
             code = dev_proc(dev, get_profile)(dev,  &dev_profile);
-        } 
-        /* It is possible that the current device profile name is NULL if we 
-           have a pdf14 device in line with a transparency group that is in a 
-           color space specified from a source defined ICC profile. Check for 
+        }
+        /* It is possible that the current device profile name is NULL if we
+           have a pdf14 device in line with a transparency group that is in a
+           color space specified from a source defined ICC profile. Check for
            that here to avoid any access violations.  Bug 692558 */
         for (k = 0; k < NUM_DEVICE_PROFILES; k++) {
-            if (dev_profile->device_profile[k] == NULL 
+            if (dev_profile->device_profile[k] == NULL
                 || dev_profile->device_profile[k]->name == NULL) {
                 param_string_from_string(profile_array[k], null_str);
                 profile_intents[k] = gsRINOTSPECIFIED;
                 blackptcomps[k] = gsBPNOTSPECIFIED;
                 blackpreserve[k] = gsBKPRESNOTSPECIFIED;
             } else {
-                param_string_from_string(profile_array[k], 
+                param_string_from_transient_string(profile_array[k],
                     dev_profile->device_profile[k]->name);
                 profile_intents[k] = dev_profile->rendercond[k].rendering_intent;
                 blackptcomps[k] = dev_profile->rendercond[k].black_point_comp;
                 blackpreserve[k] = dev_profile->rendercond[k].preserve_black;
             }
         }
-        /* The proof and link profile */
+        /* The proof, link and post render profile */
         if (dev_profile->proof_profile == NULL) {
             param_string_from_string(proof_profile, null_str);
         } else {
-            param_string_from_string(proof_profile, 
+            param_string_from_transient_string(proof_profile,
                                      dev_profile->proof_profile->name);
         }
         if (dev_profile->link_profile == NULL) {
             param_string_from_string(link_profile, null_str);
         } else {
-            param_string_from_string(link_profile, 
+            param_string_from_transient_string(link_profile,
                                      dev_profile->link_profile->name);
+        }
+        if (dev_profile->postren_profile == NULL) {
+            param_string_from_string(postren_profile, null_str);
+        } else {
+            param_string_from_transient_string(postren_profile,
+                dev_profile->postren_profile->name);
         }
         devicegraytok = dev_profile->devicegraytok;
         graydetection = dev_profile->graydetection;
@@ -184,7 +577,7 @@ gx_default_get_params(gx_device * dev, gs_param_list * plist)
             colorant_names =
                 gsicc_get_dev_icccolorants(dev_profile);
             if (colorant_names != NULL) {
-                param_string_from_string(icc_colorants, colorant_names);
+                param_string_from_transient_string(icc_colorants, colorant_names);
             } else {
                 param_string_from_string(icc_colorants, null_str);
             }
@@ -199,6 +592,7 @@ gx_default_get_params(gx_device * dev, gs_param_list * plist)
         param_string_from_string(proof_profile, null_str);
         param_string_from_string(link_profile, null_str);
         param_string_from_string(icc_colorants, null_str);
+        param_string_from_string(postren_profile, null_str);
     }
     /* Transmit the values. */
     /* Standard parameters */
@@ -236,8 +630,9 @@ gx_default_get_params(gx_device * dev, gs_param_list * plist)
         (code = param_write_string(plist,"ImageICCProfile", &(profile_array[2]))) < 0 ||
         (code = param_write_string(plist,"TextICCProfile", &(profile_array[3]))) < 0 ||
         (code = param_write_string(plist,"ProofProfile", &(proof_profile))) < 0 ||
+        (code = param_write_string(plist, "PostRenderProfile", &(postren_profile))) < 0 ||
         (code = param_write_string(plist,"DeviceLinkProfile", &(link_profile))) < 0 ||
-        (code = param_write_string(plist,"ICCOutputColors", &(icc_colorants))) < 0 ||  
+        (code = param_write_string(plist,"ICCOutputColors", &(icc_colorants))) < 0 ||
         (code = param_write_int(plist,"RenderIntent", (const int *) (&(profile_intents[0])))) < 0 ||
         (code = param_write_int(plist,"GraphicIntent", (const int *) &(profile_intents[1]))) < 0 ||
         (code = param_write_int(plist,"ImageIntent", (const int *) &(profile_intents[2]))) < 0 ||
@@ -265,7 +660,13 @@ gx_default_get_params(gx_device * dev, gs_param_list * plist)
         (code = param_write_int(plist, "GraphicsAlphaBits",
                                 &dev->color_info.anti_alias.graphics_bits)) < 0 ||
         (code = param_write_bool(plist, ".LockSafetyParams", &dev->LockSafetyParams)) < 0 ||
-        (code = param_write_int(plist, "MaxPatternBitmap", &dev->MaxPatternBitmap)) < 0
+        (code = param_write_int(plist, "MaxPatternBitmap", &dev->MaxPatternBitmap)) < 0 ||
+        (code = param_write_bool(plist, "PageUsesTransparency", &dev->page_uses_transparency)) < 0 ||
+        (code = param_write_long(plist, "MaxBitmap", &(dev->space_params.MaxBitmap))) < 0 ||
+        (code = param_write_long(plist, "BandBufferSpace", &dev->space_params.band.BandBufferSpace)) < 0 ||
+        (code = param_write_int(plist, "BandHeight", &dev->space_params.band.BandHeight)) < 0 ||
+        (code = param_write_int(plist, "BandWidth", &dev->space_params.band.BandWidth)) < 0 ||
+        (code = param_write_long(plist, "BufferSpace", &dev->space_params.BufferSpace)) < 0
         )
         return code;
 
@@ -275,6 +676,25 @@ gx_default_get_params(gx_device * dev, gs_param_list * plist)
         code = param_write_int(plist, "LeadingEdge", &leadingedge);
     }
     if (code < 0)
+        return code;
+
+    if ((code = param_write_int(plist, "FirstPage", &dev->FirstPage)) < 0)
+        return code;
+    if ((code = param_write_int(plist, "LastPage", &dev->LastPage)) < 0)
+        return code;
+
+    temp_bool = dev->DisablePageHandler;
+    if ((code = param_write_bool(plist, "DisablePageHandler", &temp_bool)) < 0)
+        return code;
+
+    temp_bool = dev->ObjectFilter & FILTERIMAGE;
+    if ((code = param_write_bool(plist, "FILTERIMAGE", &temp_bool)) < 0)
+        return code;
+    temp_bool = dev->ObjectFilter & FILTERTEXT;
+    if ((code = param_write_bool(plist, "FILTERTEXT", &temp_bool)) < 0)
+        return code;
+    temp_bool = dev->ObjectFilter & FILTERVECTOR;
+    if ((code = param_write_bool(plist, "FILTERVECTOR", &temp_bool)) < 0)
         return code;
 
     /* Fill in color information. */
@@ -427,7 +847,7 @@ gdev_write_input_media(int index, gs_param_dict * pdict,
 
 int
 gdev_write_input_page_size(int index, gs_param_dict * pdict,
-                           floatp width_points, floatp height_points)
+                           double width_points, double height_points)
 {
     gdev_input_media_t media;
 
@@ -520,17 +940,17 @@ gs_putdeviceparams(gx_device * dev, gs_param_list * plist)
 }
 
 static int
-gx_default_put_graydetection(bool graydetection, gx_device * dev) 
+gx_default_put_graydetection(bool graydetection, gx_device * dev)
 {
     int code = 0;
     cmm_dev_profile_t *profile_struct;
 
     if (dev->procs.get_profile == NULL) {
-        /* This is an odd case where the device has not yet fully been 
+        /* This is an odd case where the device has not yet fully been
            set up with its procedures yet.  We want to make sure that
-           we catch this so we assume here that we are dealing with 
+           we catch this so we assume here that we are dealing with
            the target device.  For now allocate the profile structure
-           but do not intialize the profile yet as the color info 
+           but do not intialize the profile yet as the color info
            may not be fully set up at this time.  */
         if (dev->icc_struct == NULL) {
             /* Allocate at this time the structure */
@@ -550,19 +970,19 @@ gx_default_put_graydetection(bool graydetection, gx_device * dev)
     }
     return code;
 }
-  
+
 static int
-gx_default_put_graytok(bool graytok, gx_device * dev) 
+gx_default_put_graytok(bool graytok, gx_device * dev)
 {
     int code = 0;
     cmm_dev_profile_t *profile_struct;
 
     if (dev->procs.get_profile == NULL) {
-        /* This is an odd case where the device has not yet fully been 
+        /* This is an odd case where the device has not yet fully been
            set up with its procedures yet.  We want to make sure that
-           we catch this so we assume here that we are dealing with 
+           we catch this so we assume here that we are dealing with
            the target device.  For now allocate the profile structure
-           but do not intialize the profile yet as the color info 
+           but do not intialize the profile yet as the color info
            may not be fully set up at this time.  */
         if (dev->icc_struct == NULL) {
             /* Allocate at this time the structure */
@@ -586,17 +1006,17 @@ gx_default_put_graytok(bool graytok, gx_device * dev)
 }
 
 static int
-gx_default_put_prebandthreshold(bool prebandthreshold, gx_device * dev) 
+gx_default_put_prebandthreshold(bool prebandthreshold, gx_device * dev)
 {
     int code = 0;
     cmm_dev_profile_t *profile_struct;
 
     if (dev->procs.get_profile == NULL) {
-        /* This is an odd case where the device has not yet fully been 
+        /* This is an odd case where the device has not yet fully been
            set up with its procedures yet.  We want to make sure that
-           we catch this so we assume here that we are dealing with 
+           we catch this so we assume here that we are dealing with
            the target device.  For now allocate the profile structure
-           but do not intialize the profile yet as the color info 
+           but do not intialize the profile yet as the color info
            may not be fully set up at this time.  */
         if (dev->icc_struct == NULL) {
             /* Allocate at this time the structure */
@@ -620,17 +1040,17 @@ gx_default_put_prebandthreshold(bool prebandthreshold, gx_device * dev)
 }
 
 static int
-gx_default_put_usefastcolor(bool fastcolor, gx_device * dev) 
+gx_default_put_usefastcolor(bool fastcolor, gx_device * dev)
 {
     int code = 0;
     cmm_dev_profile_t *profile_struct;
 
     if (dev->procs.get_profile == NULL) {
-        /* This is an odd case where the device has not yet fully been 
+        /* This is an odd case where the device has not yet fully been
            set up with its procedures yet.  We want to make sure that
-           we catch this so we assume here that we are dealing with 
+           we catch this so we assume here that we are dealing with
            the target device.  For now allocate the profile structure
-           but do not intialize the profile yet as the color info 
+           but do not intialize the profile yet as the color info
            may not be fully set up at this time.  */
         if (dev->icc_struct == NULL) {
             /* Allocate at this time the structure */
@@ -654,17 +1074,17 @@ gx_default_put_usefastcolor(bool fastcolor, gx_device * dev)
 }
 
 static int
-gx_default_put_simulateoverprint(bool sim_overprint, gx_device * dev) 
+gx_default_put_simulateoverprint(bool sim_overprint, gx_device * dev)
 {
     int code = 0;
     cmm_dev_profile_t *profile_struct;
 
     if (dev->procs.get_profile == NULL) {
-        /* This is an odd case where the device has not yet fully been 
+        /* This is an odd case where the device has not yet fully been
            set up with its procedures yet.  We want to make sure that
-           we catch this so we assume here that we are dealing with 
+           we catch this so we assume here that we are dealing with
            the target device.  For now allocate the profile structure
-           but do not intialize the profile yet as the color info 
+           but do not intialize the profile yet as the color info
            may not be fully set up at this time.  */
         if (dev->icc_struct == NULL) {
             /* Allocate at this time the structure */
@@ -688,16 +1108,16 @@ gx_default_put_simulateoverprint(bool sim_overprint, gx_device * dev)
 }
 
 static int
-gx_default_put_intent(gsicc_rendering_intents_t icc_intent, gx_device * dev,  
-                   gsicc_profile_types_t index) 
+gx_default_put_intent(gsicc_rendering_intents_t icc_intent, gx_device * dev,
+                   gsicc_profile_types_t index)
 {
     int code;
     cmm_dev_profile_t *profile_struct;
 
     if (dev->procs.get_profile == NULL) {
-        /* This is an odd case where the device has not yet fully been 
+        /* This is an odd case where the device has not yet fully been
            set up with its procedures yet.  We want to make sure that
-           we catch this so we assume here that we are dealing with 
+           we catch this so we assume here that we are dealing with
            the target device */
         if (dev->icc_struct == NULL) {
             /* Intializes the device structure.  Not the profile though for index */
@@ -720,16 +1140,16 @@ gx_default_put_intent(gsicc_rendering_intents_t icc_intent, gx_device * dev,
 }
 
 static int
-gx_default_put_blackpreserve(gsicc_blackpreserve_t blackpreserve, gx_device * dev,  
-                           gsicc_profile_types_t index) 
+gx_default_put_blackpreserve(gsicc_blackpreserve_t blackpreserve, gx_device * dev,
+                           gsicc_profile_types_t index)
 {
     int code;
     cmm_dev_profile_t *profile_struct;
 
     if (dev->procs.get_profile == NULL) {
-        /* This is an odd case where the device has not yet fully been 
+        /* This is an odd case where the device has not yet fully been
            set up with its procedures yet.  We want to make sure that
-           we catch this so we assume here that we are dealing with 
+           we catch this so we assume here that we are dealing with
            the target device */
         if (dev->icc_struct == NULL) {
             /* Intializes the device structure.  Not the profile though for index */
@@ -757,16 +1177,16 @@ gx_default_put_blackpreserve(gsicc_blackpreserve_t blackpreserve, gx_device * de
 
 
 static int
-gx_default_put_blackptcomp(gsicc_blackptcomp_t blackptcomp, gx_device * dev,  
-                           gsicc_profile_types_t index) 
+gx_default_put_blackptcomp(gsicc_blackptcomp_t blackptcomp, gx_device * dev,
+                           gsicc_profile_types_t index)
 {
     int code;
     cmm_dev_profile_t *profile_struct;
 
     if (dev->procs.get_profile == NULL) {
-        /* This is an odd case where the device has not yet fully been 
+        /* This is an odd case where the device has not yet fully been
            set up with its procedures yet.  We want to make sure that
-           we catch this so we assume here that we are dealing with 
+           we catch this so we assume here that we are dealing with
            the target device */
         if (dev->icc_struct == NULL) {
             /* Intializes the device structure.  Not the profile though for index */
@@ -800,7 +1220,7 @@ gx_default_put_icc_colorants(gs_param_string *colorants, gx_device * dev)
 
     /* See below about this device fill proc */
     fill_dev_proc(dev, get_profile, gx_default_get_profile);
-    tempstr = (char *) gs_alloc_bytes(dev->memory, colorants->size+1, 
+    tempstr = (char *) gs_alloc_bytes(dev->memory, colorants->size+1,
                                       "gx_default_put_icc_colorants");
     memcpy(tempstr, colorants->data, colorants->size);
     /* Set last position to NULL. */
@@ -811,8 +1231,8 @@ gx_default_put_icc_colorants(gs_param_string *colorants, gx_device * dev)
 }
 
 static int
-gx_default_put_icc(gs_param_string *icc_pro, gx_device * dev,  
-                   gsicc_profile_types_t index) 
+gx_default_put_icc(gs_param_string *icc_pro, gx_device * dev,
+                   gsicc_profile_types_t index)
 {
     char *tempstr;
     int code = 0;
@@ -826,7 +1246,7 @@ gx_default_put_icc(gs_param_string *icc_pro, gx_device * dev,
        exercise to the device start-up experts */
     fill_dev_proc(dev, get_profile, gx_default_get_profile);
     if (icc_pro->size < gp_file_name_sizeof) {
-        tempstr = (char *) gs_alloc_bytes(dev->memory, icc_pro->size+1, 
+        tempstr = (char *) gs_alloc_bytes(dev->memory, icc_pro->size+1,
                                           "gx_default_put_icc");
         if (tempstr == NULL)
             return_error(gs_error_VMerror);
@@ -873,6 +1293,9 @@ gx_default_put_params(gx_device * dev, gs_param_list * plist)
     int tab = dev->color_info.anti_alias.text_bits;
     int gab = dev->color_info.anti_alias.graphics_bits;
     int mpbm = dev->MaxPatternBitmap;
+    bool page_uses_transparency = dev->page_uses_transparency;
+    gdev_space_params sp = dev->space_params;
+    gdev_space_params save_sp = dev->space_params;
     int rend_intent[NUM_DEVICE_PROFILES];
     int blackptcomp[NUM_DEVICE_PROFILES];
     int blackpreserve[NUM_DEVICE_PROFILES];
@@ -882,12 +1305,13 @@ gx_default_put_params(gx_device * dev, gs_param_list * plist)
     bool devicegraytok = true;
     bool graydetection = false;
     bool usefastcolor = false;
-    bool sim_overprint = true;
+    bool sim_overprint = false;
     bool prebandthreshold = false;
+    bool temp_bool;
     int  profile_types[NUM_DEVICE_PROFILES] = {gsDEFAULTPROFILE,
                                                gsGRAPHICPROFILE,
                                                gsIMAGEPROFILE,
-                                               gsTEXTPROFILE}; 
+                                               gsTEXTPROFILE};
 
     if (dev->icc_struct != NULL) {
         for (k = 0; k < NUM_DEVICE_PROFILES; k++) {
@@ -1061,131 +1485,134 @@ e:	param_signal_error(plist, param_name, ecode);\
         (*dev_proc(dev, get_page_device))(dev) != 0
         ) {
         switch (code = param_read_int(plist, (param_name = "NumCopies"), &nci)) {
-        case 0:
-            if (nci < 0)
-                ecode = gs_error_rangecheck;
-            else {
-                ncset = 1;
-                break;
-            }
-            goto nce;
-        default:
-            if ((code = param_read_null(plist, param_name)) == 0) {
-                ncset = 0;
-                break;
-            }
-            ecode = code;	/* can't be 1 */
+            case 0:
+                if (nci < 0)
+                    ecode = gs_error_rangecheck;
+                else {
+                    ncset = 1;
+                    break;
+                }
+                goto nce;
+            default:
+                if ((code = param_read_null(plist, param_name)) == 0) {
+                    ncset = 0;
+                    break;
+                }
+                ecode = code;	/* can't be 1 */
 nce:
-            param_signal_error(plist, param_name, ecode);
-        case 1:
-            break;
+                param_signal_error(plist, param_name, ecode);
+            case 1:
+                break;
+        }
     }
+    /* Set the ICC output colors first */
+    if ((code = param_read_string(plist, "ICCOutputColors", &icc_pro)) != 1) {
+        gx_default_put_icc_colorants(&icc_pro, dev);
     }
-    /* Set the directory first */
     if ((code = param_read_string(plist, "OutputICCProfile", &icc_pro)) != 1) {
-        gx_default_put_icc(&icc_pro, dev, gsDEFAULTPROFILE); 
+        gx_default_put_icc(&icc_pro, dev, gsDEFAULTPROFILE);
     }
     /* Note, if a change is made to NUM_DEVICE_PROFILES we need to update
        this with the name of the profile */
     if ((code = param_read_string(plist, "GraphicICCProfile", &icc_pro)) != 1) {
-        gx_default_put_icc(&icc_pro, dev, gsGRAPHICPROFILE); 
+        gx_default_put_icc(&icc_pro, dev, gsGRAPHICPROFILE);
     }
     if ((code = param_read_string(plist, "ImageICCProfile", &icc_pro)) != 1) {
-        gx_default_put_icc(&icc_pro, dev, gsIMAGEPROFILE); 
+        gx_default_put_icc(&icc_pro, dev, gsIMAGEPROFILE);
     }
     if ((code = param_read_string(plist, "TextICCProfile", &icc_pro)) != 1) {
-        gx_default_put_icc(&icc_pro, dev, gsTEXTPROFILE); 
+        gx_default_put_icc(&icc_pro, dev, gsTEXTPROFILE);
     }
     if ((code = param_read_string(plist, "ProofProfile", &icc_pro)) != 1) {
-        gx_default_put_icc(&icc_pro, dev, gsPROOFPROFILE); 
-    }    
+        gx_default_put_icc(&icc_pro, dev, gsPROOFPROFILE);
+    }
     if ((code = param_read_string(plist, "DeviceLinkProfile", &icc_pro)) != 1) {
-        gx_default_put_icc(&icc_pro, dev, gsLINKPROFILE); 
+        gx_default_put_icc(&icc_pro, dev, gsLINKPROFILE);
     }
-    if ((code = param_read_string(plist, "ICCOutputColors", &icc_pro)) != 1) {
-        gx_default_put_icc_colorants(&icc_pro, dev);
+    if ((code = param_read_string(plist, "PostRenderProfile", &icc_pro)) != 1) {
+        gx_default_put_icc(&icc_pro, dev, gsPRPROFILE);
     }
-    if ((code = param_read_int(plist, (param_name = "RenderIntent"), 
+    if ((code = param_read_int(plist, (param_name = "RenderIntent"),
                                                     &(rend_intent[0]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
-    } 
-    if ((code = param_read_int(plist, (param_name = "GraphicIntent"), 
+    }
+    if ((code = param_read_int(plist, (param_name = "GraphicIntent"),
                                                     &(rend_intent[1]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
-    } 
-    if ((code = param_read_int(plist, (param_name = "ImageIntent"), 
+    }
+    if ((code = param_read_int(plist, (param_name = "ImageIntent"),
                                                     &(rend_intent[2]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
-    } 
-    if ((code = param_read_int(plist, (param_name = "TextIntent"), 
+    }
+    if ((code = param_read_int(plist, (param_name = "TextIntent"),
                                                     &(rend_intent[3]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
-    } 
-    if ((code = param_read_int(plist, (param_name = "BlackPtComp"), 
+    }
+    if ((code = param_read_int(plist, (param_name = "BlackPtComp"),
                                                     &(blackptcomp[0]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
-    } 
-    if ((code = param_read_int(plist, (param_name = "GraphicBlackPt"), 
+    }
+    if ((code = param_read_int(plist, (param_name = "GraphicBlackPt"),
                                                     &(blackptcomp[1]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
-    } 
-    if ((code = param_read_int(plist, (param_name = "ImageBlackPt"), 
+    }
+    if ((code = param_read_int(plist, (param_name = "ImageBlackPt"),
                                                     &(blackptcomp[2]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
-    } 
-    if ((code = param_read_int(plist, (param_name = "TextBlackPt"), 
+    }
+    if ((code = param_read_int(plist, (param_name = "TextBlackPt"),
                                                     &(blackptcomp[3]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
-    } 
-    if ((code = param_read_int(plist, (param_name = "KPreserve"), 
+    }
+    if ((code = param_read_int(plist, (param_name = "KPreserve"),
                                                     &(blackpreserve[0]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
-    } 
-    if ((code = param_read_int(plist, (param_name = "GraphicKPreserve"), 
+    }
+    if ((code = param_read_int(plist, (param_name = "GraphicKPreserve"),
                                                     &(blackpreserve[1]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
-    } 
-    if ((code = param_read_int(plist, (param_name = "ImageKPreserve"), 
+    }
+    if ((code = param_read_int(plist, (param_name = "ImageKPreserve"),
                                                     &(blackpreserve[2]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
-    } 
-    if ((code = param_read_int(plist, (param_name = "TextKPreserve"), 
+    }
+    if ((code = param_read_int(plist, (param_name = "TextKPreserve"),
                                                     &(blackpreserve[3]))) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
     }
-    if ((code = param_read_bool(plist, (param_name = "DeviceGrayToK"), 
+    if ((code = param_read_bool(plist, (param_name = "DeviceGrayToK"),
                                                         &devicegraytok)) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
     }
-    if ((code = param_read_bool(plist, (param_name = "GrayDetection"), 
+    if ((code = param_read_bool(plist, (param_name = "GrayDetection"),
                                                         &graydetection)) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
     }
-    if ((code = param_read_bool(plist, (param_name = "UseFastColor"), 
+    if ((code = param_read_bool(plist, (param_name = "UseFastColor"),
                                                         &usefastcolor)) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
     }
-    if ((code = param_read_bool(plist, (param_name = "SimulateOverprint"), 
+    if ((code = param_read_bool(plist, (param_name = "SimulateOverprint"),
                                                         &sim_overprint)) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
     }
-    if ((code = param_read_bool(plist, (param_name = "PreBandThreshold"), 
+    if ((code = param_read_bool(plist, (param_name = "PreBandThreshold"),
                                                         &prebandthreshold)) < 0) {
         ecode = code;
         param_signal_error(plist, param_name, ecode);
@@ -1200,6 +1627,44 @@ nce:
         ecode = code;
     if ((code = param_read_int(plist, "MaxPatternBitmap", &mpbm)) < 0)
         ecode = code;
+    if ((code = param_read_bool(plist, (param_name = "PageUsesTransparency"),
+                                &page_uses_transparency)) < 0) {
+        ecode = code;
+        param_signal_error(plist, param_name, ecode);
+    }
+    if ((code = param_read_long(plist, "MaxBitmap", &sp.MaxBitmap)) < 0)
+        ecode = code;
+
+#define CHECK_PARAM_CASES(member, bad, label)\
+    case 0:\
+        if ((sp.params_are_read_only ? sp.member != save_sp.member : bad))\
+            ecode = gs_error_rangecheck;\
+        else\
+            break;\
+        goto label;\
+    default:\
+        ecode = code;\
+label:\
+        param_signal_error(plist, param_name, ecode);\
+    case 1:\
+        break
+
+    switch (code = param_read_long(plist, (param_name = "BufferSpace"), &sp.BufferSpace)) {
+        CHECK_PARAM_CASES(BufferSpace, sp.BufferSpace < 10000, bse);
+    }
+
+    switch (code = param_read_int(plist, (param_name = "BandWidth"), &sp.band.BandWidth)) {
+        CHECK_PARAM_CASES(band.BandWidth, sp.band.BandWidth < 0, bwe);
+    }
+
+    switch (code = param_read_int(plist, (param_name = "BandHeight"), &sp.band.BandHeight)) {
+        CHECK_PARAM_CASES(band.BandHeight, sp.band.BandHeight < 0, bhe);
+    }
+
+    switch (code = param_read_long(plist, (param_name = "BandBufferSpace"), &sp.band.BandBufferSpace)) {
+        CHECK_PARAM_CASES(band.BandBufferSpace, sp.band.BandBufferSpace < 0, bbse);
+    }
+
 
     switch (code = param_read_bool(plist, (param_name = ".LockSafetyParams"), &locksafe)) {
         case 0:
@@ -1275,8 +1740,10 @@ nce:
         ecode = code;
     if ((code = param_check_int(plist, "GrayValues", GrayValues, true)) < 0)
         ecode = code;
-    if ((code = param_check_long(plist, "PageCount", dev->PageCount, true)) < 0)
-        ecode = code;
+
+    /* with saved-pages, PageCount can't be checked. No harm in letting it change */
+    IGNORE_INT_PARAM("PageCount")
+
     if ((code = param_check_int(plist, "RedValues", RGBValues, true)) < 0)
         ecode = code;
     if ((code = param_check_int(plist, "GreenValues", RGBValues, true)) < 0)
@@ -1295,6 +1762,50 @@ nce:
             code = param_check_bytes(plist, "HWColorMap", 0, 0, false);
         if (code < 0)
             ecode = code;
+    }
+
+    code = param_read_int(plist, "FirstPage", &dev->FirstPage);
+    if (code < 0)
+        ecode = code;
+
+    code = param_read_int(plist,  "LastPage", &dev->LastPage);
+    if (code < 0)
+        ecode = code;
+
+    code = param_read_bool(plist, "DisablePageHandler", &temp_bool);
+    if (code < 0)
+        ecode = code;
+    if (code == 0)
+        dev->DisablePageHandler = temp_bool;
+
+    code = param_read_bool(plist, "FILTERIMAGE", &temp_bool);
+    if (code < 0)
+        ecode = code;
+    if (code == 0) {
+        if (temp_bool)
+            dev->ObjectFilter |= FILTERIMAGE;
+        else
+            dev->ObjectFilter &= ~FILTERIMAGE;
+    }
+
+    code = param_read_bool(plist, "FILTERTEXT", &temp_bool);
+    if (code < 0)
+        ecode = code;
+    if (code == 0) {
+        if (temp_bool)
+            dev->ObjectFilter |= FILTERTEXT;
+        else
+            dev->ObjectFilter &= ~FILTERTEXT;
+    }
+
+    code = param_read_bool(plist, "FILTERVECTOR", &temp_bool);
+    if (code < 0)
+        ecode = code;
+    if (code == 0) {
+        if (temp_bool)
+            dev->ObjectFilter |= FILTERVECTOR;
+        else
+            dev->ObjectFilter &= ~FILTERVECTOR;
     }
 
     /* We must 'commit', in order to detect unknown parameters, */
@@ -1381,13 +1892,15 @@ nce:
                         dev->color_info.max_color), gab);
     dev->LockSafetyParams = locksafe;
     dev->MaxPatternBitmap = mpbm;
+    dev->space_params = sp;
+    dev->page_uses_transparency = page_uses_transparency;
     gx_device_decache_colors(dev);
 
     /* Take care of the rendering intents and blackpts.  For those that
        are not set special, the default provides an override */
     if (dev->icc_struct != NULL) {
         /* Set the default object */
-        code = gx_default_put_intent(rend_intent[0], dev, gsDEFAULTPROFILE); 
+        code = gx_default_put_intent(rend_intent[0], dev, gsDEFAULTPROFILE);
         if (code < 0)
             return code;
         code = gx_default_put_blackptcomp(blackptcomp[0], dev, gsDEFAULTPROFILE);
@@ -1437,7 +1950,8 @@ nce:
     code = gx_default_put_graydetection(graydetection, dev);
     if (code < 0)
         return code;
-    return gx_default_put_prebandthreshold(prebandthreshold, dev);}
+    return gx_default_put_prebandthreshold(prebandthreshold, dev);
+}
 
 void
 gx_device_request_leadingedge(gx_device *dev, int le_req)

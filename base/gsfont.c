@@ -264,7 +264,7 @@ gs_font_dir_alloc2_limits(gs_memory_t * struct_mem, gs_memory_t * bits_mem,
     pdir->smax = smax;
     pdir->align_to_pixels = false;
     pdir->glyph_to_unicode_table = NULL;
-    pdir->grid_fit_tt = 2;
+    pdir->grid_fit_tt = 1;
     pdir->memory = struct_mem;
     pdir->tti = 0;
     pdir->ttm = 0;
@@ -442,7 +442,7 @@ gs_font_find_similar(const gs_font_dir * pdir, const gs_font **ppfont,
 
 /* scalefont */
 int
-gs_scalefont(gs_font_dir * pdir, const gs_font * pfont, floatp scale,
+gs_scalefont(gs_font_dir * pdir, const gs_font * pfont, double scale,
              gs_font ** ppfont)
 {
     gs_matrix mat;

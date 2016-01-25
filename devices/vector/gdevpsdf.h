@@ -60,7 +60,12 @@ typedef struct psdf_image_params_s {
     bool Encode;
     const char *Filter;
     int Resolution;
-    const char *AutoFilterStrategy;
+    enum psdf_autofilter_type {
+        af_Jpeg,
+        af_Jpeg2000
+    } AutoFilterStrategy;
+#define psdf_afs_names\
+        "JPEG", "JPEG2000"
     const stream_template *filter_template;
 } psdf_image_params;
 
@@ -169,7 +174,8 @@ typedef struct psdf_distiller_params_s {
     bool EmbedAllFonts;
     int MaxSubsetPct;
     bool SubsetFonts;
-
+    gs_param_string PSDocOptions;
+    gs_param_string_array PSPageOptions;
 } psdf_distiller_params;
 
 /* Declare templates for default image compression filters. */
@@ -210,11 +216,11 @@ extern const stream_template s_zlibE_template;
     NULL,	    /* Dict (JPEG or CCITTFax) */ \
     0,		    /* Downsample (false) */ \
     1.5,	    /* Donwsample threshold */ \
-    ds_Subsample,   /* Downsample type */ \
+    ds_Bicubic,   /* Downsample type */ \
     1,		    /* Encode (true) */ \
-    0,  /* compression filter */ \
+    0,  /* compression biccufilter */ \
     150,	    /* Downsample resolution */ \
-    "JPEG2000",	    /* AutoFilterStrategy */ \
+    af_Jpeg,	    /* AutoFilterStrategy */ \
     &s_zlibE_template	/* Filter stream template */ \
     },  0,	    /* ConvertCMYKImagesToRGB (false) */ \
     1		    /* ConvertImagesToIndexed (true) */
@@ -231,7 +237,7 @@ extern const stream_template s_zlibE_template;
     1,		    /* Encode (true) */ \
     0,  /* compression filter */ \
     150,	    /* Downsample resolution */ \
-    "JPEG2000",	    /* AutoFilterStrategy */ \
+    af_Jpeg,	    /* AutoFilterStrategy */ \
     &s_zlibE_template	/* Filter stream template */ \
      }
 
@@ -247,7 +253,7 @@ extern const stream_template s_zlibE_template;
     1,		    /* Encode (true) */ \
     "CCITTFaxEncode",  /* compression filter */ \
     300,	    /* Downsample resolution */ \
-    "JPEG2000",	    /* AutoFilterStrategy */ \
+    af_Jpeg,	    /* AutoFilterStrategy */ \
     &s_CFE_template	/* Filter stream template */ \
     }
 
@@ -257,7 +263,11 @@ extern const stream_template s_zlibE_template;
     cefp_Warning,   /* CannotEmbedFontPolicy */ \
     1,		    /* EmbedAllFonts (true) */ \
     100,	    /* Max Subset Percent */ \
-    1		    /* Subset Fonts (true) */
+    1		    /* Subset Fonts (true) */\
+
+#define psdf_PSOption_param_defaults\
+    {0},        /* PSDocOptions */\
+    {0}         /* PSPageOptions */
 
 /* Define PostScript/PDF versions, corresponding roughly to Adobe versions. */
 typedef enum {
@@ -296,7 +306,8 @@ typedef struct gx_device_psdf_s {
            psdf_color_image_param_defaults,\
            psdf_gray_image_param_defaults,\
            psdf_mono_image_param_defaults,\
-           psdf_font_param_defaults\
+           psdf_font_param_defaults,\
+           psdf_PSOption_param_defaults\
          }
 /* st_device_psdf is never instantiated per se, but we still need to */
 /* extern its descriptor for the sake of subclasses. */
@@ -314,27 +325,31 @@ extern_st(st_device_psdf);
     GC_OBJ_ELT2(gx_device_psdf, params.MonoImage.ACSDict,\
                 params.MonoImage.Dict),\
     GC_OBJ_ELT2(gx_device_psdf, params.AlwaysEmbed.data,\
-                params.NeverEmbed.data)\
+                params.NeverEmbed.data),\
+    GC_CONST_STRING_ELT(gx_device_psdf, params.PSDocOptions),\
+    GC_OBJ_ELT(gx_device_psdf, params.PSPageOptions.data)\
   };\
   gs_public_st_basic_super_final(st_device_psdf, gx_device_psdf,\
     "gx_device_psdf", device_psdf_ptrs, device_psdf_data,\
     &st_device_vector, 0, gx_device_finalize)
-#define st_device_psdf_max_ptrs (st_device_vector_max_ptrs + 12)
+#define st_device_psdf_max_ptrs (st_device_vector_max_ptrs + 14)
 
 /* Get/put parameters. */
+int gdev_psdf_get_param(gx_device *dev, char *Param, void *list);
 dev_proc_get_params(gdev_psdf_get_params);
 dev_proc_put_params(gdev_psdf_put_params);
 
+dev_proc_dev_spec_op(gdev_psdf_dev_spec_op);
 /* ---------------- Vector implementation procedures ---------------- */
 
         /* Imager state */
-int psdf_setlinewidth(gx_device_vector * vdev, floatp width);
+int psdf_setlinewidth(gx_device_vector * vdev, double width);
 int psdf_setlinecap(gx_device_vector * vdev, gs_line_cap cap);
 int psdf_setlinejoin(gx_device_vector * vdev, gs_line_join join);
-int psdf_setmiterlimit(gx_device_vector * vdev, floatp limit);
+int psdf_setmiterlimit(gx_device_vector * vdev, double limit);
 int psdf_setdash(gx_device_vector * vdev, const float *pattern,
-                 uint count, floatp offset);
-int psdf_setflat(gx_device_vector * vdev, floatp flatness);
+                 uint count, double offset);
+int psdf_setflat(gx_device_vector * vdev, double flatness);
 int psdf_setlogop(gx_device_vector * vdev, gs_logical_operation_t lop,
                   gs_logical_operation_t diff);
 
@@ -343,15 +358,15 @@ int psdf_setlogop(gx_device_vector * vdev, gs_logical_operation_t lop,
 int psdf_dorect(gx_device_vector * vdev, fixed x0, fixed y0, fixed x1,
                 fixed y1, gx_path_type_t type);
 int psdf_beginpath(gx_device_vector * vdev, gx_path_type_t type);
-int psdf_moveto(gx_device_vector * vdev, floatp x0, floatp y0,
-                floatp x, floatp y, gx_path_type_t type);
-int psdf_lineto(gx_device_vector * vdev, floatp x0, floatp y0,
-                floatp x, floatp y, gx_path_type_t type);
-int psdf_curveto(gx_device_vector * vdev, floatp x0, floatp y0,
-                 floatp x1, floatp y1, floatp x2,
-                 floatp y2, floatp x3, floatp y3, gx_path_type_t type);
-int psdf_closepath(gx_device_vector * vdev, floatp x0, floatp y0,
-                   floatp x_start, floatp y_start, gx_path_type_t type);
+int psdf_moveto(gx_device_vector * vdev, double x0, double y0,
+                double x, double y, gx_path_type_t type);
+int psdf_lineto(gx_device_vector * vdev, double x0, double y0,
+                double x, double y, gx_path_type_t type);
+int psdf_curveto(gx_device_vector * vdev, double x0, double y0,
+                 double x1, double y1, double x2,
+                 double y2, double x3, double y3, gx_path_type_t type);
+int psdf_closepath(gx_device_vector * vdev, double x0, double y0,
+                   double x_start, double y_start, gx_path_type_t type);
 
 /* ---------------- Binary (image) data procedures ---------------- */
 
@@ -481,7 +496,7 @@ gx_color_index psdf_adjust_color_index(gx_device_vector *vdev,
 
 /* Set the fill or stroke color. */
 int psdf_set_color(gx_device_vector *vdev, const gx_drawing_color *pdc,
-                   const psdf_set_color_commands_t *ppscc);
+                   const psdf_set_color_commands_t *ppscc, bool UseOldColor);
 /* Round a double value to a specified precision. */
 double psdf_round(double v, int precision, int radix);
 

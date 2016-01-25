@@ -241,7 +241,7 @@ pdf_make_bitmap_matrix(gs_matrix * pmat, int x, int y, int w, int h,
  */
 void
 pdf_put_image_matrix(gx_device_pdf * pdev, const gs_matrix * pmat,
-                     floatp y_scale)
+                     double y_scale)
 {
     gs_matrix imat = {1, 0, 0, 1, 0 ,0};
 
@@ -449,7 +449,7 @@ pdf_end_image_binary(gx_device_pdf *pdev, pdf_image_writer *piw, int data_h)
         code = psdf_end_binary(&piw->binary[0]);
     /* If the image ended prematurely, update the Height. */
     if (data_h != piw->height) {
-        char data[255];
+        char data[256];
         int OutHeight;
         cos_value_t *value;
         value = (cos_value_t *)cos_dict_find(cos_stream_dict(piw->data),

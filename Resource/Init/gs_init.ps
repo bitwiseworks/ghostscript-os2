@@ -29,7 +29,7 @@
 % Interpreter library version number
 % NOTE: the interpreter code requires that the first non-comment token
 % in this file be an integer, and that it match the compiled-in version!
-910
+918
 
 % Check the interpreter revision.
 dup revision ne
@@ -188,6 +188,8 @@ currentdict /TTYPAUSE known   /TTYPAUSE exch def
 currentdict /WRITESYSTEMDICT known   /WRITESYSTEMDICT exch def
 currentdict /RENDERTTNOTDEF known /RENDERTTNOTDEF exch def
 
+% We rely on PSFitPage to actually implement EPSFitPage
+currentdict /EPSFitPage known { /PSFitPage //true def } if
 % This is a "convenience" option that sets a combination of EPSFitPage, PDFFitPage and PSFitPage
 currentdict /FitPage known { /EPSFitPage //true def /PDFFitPage //true def /PSFitPage //true def } if
 
@@ -282,6 +284,9 @@ QUIET not { printgreeting flush } if
 % regardless of the contents of the dictionary stack.
 /.systemvar {		% <name> .systemvar <value>
   //systemdict exch get
+} .bind odef
+/.systemexec {
+  .systemvar exec
 } .bind odef
 /.userdict {		% - .userdict <dict>
   /userdict .systemvar
@@ -520,7 +525,6 @@ userdict /.echo.mode //true put
         0 .argindex type dup /integertype eq exch /realtype eq or not {
           /setdash .systemvar /typecheck signalerror
         } if
-        1 .argindex length 11 gt { /setdash .systemvar /limitcheck signalerror } if
         //setdash
 } odef
 /setdevice

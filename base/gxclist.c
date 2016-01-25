@@ -50,11 +50,13 @@ extern_st(st_imager_state);
 static
 ENUM_PTRS_WITH(device_clist_enum_ptrs, gx_device_clist *cdev)
     if (index < st_device_forward_max_ptrs) {
-        gs_ptr_type_t ret = ENUM_USING_PREFIX(st_device_forward, 0);
+        gs_ptr_type_t ret = ENUM_USING_PREFIX(st_device_forward, st_device_max_ptrs);
 
         return (ret ? ret : ENUM_OBJ(0));
     }
     index -= st_device_forward_max_ptrs;
+    /* RJW: We do not enumerate icc_cache_cl or icc_cache_list as they
+     * are allocated in non gc space */
     if (CLIST_IS_WRITER(cdev)) {
         switch (index) {
         case 0: return ENUM_OBJ((cdev->writer.image_enum_id != gs_no_id ?
@@ -64,7 +66,6 @@ ENUM_PTRS_WITH(device_clist_enum_ptrs, gx_device_clist *cdev)
         case 2: return ENUM_OBJ(cdev->writer.pinst);
         case 3: return ENUM_OBJ(cdev->writer.cropping_stack);
         case 4: return ENUM_OBJ(cdev->writer.icc_table);
-        case 5: return ENUM_OBJ(cdev->writer.icc_cache_cl);
         default:
         return ENUM_USING(st_imager_state, &cdev->writer.imager_state,
                   sizeof(gs_imager_state), index - 5);
@@ -83,8 +84,6 @@ ENUM_PTRS_WITH(device_clist_enum_ptrs, gx_device_clist *cdev)
         else if (index == 1)
             return ENUM_OBJ(cdev->reader.icc_table);
         else if (index == 2)
-            return ENUM_OBJ(cdev->reader.icc_cache_cl);
-        else if (index == 3)
             return ENUM_OBJ(cdev->reader.color_usage_array);
         else
             return 0;
@@ -93,6 +92,7 @@ ENUM_PTRS_END
 static
 RELOC_PTRS_WITH(device_clist_reloc_ptrs, gx_device_clist *cdev)
 {
+    int i;
     RELOC_PREFIX(st_device_forward);
     if (CLIST_IS_WRITER(cdev)) {
         if (cdev->writer.image_enum_id != gs_no_id) {
@@ -102,7 +102,6 @@ RELOC_PTRS_WITH(device_clist_reloc_ptrs, gx_device_clist *cdev)
         RELOC_VAR(cdev->writer.pinst);
         RELOC_VAR(cdev->writer.cropping_stack);
         RELOC_VAR(cdev->writer.icc_table);
-        RELOC_VAR(cdev->writer.icc_cache_cl);
         RELOC_USING(st_imager_state, &cdev->writer.imager_state,
             sizeof(gs_imager_state));
     } else {
@@ -112,7 +111,6 @@ RELOC_PTRS_WITH(device_clist_reloc_ptrs, gx_device_clist *cdev)
          */
         RELOC_VAR(cdev->reader.offset_map);
         RELOC_VAR(cdev->reader.icc_table);
-        RELOC_VAR(cdev->reader.icc_cache_cl);
         RELOC_VAR(cdev->reader.color_usage_array);
     }
 } RELOC_PTRS_END
@@ -123,7 +121,7 @@ private_st_clist_icctable();
 
 /* Forward declarations of driver procedures */
 dev_proc_open_device(clist_open);
-static dev_proc_output_page(clist_output_page);
+dev_proc_output_page(clist_output_page);
 static dev_proc_close_device(clist_close);
 static dev_proc_get_band(clist_get_band);
 /* Driver procedures defined in other files are declared in gxcldev.h. */
@@ -205,6 +203,7 @@ const gx_device_procs gs_clist_device_procs = {
     clist_strip_copy_rop2,
     clist_strip_tile_rect_devn,
     clist_copy_alpha_hl_color,
+    clist_process_page,
 };
 
 /*------------------- Choose the implementation -----------------------
@@ -311,8 +310,8 @@ clist_init_tile_cache(gx_device * dev, byte * init_data, ulong data_size)
     cdev->tile_table = (tile_hash *) data;
     data += hsize;
     bits_size -= hsize;
-    gx_bits_cache_chunk_init(&cdev->chunk, data, bits_size);
-    gx_bits_cache_init(&cdev->bits, &cdev->chunk);
+    gx_bits_cache_chunk_init(cdev->cache_chunk, data, bits_size);
+    gx_bits_cache_init(&cdev->bits, cdev->cache_chunk);
     return 0;
 }
 
@@ -425,34 +424,50 @@ clist_init_data(gx_device * dev, byte * init_data, uint data_size)
         cdev->disable_mask |= clist_disable_copy_alpha;
     if (cdev->procs.open_device == pattern_clist_open_device) {
         bits_size = data_size / 2;
-    } else if (band_height) {
-        /*
-         * The band height is fixed, so the band buffer requirement
-         * is completely determined.
-         */
-        ulong band_data_size;
-
-        if (gdev_mem_data_size(&bdev, band_width, band_height, &band_data_size) < 0 ||
-            band_data_size >= band_space) {
-            if (pbdev->finalize)
-                pbdev->finalize(pbdev);
-            return_error(gs_error_rangecheck);
-        }
-        bits_size = min(band_space - band_data_size, data_size >> 1);
+        cdev->page_line_ptrs_offset = 0;
     } else {
-        /*
-         * Choose the largest band height that will fit in the
-         * rendering-time buffer.
-         */
-        bits_size = clist_tile_cache_size(target, band_space);
-        bits_size = min(bits_size, data_size >> 1);
-        band_height = gdev_mem_max_height(&bdev, band_width,
-                          band_space - bits_size, page_uses_transparency);
-        if (band_height == 0) {
-            if (pbdev->finalize)
-                pbdev->finalize(pbdev);
-            return_error(gs_error_rangecheck);
+        if (band_height) {
+            /*
+             * The band height is fixed, so the band buffer requirement
+             * is completely determined.
+             */
+            ulong band_data_size;
+            int adjusted;
+
+            adjusted = (dev_proc(dev, dev_spec_op)(dev, gxdso_adjust_bandheight, NULL, band_height));
+            if (adjusted > 0)
+                band_height = adjusted;
+
+            if (gdev_mem_data_size(&bdev, band_width, band_height, &band_data_size) < 0 ||
+                band_data_size >= band_space) {
+                if (pbdev->finalize)
+                    pbdev->finalize(pbdev);
+                return_error(gs_error_rangecheck);
+            }
+            bits_size = min(band_space - band_data_size, data_size >> 1);
+        } else {
+            int adjusted;
+            /*
+             * Choose the largest band height that will fit in the
+             * rendering-time buffer.
+             */
+            bits_size = clist_tile_cache_size(target, band_space);
+            bits_size = min(bits_size, data_size >> 1);
+            band_height = gdev_mem_max_height(&bdev, band_width,
+                              band_space - bits_size, page_uses_transparency);
+            if (band_height == 0) {
+                if (pbdev->finalize)
+                    pbdev->finalize(pbdev);
+                return_error(gs_error_rangecheck);
+            }
+            adjusted = (dev_proc(dev, dev_spec_op)(dev, gxdso_adjust_bandheight, NULL, band_height));
+            if (adjusted > 0)
+                band_height = adjusted;
         }
+        /* The above calculated bits_size's include space for line ptrs. What is
+         * the offset for the line_ptrs within the buffer? */
+        if (gdev_mem_bits_size(&bdev, band_width, band_height, &cdev->page_line_ptrs_offset) < 0)
+            return_error(gs_error_VMerror);
     }
     cdev->ins_count = 0;
     code = clist_init_tile_cache(dev, data, bits_size);
@@ -673,10 +688,12 @@ clist_close_page_info(gx_band_page_info_t *ppi)
     if (ppi->cfile != NULL) {
         ppi->io_procs->fclose(ppi->cfile, ppi->cfname, true);
         ppi->cfile = NULL;
+        ppi->cfname[0] = 0;     /* prevent re-use in case this is a fake path */
     }
     if (ppi->bfile != NULL) {
         ppi->io_procs->fclose(ppi->bfile, ppi->bfname, true);
         ppi->bfile = NULL;
+        ppi->bfname[0] = 0;     /* prevent re-use in case this is a fake path */
     }
     return 0;
 }
@@ -692,20 +709,6 @@ clist_close_output_file(gx_device *dev)
     return clist_close_page_info(&cdev->page_info);
 }
 
-static void
-clist_set_planar(gx_device *dev)
-{
-    gx_device_clist_common * cdev = &((gx_device_clist *)dev)->common;
-    int ret;
-
-    ret = dev_proc(dev, dev_spec_op)(dev, gxdso_is_native_planar, NULL, 0);
-    if (ret > 0) {
-        cdev->is_planar = ret;
-    } else {
-        cdev->is_planar = 0;
-    }
-}
-
 /* Open the device by initializing the device state and opening the */
 /* scratch files. */
 int
@@ -718,23 +721,44 @@ clist_open(gx_device *dev)
 
     cdev->permanent_error = 0;
     cdev->is_open = false;
-    clist_set_planar(dev);
+
+    cdev->cache_chunk = (gx_bits_cache_chunk *)gs_alloc_bytes(cdev->memory->non_gc_memory, sizeof(gx_bits_cache_chunk), "alloc tile cache for clist");
+    if (!cdev->cache_chunk)
+        return_error(gs_error_VMerror);
+    memset(cdev->cache_chunk, 0x00, sizeof(gx_bits_cache_chunk));
+
     code = clist_init(dev);
     if (code < 0)
         return code;
+    cdev->icc_cache_list_len = 0;
+    cdev->icc_cache_list = NULL;
     code = clist_open_output_file(dev);
     if ( code >= 0)
         code = clist_emit_page_header(dev);
     if (code >= 0)
        dev->is_open = save_is_open;
-     return code;
+
+    return code;
 }
 
 static int
 clist_close(gx_device *dev)
 {
+    int i;
     gx_device_clist_writer * const cdev =
         &((gx_device_clist *)dev)->writer;
+
+    /* I'd like to free the cache chunk in here, but we can't, because the pattern clist
+     * device gets closed, but not discarded, later it gets run. So we have to free the memory
+     * in *2* places, once in gdev_prn_tear_down() for regular clists, and once in
+     * gx_pattern_cache_free_entry() for pattern clists....
+     */
+    for(i = 0; i < cdev->icc_cache_list_len; i++) {
+        rc_decrement(cdev->icc_cache_list[i], "clist_close");
+    }
+    cdev->icc_cache_list_len = 0;
+    gs_free_object(cdev->memory->thread_safe_memory, cdev->icc_cache_list, "clist_close");
+    cdev->icc_cache_list = NULL;
 
     if (cdev->do_not_open_or_close_bandfiles)
         return 0;
@@ -746,7 +770,7 @@ clist_close(gx_device *dev)
 }
 
 /* The output_page procedure should never be called! */
-static int
+int
 clist_output_page(gx_device * dev, int num_copies, int flush)
 {
     return_error(gs_error_Fatal);
@@ -776,8 +800,10 @@ clist_finish_page(gx_device *dev, bool flush)
            the above call to clist_teardown_render_threads.  Since they
            all maintained a copy of the cache and the table there should not
            be any issues. */
-        clist_icc_freetable(crdev->icc_table, crdev->memory);
+        clist_free_icc_table(crdev->icc_table, crdev->memory);
+        crdev->icc_table = NULL;
         rc_decrement(crdev->icc_cache_cl,"clist_finish_page");
+        crdev->icc_cache_cl = NULL;
     }
     if (flush) {
         if (cdev->page_cfile != 0)
@@ -817,7 +843,7 @@ clist_end_page(gx_device_clist_writer * cldev)
         /* Save the table */
         code = clist_icc_writetable(cldev);
         /* Free the table */
-        clist_icc_freetable(cldev->icc_table, cldev->memory);
+        clist_free_icc_table(cldev->icc_table, cldev->memory);
         cldev->icc_table = NULL;
     }
     if (code >= 0)
@@ -1026,24 +1052,39 @@ clist_icc_searchtable(gx_device_clist_writer *cdev, int64_t hashcode)
      return(false);  /* No entry */
 }
 
-/* Free the table */
-int
-clist_icc_freetable(clist_icctable_t *icc_table, gs_memory_t *memory)
+static void
+clist_free_icc_table_contents(clist_icctable_t *icc_table)
 {
     int number_entries;
     clist_icctable_entry_t *curr_entry, *next_entry;
     int k;
 
-    if (icc_table == NULL)
-        return(0);
     number_entries = icc_table->tablesize;
     curr_entry = icc_table->head;
     for (k = 0; k < number_entries; k++) {
         next_entry = curr_entry->next;
-        gs_free_object(icc_table->memory, curr_entry, "clist_icc_freetable");
+        rc_decrement(curr_entry->icc_profile, "clist_free_icc_table");
+        gs_free_object(icc_table->memory, curr_entry, "clist_free_icc_table");
         curr_entry = next_entry;
     }
-    gs_free_object(icc_table->memory, icc_table, "clist_icc_freetable");
+}
+
+void
+clist_icc_table_finalize(const gs_memory_t *memory, void * vptr)
+{
+    clist_icctable_t *icc_table = (clist_icctable_t *)vptr;
+
+    clist_free_icc_table_contents(icc_table);
+}
+
+/* Free the table */
+int
+clist_free_icc_table(clist_icctable_t *icc_table, gs_memory_t *memory)
+{
+    if (icc_table == NULL)
+        return(0);
+
+    gs_free_object(icc_table->memory, icc_table, "clist_free_icc_table");
     return(0);
 }
 
@@ -1357,4 +1398,87 @@ clist_put_data(const gx_device_clist *cdev, int select, int64_t offset, const by
     /* This assumes that fwrite_chars doesn't return prematurely
        when the buffer is not fully written, except with an error. */
     return pinfo->io_procs->fwrite_chars(buf, length, pfile);
+}
+
+gx_device_clist *
+clist_make_accum_device(gx_device *target, const char *dname, void *base, int space,
+                        gx_device_buf_procs_t *buf_procs, gx_band_params_t *band_params,
+                        bool use_memory_clist, bool uses_transparency,
+                        gs_pattern1_instance_t *pinst)
+{
+        gs_memory_t *mem = target->memory;
+        gx_device_clist *cdev = gs_alloc_struct(mem, gx_device_clist,
+                        &st_device_clist, "clist_make_accum_device");
+        gx_device_clist_writer *cwdev = (gx_device_clist_writer *)cdev;
+
+        if (cdev == 0)
+            return 0;
+        memset(cdev, 0, sizeof(*cdev));
+        cwdev->params_size = sizeof(gx_device_clist);
+        cwdev->static_procs = NULL;
+        cwdev->dname = dname;
+        cwdev->memory = mem;
+        cwdev->stype = &st_device_clist;
+        cwdev->stype_is_dynamic = false;
+        rc_init(cwdev, mem, 1);
+        cwdev->retained = true;
+        cwdev->is_open = false;
+        cwdev->color_info = target->color_info;
+        cwdev->pinst = pinst;
+        cwdev->cached_colors = target->cached_colors;
+        if (pinst != NULL) {
+            cwdev->width = pinst->size.x;
+            cwdev->height = pinst->size.y;
+            cwdev->band_params.BandHeight = pinst->size.y;
+        } else {
+            cwdev->width = target->width;
+            cwdev->height = target->height;
+        }
+        cwdev->LeadingEdge = target->LeadingEdge;
+        cwdev->is_planar = target->is_planar;
+        cwdev->HWResolution[0] = target->HWResolution[0];
+        cwdev->HWResolution[1] = target->HWResolution[1];
+        cwdev->icc_cache_cl = NULL;
+        cwdev->icc_table = NULL;
+        cwdev->UseCIEColor = target->UseCIEColor;
+        cwdev->LockSafetyParams = true;
+        cwdev->procs = gs_clist_device_procs;
+        gx_device_copy_color_params((gx_device *)cwdev, target);
+        rc_assign(cwdev->target, target, "clist_make_accum_device");
+        clist_init_io_procs(cdev, use_memory_clist);
+        cwdev->data = base;
+        cwdev->data_size = space;
+        memcpy (&(cwdev->buf_procs), buf_procs, sizeof(gx_device_buf_procs_t));
+        cwdev->page_uses_transparency = uses_transparency;
+        cwdev->band_params.BandWidth = cwdev->width;
+        cwdev->band_params.BandBufferSpace = 0;
+        cwdev->do_not_open_or_close_bandfiles = false;
+        cwdev->bandlist_memory = mem->non_gc_memory;
+        set_dev_proc(cwdev, get_clipping_box, gx_default_get_clipping_box);
+        set_dev_proc(cwdev, get_profile, gx_forward_get_profile);
+        set_dev_proc(cwdev, set_graphics_type_tag, gx_forward_set_graphics_type_tag);
+        cwdev->graphics_type_tag = target->graphics_type_tag;	/* initialize to same as target */
+
+        /* to be set by caller: cwdev->finalize = finalize; */
+
+        /* Fields left zeroed :
+            int   max_fill_band;
+            int   is_printer;
+            float MediaSize[2];
+            float ImagingBBox[4];
+            bool  ImagingBBox_set;
+            float MarginsHWResolution[2];
+            float Margins[2];
+            float HWMargins[4];
+            long  PageCount;
+            long  ShowpageCount;
+            int   NumCopies;
+            bool  NumCopies_set;
+            bool  IgnoreNumCopies;
+            int   disable_mask;
+            gx_page_device_procs page_procs;
+            proc_free_up_bandlist_memory *free_up_bandlist_memory;
+
+        */
+        return cdev;
 }

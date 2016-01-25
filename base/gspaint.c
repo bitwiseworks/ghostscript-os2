@@ -33,6 +33,7 @@
 #include "gxhldevc.h"
 #include "gsutil.h"
 #include "gxdevsop.h"
+#include "gsicc_cms.h"
 
 /* Define the nominal size for alpha buffers. */
 #define abuf_nominal_SMALL 500
@@ -74,10 +75,13 @@ gs_fillpage(gs_state * pgs)
 {
     gx_device *dev = gs_currentdevice(pgs);
     int code;
+    gx_cm_color_map_procs *   pprocs;
 
+    pprocs = get_color_mapping_procs_subclass(dev);
     /* If we get here without a valid get_color_mapping_procs, fail */
-    if (dev_proc(dev, get_color_mapping_procs) == NULL ||
-        dev_proc(dev, get_color_mapping_procs) == gx_error_get_color_mapping_procs) {
+    if (pprocs == NULL ||
+        /* Deliberately use the terminal device here */
+        dev_proc(dev, get_color_mapping_procs) ==  gx_error_get_color_mapping_procs) {
         emprintf1(dev->memory,
                   "\n   *** Error: No get_color_mapping_procs for device: %s\n",
                   dev->dname);
@@ -92,6 +96,15 @@ gs_fillpage(gs_state * pgs)
 
     code = (*dev_proc(dev, fillpage))(dev, (gs_imager_state *)pgs,
                                       gs_currentdevicecolor_inline(pgs));
+    if (code < 0)
+        return code;
+
+    /* If GrayDetection is set, make sure monitoring is enabled. */
+    if (dev->icc_struct != NULL &&
+            dev->icc_struct->graydetection && !dev->icc_struct->pageneutralcolor) {
+        dev->icc_struct->pageneutralcolor = true;	/* start detecting again */
+        gsicc_mcm_begin_monitor(pgs->icc_link_cache, dev);
+    }
     if (code < 0)
         return code;
     return (*dev_proc(dev, sync_output)) (dev);
@@ -160,7 +173,7 @@ scale_paths(gs_state * pgs, int log2_scale_x, int log2_scale_y, bool do_path)
     return 0;
 }
 static void
-scale_dash_pattern(gs_state * pgs, floatp scale)
+scale_dash_pattern(gs_state * pgs, double scale)
 {
     int i;
 
@@ -205,7 +218,7 @@ alpha_buffer_init(gs_state * pgs, fixed extra_x, fixed extra_y, int alpha_bits,
         return 0;		/* if no room, don't buffer */
     /* We may have to update the marking parameters if we have a pdf14 device
        as our target.  Need to do while dev is still active in pgs */
-    if (dev_proc(dev, dev_spec_op)(dev, gxdso_is_pdf14_device, NULL, 0)) {
+    if (dev_proc(dev, dev_spec_op)(dev, gxdso_is_pdf14_device, NULL, 0) > 0) {
         gs_update_trans_marking_params(pgs);
     }
     gs_make_mem_abuf_device(mdev, mem, dev, &log2_scale,

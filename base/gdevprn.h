@@ -30,54 +30,38 @@
 #include "gxdevmem.h"
 #include "gxclist.h"
 #include "gxclthrd.h"		/* for background printing */
+#include "gxclpage.h"		/* for saved_pages */
 #include "gxrplane.h"
 #include "gsparam.h"
 
 /*
  * Define the parameters for the printer rendering method.
- * If the entire bitmap fits in PRN_MAX_BITMAP, and there is at least
+ * If the entire bitmap fits in MAX_BITMAP, and there is at least
  * PRN_MIN_MEMORY_LEFT memory left after allocating it, render in RAM,
  * otherwise use a command list with a size of PRN_BUFFER_SPACE.
  * (These are parameters that can be changed by a client program.)
  */
-/* Define parameters for machines with little dinky RAMs.... */
-#define PRN_MAX_BITMAP_SMALL 32000
-#define PRN_BUFFER_SPACE_SMALL 25000
-#define PRN_MIN_MEMORY_LEFT_SMALL 32000
-/* Define parameters for machines with great big hulking RAMs.... */
-#define PRN_MAX_BITMAP_LARGE 10000000L
-#define PRN_BUFFER_SPACE_LARGE 4000000L
-#define PRN_MIN_MEMORY_LEFT_LARGE 500000L
-/* Define parameters valid on all machines. */
-#define PRN_MIN_BUFFER_SPACE 10000	/* give up if less than this */
-/* Now define conditional parameters. */
-#if arch_small_memory
-#  define PRN_MAX_BITMAP PRN_MAX_BITMAP_SMALL
-#  define PRN_BUFFER_SPACE PRN_BUFFER_SPACE_SMALL
-#  define PRN_MIN_MEMORY_LEFT PRN_MIN_MEMORY_LEFT_SMALL
-#else
-/****** These should really be conditional on gs_debug_c('.') if
- ****** DEBUG is defined, but they're used in static initializers,
- ****** so we can't do it.
- ******/
-#  if 0				/****** #  ifdef DEBUG ***** */
-#    define PRN_MAX_BITMAP\
-       (gs_debug_c('.') ? PRN_MAX_BITMAP_SMALL : PRN_MAX_BITMAP_LARGE)
-#    define PRN_BUFFER_SPACE\
-       (gs_debug_c('.') ? PRN_BUFFER_SPACE_SMALL : PRN_BUFFER_SPACE_LARGE)
-#    define PRN_MIN_MEMORY_LEFT\
-       (gs_debug_c('.') ? PRN_MIN_MEMORY_LEFT_SMALL : PRN_MIN_MEMORY_LEFT_LARGE)
-#  else
-#    define PRN_MAX_BITMAP PRN_MAX_BITMAP_LARGE
-#    define PRN_BUFFER_SPACE PRN_BUFFER_SPACE_LARGE
-#    define PRN_MIN_MEMORY_LEFT PRN_MIN_MEMORY_LEFT_LARGE
-#  endif
-#endif
+#define PRN_MAX_BITMAP MAX_BITMAP	/* see gxdevice.h */
+#define PRN_BUFFER_SPACE BUFFER_SPACE	/* see gxdevice.h */
+#define PRN_MIN_MEMORY_LEFT MIN_MEMORY_LEFT	/* see gxdevice.h */
+#define PRN_MIN_BUFFER_SPACE MIN_BUFFER_SPACE	/* see gxdevice.h */
 
 /* Define the abstract type for a printer device. */
 #ifndef gx_device_printer_DEFINED
 #  define gx_device_printer_DEFINED
 typedef struct gx_device_printer_s gx_device_printer;
+#endif
+
+/* Define the abstract type for parameters describing buffer space. */
+#ifndef gdev_prn_space_params_DEFINED
+#  define gdev_prn_space_params_DEFINED
+typedef struct gdev_space_params_s gdev_prn_space_params;
+#endif
+
+/* Define the abstract type for parameters describing buffer space. */
+#ifndef gdev_prn_banding_type_DEFINED
+#  define gdev_prn_banding_type_DEFINED
+typedef struct gdev_banding_type gdev_prn_banding_type;
 #endif
 
 /* Define the abstract type for some band device procedures' arguments. */
@@ -87,12 +71,6 @@ typedef struct gdev_prn_start_render_params_s gdev_prn_start_render_params;
 #ifndef gx_page_queue_DEFINED
 #  define gx_page_queue_DEFINED
 typedef struct gx_page_queue_s gx_page_queue_t;
-#endif
-
-/* Define the abstract type for parameters describing buffer space. */
-#ifndef gdev_prn_space_params_DEFINED
-#  define gdev_prn_space_params_DEFINED
-typedef struct gdev_prn_space_params_s gdev_prn_space_params;
 #endif
 
 /*
@@ -206,23 +184,8 @@ typedef struct gx_printer_device_procs_s {
 /* This must be preceded by gx_device_common. */
 /* Printer devices are actually a union of a memory device */
 /* and a clist device, plus some additional state. */
-#define prn_fname_sizeof gp_file_name_sizeof
-typedef enum {
-    BandingAuto = 0,
-    BandingAlways,
-    BandingNever
-} gdev_prn_banding_type;
 
-/* if you make any additions/changes to this structure you need to make
-   the appropriate additions/changes to the compare_gdev_prn_space_params()
-   function in gdevprn.c */
-struct gdev_prn_space_params_s {
-    long MaxBitmap;		/* max size of non-buffered bitmap */
-    long BufferSpace;		/* space to use for buffer */
-    gx_band_params_t band;	/* see gxband.h */
-    bool params_are_read_only;	/* true if put_params may not modify this struct */
-    gdev_prn_banding_type banding_type;	/* used to force banding or bitmap */
-};
+#define prn_fname_sizeof gp_file_name_sizeof
 
 typedef struct bg_print_s {
     gx_semaphore_t *sema;		/* used by foreground to wait */
@@ -230,6 +193,11 @@ typedef struct bg_print_s {
     gp_thread_id thread_id;
     int num_copies;
     int return_code;			/* result from background print thread */
+    char *ocfname;	                /* command file name */
+    clist_file_ptr ocfile;	        /* command file, normally 0 */
+    char *obfname;	                /* block file name */
+    clist_file_ptr obfile;	/* block file, normally 0 */
+    const clist_io_procs_t *oio_procs;
 } bg_print_t;
 
 #define gx_prn_device_common\
@@ -238,13 +206,11 @@ typedef struct bg_print_s {
         gx_printer_device_procs printer_procs;\
                 /* ------ Device parameters that must be set ------ */\
                 /* ------ before calling the device open routine. ------ */\
-        gdev_prn_space_params space_params;\
         char fname[prn_fname_sizeof];	/* OutputFile */\
         bool BLS_force_memory;\
                 /* ------ Other device parameters ------ */\
         bool OpenOutputFile;\
         bool ReopenPerPage;\
-        bool page_uses_transparency; /* PDF 1.4 transparency is used on page */\
         bool Duplex;\
         int Duplex_set;		        /* -1 = not supported */\
                 /* ------ End of parameters ------ */\
@@ -265,6 +231,7 @@ typedef struct bg_print_s {
         bool bg_print_requested;	/* request background printing of page from clist */\
         bg_print_t bg_print;            /* background printing data shared with thread */\
         int num_render_threads_requested;	/* for multiple band rendering threads */\
+        gx_saved_pages_list *saved_pages_list;	/* list when we are saving pages instead of printing */\
         gx_device_procs save_procs_while_delaying_erasepage;	/* save device procs while delaying erasepage. */\
         gx_device_procs orig_procs	/* original (std_)procs */
 
@@ -297,6 +264,10 @@ dev_proc_close_device(gdev_prn_close);
 #define gdev_prn_map_color_rgb gx_default_b_w_map_color_rgb
 dev_proc_get_params(gdev_prn_get_params);
 dev_proc_put_params(gdev_prn_put_params);
+dev_proc_dev_spec_op(gdev_prn_forwarding_dev_spec_op);
+dev_proc_dev_spec_op(gdev_prn_dev_spec_op);
+
+int gdev_prn_get_param(gx_device *dev, char *Param, void *list);
 
 /* Default printer-specific procedures */
 /* VMS limits procedure names to 31 characters. */
@@ -386,7 +357,7 @@ prn_dev_proc_buffer_page(gx_default_buffer_page); /* returns an error */
         NULL,  /* push_transparency_state */\
         NULL,  /* pop_transparency_state */\
         NULL,  /* put_image */\
-        NULL,  /* dev_spec_op */\
+        gdev_prn_dev_spec_op,  /* dev_spec_op */\
         NULL,  /* copy plane */\
         gx_default_get_profile, /* get_profile */\
         gx_default_set_graphics_type_tag /* set_graphics_type_tag */\
@@ -427,22 +398,26 @@ extern const gx_device_procs prn_bg_procs;
            gx_default_close_render_device,\
            gx_default_buffer_page\
          },\
-         { PRN_MAX_BITMAP, PRN_BUFFER_SPACE,\
-             { BAND_PARAMS_INITIAL_VALUES },\
-           0/*false*/,	/* params_are_read_only */\
-           BandingAuto	/* banding_type */\
-         },\
          { 0 },		/* fname */\
         0/*false*/,     /* BLS_force_memory */\
         0/*false*/,	/* OpenOutputFile */\
         0/*false*/,	/* ReopenPerPage */\
-        0/*false*/,	/* page_uses_transparency */\
         0/*false*/, duplex_set,	/* Duplex[_set] */\
-        0/*false*/, 0, 0, 0, /* file_is_new ... buf */\
-        0, 0, 0, 0, 0/*false*/, 0, 0, /* buffer_memory ... clist_dis'_mask */\
+        0/*false*/,	/* file_is_new */\
+        0,	        /* *file */\
+        0,		/* buffer_space */\
+        0,		/* *buf */\
+        0,		/* *buffer_memory */\
+        0,		/* *bandlist_memory */\
+        0,		/* *free_up_bandlist_memory */\
+        0,		/* *page_queue; */\
+        0/*false*/,	/* is_async_renderer */\
+        0,		/* *async_renderer */\
+        0,		/* clist_disable_mask */\
         0/*false*/,	/* bg_print_requested */\
         {  0/*sema*/, 0/*device*/, 0/*thread_id*/, 0/*num_copies*/, 0/*return_code*/ }, /* bg_print */\
         0, 		/* num_render_threads_requested */\
+        0,              /* saved_pages_list */\
         { 0 },	/* save_procs_while_delaying_erasepage */\
         { 0 }	/* ... orig_procs */
 #define prn_device_body_rest_(print_page)\
@@ -573,6 +548,8 @@ bool gdev_prn_file_is_new(const gx_device_printer *pdev);
  * a printer device, without any padding.
  */
 #define gdev_prn_raster(pdev) gx_device_raster((gx_device *)(pdev), 0)
+
+#define gdev_prn_raster_chunky(pdev) gx_device_raster_chunky((gx_device *)(pdev), 0)
 
 /*
  * Determine (conservatively) what colors are used in a given range of scan

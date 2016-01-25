@@ -29,6 +29,7 @@
 #include "gsequivc.h"
 #include "gxblend.h"
 #include "gdevp14.h"
+#include "gdevdevnprn.h"
 
 /*
  * Utility routines for common DeviceN related parameters:
@@ -85,6 +86,50 @@ cmyk_cs_to_devn_cm(gx_device * dev, const int * map,
         out[i] = y;
     if ((i = map[3]) != GX_DEVICE_COLOR_MAX_COMPONENTS)
         out[i] = k;
+}
+
+/* Some devices need to create composite mappings of the spot colorants. 
+   This code was originally in the tiffsep device but was moved here to be
+   sharable across multiple separation devices that need this capability */
+
+
+/*
+* Build the map to be used to create a CMYK equivalent to the current
+* device components.
+*/
+void build_cmyk_map(gx_device *pdev, int num_comp,
+    equivalent_cmyk_color_params equiv_cmyk_colors,
+    cmyk_composite_map * cmyk_map)
+{
+    int comp_num;
+    gs_devn_params *devn_params =  dev_proc(pdev, ret_devn_params)(pdev);
+
+    if (devn_params == NULL) 
+        return;
+
+    for (comp_num = 0; comp_num < num_comp; comp_num++) {
+        int sep_num = devn_params->separation_order_map[comp_num];
+
+        cmyk_map[comp_num].c = cmyk_map[comp_num].m =
+            cmyk_map[comp_num].y = cmyk_map[comp_num].k = frac_0;
+        /* The tiffsep device has 4 standard colors:  CMYK */
+        if (sep_num < devn_params->num_std_colorant_names) {
+            switch (sep_num) {
+            case 0: cmyk_map[comp_num].c = frac_1; break;
+            case 1: cmyk_map[comp_num].m = frac_1; break;
+            case 2: cmyk_map[comp_num].y = frac_1; break;
+            case 3: cmyk_map[comp_num].k = frac_1; break;
+            }
+        } else {
+            sep_num -= devn_params->num_std_colorant_names;
+            if (equiv_cmyk_colors.color[sep_num].color_info_valid) {
+                cmyk_map[comp_num].c = equiv_cmyk_colors.color[sep_num].c;
+                cmyk_map[comp_num].m = equiv_cmyk_colors.color[sep_num].m;
+                cmyk_map[comp_num].y = equiv_cmyk_colors.color[sep_num].y;
+                cmyk_map[comp_num].k = equiv_cmyk_colors.color[sep_num].k;
+            }
+        }
+    }
 }
 
 /*
@@ -275,8 +320,8 @@ devn_get_color_comp_index(gx_device * dev, gs_devn_params * pdevn_params,
         gs_separations * separations = &pdevn_params->separations;
         int sep_num = separations->num_separations++;
         /* We have a new spot colorant - put in stable memory to avoid "restore" */
-        sep_name = gs_alloc_bytes(dev->memory->stable_memory,
-                        name_size, "devn_get_color_comp_index");
+        sep_name = gs_alloc_bytes(dev->memory->stable_memory, name_size, "devn_get_color_comp_index");
+
         memcpy(sep_name, pname, name_size);
         separations->names[sep_num].size = name_size;
         separations->names[sep_num].data = sep_name;
@@ -333,8 +378,11 @@ devn_get_params(gx_device * pdev, gs_param_list * plist,
     if ( (code = sample_device_crd_get_params(pdev, plist, "CRDDefault")) < 0 ||
          (code = param_write_name_array(plist, "SeparationColorNames", &scna)) < 0 ||
          (code = param_write_name_array(plist, "SeparationOrder", &sona)) < 0 ||
-         (code = param_write_bool(plist, "Separations", &seprs)) < 0 ||
-         (code = param_write_int(plist, "PageSpotColors", &(pdevn_params->page_spot_colors))) < 0)
+         (code = param_write_bool(plist, "Separations", &seprs)) < 0)
+        return code;
+
+    if (pdev->color_info.polarity == GX_CINFO_POLARITY_SUBTRACTIVE &&
+        (code = param_write_int(plist, "PageSpotColors", &(pdevn_params->page_spot_colors))) < 0)
         return code;
 
     if (pdevn_params->separations.num_separations > 0)
@@ -391,8 +439,10 @@ devn_put_params(gx_device * pdev, gs_param_list * plist,
     {
         break;
     } END_ARRAY_PARAM(sona, sone);
-    if (sona.data != 0 && sona.size > GX_DEVICE_COLOR_MAX_COMPONENTS)
+    if (sona.data != 0 && sona.size > GX_DEVICE_COLOR_MAX_COMPONENTS) {
+        param_signal_error(plist, "SeparationOrder", gs_error_rangecheck);
         return_error(gs_error_rangecheck);
+    }
 
     /* Get the SeparationColorNames */
     BEGIN_ARRAY_PARAM(param_read_name_array, "SeparationColorNames",
@@ -400,8 +450,10 @@ devn_put_params(gx_device * pdev, gs_param_list * plist,
     {
         break;
     } END_ARRAY_PARAM(scna, scne);
-    if (scna.data != 0 && scna.size > GX_DEVICE_MAX_SEPARATIONS)
+    if (scna.data != 0 && scna.size > GX_DEVICE_MAX_SEPARATIONS) {
+        param_signal_error(plist, "SeparationColorNames", gs_error_rangecheck);
         return_error(gs_error_rangecheck);
+    }
     /* Get the equivalent_cmyk_color_params -- array is N * 5 elements */
     BEGIN_ARRAY_PARAM(param_read_int_array, ".EquivCMYKColors",
                                         equiv_cmyk, equiv_cmyk.size, equiv_cmyk_e)
@@ -480,9 +532,16 @@ devn_put_params(gx_device * pdev, gs_param_list * plist,
                 if ((comp_num = (*dev_proc(pdev, get_color_comp_index))
                                 (pdev, (const char *)sona.data[i].data,
                                 sona.data[i].size, SEPARATION_NAME)) < 0) {
+                    param_signal_error(plist, "SeparationOrder", gs_error_rangecheck);
                     return_error(gs_error_rangecheck);
                 }
                 pdevn_params->separation_order_map[i] = comp_num;
+                /* If the device enabled AUTO_SPOT_COLORS some separations may */
+                /* have been added. Adjust num_spots if so.                    */
+                if (num_spot != pdevn_params->separations.num_separations) {
+                    num_spot = pdevn_params->separations.num_separations;
+                    num_spot_changed = true;
+                }
             }
         }
         /*
@@ -500,8 +559,10 @@ devn_put_params(gx_device * pdev, gs_param_list * plist,
             case 1:
                 break;
             case 0:
-                if (max_sep < 1 || max_sep > GX_DEVICE_COLOR_MAX_COMPONENTS)
+                if (max_sep < 1 || max_sep > GX_DEVICE_COLOR_MAX_COMPONENTS) {
+                    param_signal_error(plist, "MaxSeparations", gs_error_rangecheck);
                     return_error(gs_error_rangecheck);
+                }
         }
         /*
          * The PDF interpreter scans the resources for pages to try to
@@ -521,8 +582,10 @@ devn_put_params(gx_device * pdev, gs_param_list * plist,
             case 1:
                 break;
             case 0:
-                if (page_spot_colors < -1)
+                if (page_spot_colors < -1) {
+                    param_signal_error(plist, "PageSpotColors", gs_error_rangecheck);
                     return_error(gs_error_rangecheck);
+                }
                 if (page_spot_colors > GX_DEVICE_COLOR_MAX_COMPONENTS - MAX_DEVICE_PROCESS_COLORS)
                     page_spot_colors = GX_DEVICE_COLOR_MAX_COMPONENTS - MAX_DEVICE_PROCESS_COLORS;
                     /* Need to leave room for the process colors in GX_DEVICE_COLOR_MAX_COMPONENTS  */
@@ -565,49 +628,16 @@ devn_put_params(gx_device * pdev, gs_param_list * plist,
                     pdev->color_info.max_components)
                 pdev->color_info.num_components =
                         pdev->color_info.max_components;
-#if !USE_COMPRESSED_ENCODING
+
             /*
              * See earlier comment about the depth and non compressed
              * pixel encoding.
              */
             pdev->color_info.depth = bpc_to_depth(pdev->color_info.num_components,
                                         pdevn_params->bitspercomponent);
-#endif
         }
     }
     return code;
-}
-
-/* A self referencing function to copy the color list */
-static int
-copy_color_list(compressed_color_list_t *src_color_list,
-                compressed_color_list_t *des_color_list, gs_memory_t *memory)
-{
-    int k;
-    int num_sub_levels = src_color_list->num_sub_level_ptrs;
-
-    if (num_sub_levels > 0) {
-        for (k = 0; k < num_sub_levels; k++) {
-            des_color_list->u.sub_level_ptrs[k] =
-                alloc_compressed_color_list_elem(src_color_list->mem,
-                                    des_color_list->level_num_comp - 1);
-            if (des_color_list->u.sub_level_ptrs[k] == NULL) {
-                return gs_rethrow(-1, "copy_color_list allocation error");
-            }
-            des_color_list->u.sub_level_ptrs[k]->first_bit_map =
-                src_color_list->u.sub_level_ptrs[k]->first_bit_map;
-            des_color_list->u.sub_level_ptrs[k]->num_sub_level_ptrs =
-                src_color_list->u.sub_level_ptrs[k]->num_sub_level_ptrs;
-            copy_color_list(src_color_list->u.sub_level_ptrs[k],
-                            des_color_list->u.sub_level_ptrs[k], memory);
-        }
-    } else {
-        /* Allocate and copy the data */
-         memcpy(&(des_color_list->u.comp_data[0]),
-                &(src_color_list->u.comp_data[0]),
-                size_of(comp_bit_map_list_t)*NUM_ENCODE_LIST_ITEMS);
-    }
-    return 0;
 }
 
 /* Free the copied deviceN parameters */
@@ -626,8 +656,6 @@ devn_free_params(gx_device *thread_cdev)
                        "devn_free_params");
         devn_params->separations.names[k].data = NULL;
     }
-    free_compressed_color_list(devn_params->compressed_color_list);
-    devn_params->compressed_color_list = NULL;
 
     for (k = 0; k < devn_params->pdf14_separations.num_separations; k++) {
         gs_free_object(thread_cdev->memory,
@@ -635,8 +663,6 @@ devn_free_params(gx_device *thread_cdev)
                        "devn_free_params");
         devn_params->pdf14_separations.names[k].data = NULL;
     }
-    free_compressed_color_list(devn_params->pdf14_compressed_color_list);
-    devn_params->pdf14_compressed_color_list = NULL;
 }
 
 /* This is used to copy the deviceN parameters from the parent clist device to the
@@ -647,7 +673,6 @@ devn_copy_params(gx_device * psrcdev, gx_device * pdesdev)
     gs_devn_params *src_devn_params, *des_devn_params;
     int code = 0;
     int k;
-    compressed_color_list_t *src_color_list, *des_color_list;
 
     /* Get pointers to the parameters */
     src_devn_params = dev_proc(psrcdev, ret_devn_params)(psrcdev);
@@ -677,20 +702,7 @@ devn_copy_params(gx_device * psrcdev, gx_device * pdesdev)
     /* Order map */
     memcpy(des_devn_params->separation_order_map,
            src_devn_params->separation_order_map, sizeof(gs_separation_map));
-    /* Compressed color list.  A messy structure that has a union that
-       includes a linked list item */
-    src_color_list = src_devn_params->compressed_color_list;
-    if (src_color_list != NULL) {
-        /* Take care of the initial one. Others are done recursively */
-        des_color_list = alloc_compressed_color_list_elem(src_color_list->mem,
-                                                          TOP_ENCODED_LEVEL);
-        des_color_list->first_bit_map = src_color_list->first_bit_map;
-        des_color_list->num_sub_level_ptrs = src_color_list->num_sub_level_ptrs;
-        code = copy_color_list(src_color_list, des_color_list, pdesdev->memory);
-        des_devn_params->compressed_color_list = des_color_list;
-    } else {
-        des_devn_params->compressed_color_list = NULL;
-    }
+
     /* Handle the PDF14 items if they are there */
     des_devn_params->pdf14_separations.num_separations
         = src_devn_params->pdf14_separations.num_separations;
@@ -703,18 +715,6 @@ devn_copy_params(gx_device * psrcdev, gx_device * pdesdev)
                name_size);
         des_devn_params->pdf14_separations.names[k].size = name_size;
         des_devn_params->pdf14_separations.names[k].data = sep_name;
-    }
-    src_color_list = src_devn_params->pdf14_compressed_color_list;
-    if (src_color_list != NULL) {
-        /* Take care of the initial one. Others are done recursively */
-        des_color_list = alloc_compressed_color_list_elem(src_color_list->mem,
-                                                          TOP_ENCODED_LEVEL);
-        des_color_list->first_bit_map = src_color_list->first_bit_map;
-        des_color_list->num_sub_level_ptrs = src_color_list->num_sub_level_ptrs;
-        code = copy_color_list(src_color_list, des_color_list, pdesdev->memory);
-        des_devn_params->pdf14_compressed_color_list = des_color_list;
-    } else {
-        des_devn_params->pdf14_compressed_color_list = NULL;
     }
     return code;
 }
@@ -797,134 +797,6 @@ devn_printer_put_params(gx_device * pdev, gs_param_list * plist,
 }
 
 /*
- * The following routines are for compressing colorant values into a 64 bit
- * gx_color_index value.  This is needed since Ghostscript uses an integer type
- * (usually 64 bit long long) as the representation for a pixel.  This is a
- * problem for handling output devices which support spot colors.  Ideally these
- * devices should be able to handle any number of colorants.  This would require
- * an arbitrarily large number of bits to represent a pixel.
- *
- * See comments before devn_encode_compressed_color for more information.
- */
-
-/* GC procedures */
-static
-ENUM_PTRS_WITH(compressed_color_list_enum_ptrs, compressed_color_list_t *plist)
-{
-    if (index < plist->num_sub_level_ptrs)
-        ENUM_RETURN(plist->u.sub_level_ptrs[index]);
-    return 0;
-}
-ENUM_PTRS_END
-
-static RELOC_PTRS_WITH(compressed_color_list_reloc_ptrs, compressed_color_list_t *plist)
-{
-    int i;
-
-    for (i = 0; i < plist->num_sub_level_ptrs; i++) {
-        RELOC_PTR(compressed_color_list_t, u.sub_level_ptrs[i]);
-    }
-}
-RELOC_PTRS_END
-
-gs_private_st_composite(st_compressed_color_list, compressed_color_list_t,
-                "encode color list", compressed_color_list_enum_ptrs,
-                compressed_color_list_reloc_ptrs);
-/*
- * A routine for debugging the encoded color colorant list.  This routine
- * dumps the contents of the list.
- */
-void
-print_compressed_color_list(const gs_memory_t *mem, compressed_color_list_t * pcomp_list, int num_comp)
-{
-    int i, j, comp_num, comp;
-    comp_bit_map_list_t * pcomp_bit_map;
-
-    if (pcomp_list == NULL)
-        return;
-
-    /* Indent our print out for sub levels */
-    for (i = TOP_ENCODED_LEVEL - pcomp_list->level_num_comp; i > 0; i--)
-        dmlprintf(mem, "    ");
-    dmlprintf1(mem, "List level = %d\n", pcomp_list->level_num_comp);
-    /*
-     * Print the colorant bit maps for this level.
-     */
-    for (i = NUM_ENCODE_LIST_ITEMS - 1; i >= pcomp_list->first_bit_map; i--) {
-        pcomp_bit_map = &(pcomp_list->u.comp_data[i]);
-        /* Indent our print out for sub levels */
-        for (j = TOP_ENCODED_LEVEL - pcomp_list->level_num_comp; j > 0; j--)
-            dmlprintf(mem, "    ");
-        dmlprintf4(mem,"%3d%4d%4d %d ", i, pcomp_bit_map->num_comp,
-                   pcomp_bit_map->num_non_solid_comp,
-                   pcomp_bit_map->solid_not_100);
-        for (comp_num = num_comp - 1; comp_num >= 0; comp_num--) {
-            comp = colorant_present(pcomp_bit_map, colorants, comp_num);
-            dmlprintf1(mem, "%d", comp);
-            if ((comp_num & 7) == 0)    /* Separate into groups of 8 bits */
-                dmlprintf(mem, " ");
-        }
-        dmlprintf(mem, "    ");
-        for (comp_num = num_comp - 1; comp_num >= 0; comp_num--) {
-            comp = colorant_present(pcomp_bit_map, solid_colorants, comp_num);
-            dmlprintf1(mem, "%d", comp);
-            if ((comp_num & 7) == 0)    /* Separate into groups of 8 bits */
-                dmlprintf(mem, " ");
-        }
-        dmlprintf(mem, "\n");
-    }
-
-    /*
-     * Print the sub levels.
-     */
-    for (i = 0; i < pcomp_list->num_sub_level_ptrs; i++)
-       print_compressed_color_list(mem, pcomp_list->u.sub_level_ptrs[i], num_comp);
-
-    return;
-}
-
-/*
- * Allocate an list level element for our encode color list.
- */
-compressed_color_list_t *
-alloc_compressed_color_list_elem(gs_memory_t * mem, int num_comps)
-{
-    compressed_color_list_t * plist =
-        gs_alloc_struct(mem->stable_memory, compressed_color_list_t,
-                        &st_compressed_color_list, "alloc_compressed_color_list");
-    if (plist != NULL) {
-        /* Initialize the data in the element. */
-        memset(plist, 0, size_of(*plist));
-	plist->mem = mem->stable_memory;
-        plist->level_num_comp = num_comps;
-        plist->first_bit_map = NUM_ENCODE_LIST_ITEMS;
-    }
-    return plist;
-}
-
-/*
- * Free the elements of a compressed color list.
- */
-void
-free_compressed_color_list(compressed_color_list_t * pcomp_list)
-{
-    int i;
-
-    if (pcomp_list == NULL)
-        return;
-
-    /* Discard the sub levels. */
-    /* Allocation for this object is done in stable memory.  Make sure
-       that is done here too */
-    for (i = 0; i < pcomp_list->num_sub_level_ptrs; i++) {
-        free_compressed_color_list(pcomp_list->u.sub_level_ptrs[i]);
-        pcomp_list->u.sub_level_ptrs[i] = NULL;
-    }
-    gs_free_object(pcomp_list->mem->stable_memory, pcomp_list, "free_compressed_color_list");
-    return;
-}
-
-/*
  * Free a set of separation names
  */
 void
@@ -944,699 +816,6 @@ free_separation_names(gs_memory_t * mem,
     return;
 }
 
-/*
- * Add a new set of bit mapped colorant lists to our list of encoded color
- * colorants.
- */
-static bool
-sub_level_add_compressed_color_list(gs_memory_t * mem,
-                comp_bit_map_list_t * pnew_comp_bit_map,
-                compressed_color_list_t * pcomp_list, gx_color_index * plist_index)
-{
-    int i, entry_num;
-    int num_non_solid_comp = pnew_comp_bit_map->num_non_solid_comp;
-    bool status;
-
-    /*
-     * Check if this is the level for the specified number of entries.  If so
-     * then add the bit map to this level (if we have room).
-     */
-    if (num_non_solid_comp >= pcomp_list->level_num_comp) {
-        entry_num = pcomp_list->first_bit_map - 1;
-
-        if (entry_num > pcomp_list->num_sub_level_ptrs) {
-            memcpy(&(pcomp_list->u.comp_data[entry_num]), pnew_comp_bit_map,
-                                    size_of(comp_bit_map_list_t));
-            pcomp_list->first_bit_map = entry_num;
-            *plist_index =
-                    ((gx_color_index) entry_num) << (NUM_GX_COLOR_INDEX_BITS - 8);
-            return true;
-        }
-        return false;
-    }
-    /*
-     * Try to insert the bit map into the sub levels.
-     */
-    for (i = 0; i < pcomp_list->num_sub_level_ptrs; i++) {
-        status = sub_level_add_compressed_color_list(mem, pnew_comp_bit_map,
-                        pcomp_list->u.sub_level_ptrs[i], plist_index);
-        if (status) {
-            *plist_index = (((gx_color_index) i) << (NUM_GX_COLOR_INDEX_BITS - 8))
-                    + (*plist_index >> 8);
-            return true;
-        }
-    }
-    /*
-     * If we did not add this bit map into a sub level then create a new sub
-     * level and insert it there.
-     */
-    entry_num = pcomp_list->num_sub_level_ptrs;
-    if (entry_num < pcomp_list->first_bit_map) {
-        pcomp_list->u.sub_level_ptrs[entry_num] =
-            alloc_compressed_color_list_elem(pcomp_list->mem, pcomp_list->level_num_comp - 1);
-        if (pcomp_list->u.sub_level_ptrs[entry_num] != NULL) {
-            pcomp_list->num_sub_level_ptrs++;
-            status = sub_level_add_compressed_color_list(mem, pnew_comp_bit_map,
-                        pcomp_list->u.sub_level_ptrs[entry_num], plist_index);
-            if (status) {
-                *plist_index = (((gx_color_index) i) << (NUM_GX_COLOR_INDEX_BITS - 8))
-                    + (*plist_index >> 8);
-                return true;
-            }
-        }
-    }
-    /*
-     * If we get to here then there was no space available in this list element.
-     */
-    return false;
-}
-
-/*
- * Add a new bit mapped colorant list to our list of encoded color colorants.
- *
- * Our simple linear search for entries gets very inefficient if we have many
- * entries.  So we are doing two things to minimize the number of entries.
- * We need separate entries for each combination of solid colorants.  if we
- * do not have many non solid colorants, we use non solid colorants even for
- * solid colorants.  For small numbers of colorants, we add more colorants
- * to try to create an entry that can be used for more situations.  We add extra
- * process color colorants since these are the ones most likely to be mixed
- * with spot colors.
- */
-static bool
-add_compressed_color_list(gs_memory_t * mem,
-        comp_bit_map_list_t * pnew_comp_bit_map,
-        compressed_color_list_t * pcomp_list, gx_color_index * plist_index)
-{
-    int num_comp = pnew_comp_bit_map->num_comp;
-    int num_non_solid = pnew_comp_bit_map->num_non_solid_comp;
-    int num_solid = num_comp - num_non_solid;
-    int comp_num = 0;
-
-    /*
-     * If we have room for more 'non solid' colorants then convert some of
-     * the solid colorants to using the non solid encodings.
-     */
-    while (num_non_solid < MIN_ENCODED_COMPONENTS && num_solid > 0) {
-        if (colorant_present(pnew_comp_bit_map, solid_colorants, comp_num)) {
-            clear_colorant_present(pnew_comp_bit_map,
-                                        solid_colorants, comp_num);
-            num_solid--;
-            num_non_solid++;
-        }
-        comp_num++;
-    }
-    if (num_non_solid < MIN_ENCODED_COMPONENTS) {
-        /*
-         * For small numbers of colorants, we add more colorants to try to
-         * create an entry that can be used for more situations.
-         */
-        for (comp_num = 0; num_comp < MIN_ENCODED_COMPONENTS; comp_num++) {
-            if ((colorant_present(pnew_comp_bit_map, colorants, comp_num)) == 0) {
-                set_colorant_present(pnew_comp_bit_map, colorants, comp_num);
-                num_non_solid++;
-                num_comp++;
-            }
-        }
-    }
-    pnew_comp_bit_map->num_comp = num_comp;
-    pnew_comp_bit_map->num_non_solid_comp = num_non_solid;
-    return sub_level_add_compressed_color_list(mem, pnew_comp_bit_map,
-                                pcomp_list, plist_index);
-}
-
-/*
- * Initialize our encode color list.  When we initialize the list, we add two
- * initial colorant maps.  The first one is good for any image that uses zeven
- * or fewer colorants.  The second is good for any image which uses seven spot
- * colors (or less) and no process colors.  These are placed at the start of
- * the list to minimize the add and search times for these common situations.
- */
-static compressed_color_list_t *
-init_compressed_color_list(gs_memory_t *mem)
-{
-    /*
-     * Create our first list element.
-     */
-    compressed_color_list_t * plist =
-        alloc_compressed_color_list_elem(mem, TOP_ENCODED_LEVEL);
-
-    /*
-     * Add a first colorant bit map to the list.  This bit map covers the first
-     * TOP_ENCODED_LEVEL colorants.  Typically this covers CMYK plus the
-     * first three spot colors.  This bit map should handle many situations.
-     */
-    if (plist != NULL) {
-        int comp_num;
-        comp_bit_map_list_t comp_bit_map;
-        gx_color_index temp;
-
-        /*
-         * Add a first colorant bit map to the list.  This bit map covers the
-         * first TOP_ENCODED_LEVEL colorants.  Typically this covers CMYK plus
-         * the first three spot colors.  This bit map should handle many
-         * situations.
-         */
-        memset(&comp_bit_map, 0, size_of(comp_bit_map));
-        for (comp_num = 0; comp_num < TOP_ENCODED_LEVEL; comp_num++)
-            set_colorant_present(&comp_bit_map, colorants, comp_num);
-        comp_bit_map.num_comp =
-                comp_bit_map.num_non_solid_comp = TOP_ENCODED_LEVEL;
-        add_compressed_color_list(mem, &comp_bit_map, plist, &temp);
-        /*
-         * Add a second colorant bit map to the list.  This bit map covers the
-         * first TOP_ENCODED_LEVEL colorants after the first four colorants.
-         * Typically this covers the first seven spot colors.  This bit map is
-         * being placed to cover images that use only spot colors.
-         */
-        memset(&comp_bit_map, 0, size_of(comp_bit_map));
-        for (comp_num = 4; comp_num < TOP_ENCODED_LEVEL + 4; comp_num++)
-            set_colorant_present(&comp_bit_map, colorants, comp_num);
-        comp_bit_map.num_comp =
-                comp_bit_map.num_non_solid_comp = TOP_ENCODED_LEVEL;
-        add_compressed_color_list(mem, &comp_bit_map, plist, &temp);
-    }
-    return plist;
-}
-
-/*
- * For most combinations of colorants we use 8 bits for saving the colorant
- * value.  However if we get above 7 colorants (in a pixel, not total) we use
- * fewer bits.  The constraint is that the size of the index value plus the
- * the number of colorants being used times size of the colorant value saved
- * must fit into a gx_color_index value.
- */
-int num_comp_bits[MAX_ENCODED_COMPONENTS + 1] = {
-        8,      /* 0 colorants - not used */
-        8,      /* 1 colorants */
-        8,      /* 2 colorants */
-        8,      /* 3 colorants */
-        8,      /* 4 colorants */
-        8,      /* 5 colorants */
-        8,      /* 6 colorants */
-        8,      /* 7 colorants */
-        7,      /* 8 colorants */
-        6,      /* 9 colorants */
-        5,      /* 10 colorants */
-        5,      /* 11 colorants */
-        4,      /* 12 colorants */
-        4,      /* 13 colorants */
-        4       /* 14 colorants */
-};
-
-/*
- * Values used to decompressed the colorants in our encoded values back into
- * a gx_color value.  The color value will be (comp_bits * entry) >> 8
- * The number of bits in comp_bits are defined in the num_comp_bits table.
- * These values are chosen to expand these bit combinations back to 16 bit values
- * (after shifting right 8 bits).
- */
-#define gx_color_value_factor(num_bits) \
-    ((gx_max_color_value << 8) + 0xff) / ((1 << num_bits) - 1)
-
-int comp_bit_factor[MAX_ENCODED_COMPONENTS + 1] = {
-        gx_color_value_factor(8),                /*  0 colorants (8 bits) */
-        gx_color_value_factor(8),                /*  1 colorants (8 bits) */
-        gx_color_value_factor(8),                /*  2 colorants (8 bits) */
-        gx_color_value_factor(8),                /*  3 colorants (8 bits) */
-        gx_color_value_factor(8),                /*  4 colorants (8 bits) */
-        gx_color_value_factor(8),                /*  5 colorants (8 bits) */
-        gx_color_value_factor(8),                /*  6 colorants (8 bits) */
-        gx_color_value_factor(8),                /*  7 colorants (8 bits) */
-        gx_color_value_factor(7),                /*  8 colorants (7 bits) */
-        gx_color_value_factor(6),                /*  9 colorants (6 bits) */
-        gx_color_value_factor(5),                /* 10 colorants (5 bits) */
-        gx_color_value_factor(5),                /* 11 colorants (5 bits) */
-        gx_color_value_factor(4),                /* 12 colorants (4 bits) */
-        gx_color_value_factor(4),                /* 13 colorants (4 bits) */
-        gx_color_value_factor(4)                 /* 14 colorants (4 bits) */
-};
-#undef gx_color_value_factor
-
-/*
- * Find a given colorant bit map is the list of encoded colorant bit map.
- *
- * Note:  This routine is called recursively to search sub levels of the
- * list.
- *
- * The parameters are:
- *    num_comp - The number of colorants for the device.
- *    pcomp_list - The current list of encoded colorants.
- *    pnew_comp_bit_map - Pointer to the bit map found to be encoded.
- *    plist_index - Pointer to 'encode bits' (return value)
- *    pcomp_bit_map - Pointer to pointer to the actual bit map found
- *                    (return value).
- *    returns true if the bit map is found.
- */
-static bool
-search_compressed_color_list(int num_comp, compressed_color_list_t * pcomp_list,
-        comp_bit_map_list_t * pnew_comp_bit_map, gx_color_index * plist_index,
-        comp_bit_map_list_t * * pcomp_bit_map)
-{
-    int i;
-#if DEVN_ENCODE_COLOR_USING_BIT_MAP_ARRAY
-    int j, num_bit_map_elem;
-#endif
-    bool found;
-
-    /*
-     * Search the colorant bit maps for this level of the map.
-     */
-#if DEVN_ENCODE_COLOR_USING_BIT_MAP_ARRAY
-    num_bit_map_elem = (num_comp + BITS_PER_COMP_BIT_MAP_ELEM - 1) /
-                                                BITS_PER_COMP_BIT_MAP_ELEM;
-#endif
-    for (i = NUM_ENCODE_LIST_ITEMS - 1; i >= pcomp_list->first_bit_map; i--) {
-        *pcomp_bit_map = &(pcomp_list->u.comp_data[i]);
-        /*
-         * Do not try to match if one entry uses a 'solid' set of colorants
-         * that is not really solid (i.e. not 100%) and the other is.  It is
-         * possible to work if different but it would make some of the logic
-         * more difficult.
-         */
-        if (pnew_comp_bit_map->solid_not_100 !=
-                        (*pcomp_bit_map)->solid_not_100)
-            continue;
-        /*
-         * It is a match if the new colorant bit map is a subset of the one
-         * in the list and the solid colorants for new map is a super set of
-         * the solid colorants for the one in the list.  I.e. we can use
-         * the non solid part of the entry for either zero or solid colorants.
-         */
-#if DEVN_ENCODE_COLOR_USING_BIT_MAP_ARRAY
-        for (j = 0; j < num_bit_map_elem; j++) {
-            if ((pnew_comp_bit_map->colorants[j] &
-                    (*pcomp_bit_map)->colorants[j]) !=
-                        pnew_comp_bit_map->colorants[j])
-                break;          /* No match if a colorant is missing. */
-            if ((pnew_comp_bit_map->solid_colorants[j] &
-                    (*pcomp_bit_map)->solid_colorants[j]) !=
-                        (*pcomp_bit_map)->solid_colorants[j])
-                break;          /* No match if extra solid colorants */
-        }
-        if (j == num_bit_map_elem) {
-#else
-        if (((pnew_comp_bit_map->colorants &
-                (*pcomp_bit_map)->colorants) ==
-                    pnew_comp_bit_map->colorants) &&
-                ((pnew_comp_bit_map->solid_colorants &
-                    (*pcomp_bit_map)->solid_colorants) ==
-                    (*pcomp_bit_map)->solid_colorants)) {
-#endif
-            /*
-             * To prevent possible loss of accuracy, ignore matches in which the
-             * packing will use fewer bits in the encoded colorant values than
-             * is possible for the given number of colorants.
-             */
-            if (num_comp_bits[pnew_comp_bit_map->num_comp] >
-                        num_comp_bits[(*pcomp_bit_map)->num_comp])
-                break;
-            /*
-             * We have a match.  Put our object number into the top eight
-             * bits of the encoded gx_color_index and exit.
-             */
-            *plist_index = ((gx_color_index) i) << (NUM_GX_COLOR_INDEX_BITS - 8);
-            return true;
-        }
-    }
-
-    /*
-     * Search the lower levels (i.e. with fewer colorants to see if we
-     * can find a match.
-     */
-    if (pcomp_list->level_num_comp <= pnew_comp_bit_map->num_non_solid_comp)
-        return false;   /* Exit if not enough colorants in the sub levels */
-
-    for (i = 0; i < pcomp_list->num_sub_level_ptrs; i++) {
-        found = search_compressed_color_list(num_comp,
-                        pcomp_list->u.sub_level_ptrs[i],
-                        pnew_comp_bit_map, plist_index, pcomp_bit_map);
-        if (found) {
-            /*
-             * We have a match.  Combine the encode index for the sub level
-             * with our index for this level.
-             */
-            *plist_index = (((gx_color_index) i) << (NUM_GX_COLOR_INDEX_BITS - 8))
-                    + (*plist_index >> 8);
-            return true;
-        }
-    }
-    return false;
-}
-
-/*
- * Encode a list of colorant values into a gx_color_index_value.
- *
- * This routine is designed to pack more than eight 8 bit colorant values into
- * a 64 bit gx_color_index value.  It does this piece of magic by keeping a list
- * of which colorant combinations are actualy used (i.e. which colorants are non
- * zero).  The non zero colorant values and and an 'index' value are packed into
- * the output gx_color_index value.
- *
- * The the different combinations of used colorants are saved into a table
- * defined by the comp_bit_map_list_t structure type.  This table is kept as
- * a list with 256 elements.  Each element can be either a pair of bit maps which
- * indicates the combination of colorants being used or a pointer to a sub list
- * for the next lower level of combinations.  There are two bit maps to indicate
- * which colorants are specified by the 'index' value.  One bit map indicates
- * which colorants are used.  The second bit map is used to indicate a group of
- * colorants with the same value.  Normally this second bit map is used to
- * indicate which colorants are 'solid' (i.e. 100% and the 'solid_not_100 flag
- * is set to false).  However if there is a larger group of colorants with the
- * same value (and not solid) then the 'solid_not_100' flag is set to true and
- * second bit map is used to indicate the colorants in this group.  In this
- * case, the value of the colorant group is stored in the first colorant entry
- * in the gx_color_index.
- *
- * The number of bits allocated to storing the 'index' and the number of bits
- * allocated to storing colorant values depends upon the number of colorant
- * being used.
- *
- *      Number of non zero colorant     Index bits      Bits per colorant
- *              0 to 5                     24              8
- *                 6                       16              8
- *                 7                        8              8
- *                 8                        8              7
- *                 9                        8              6
- *                10                        8              5
- *                11                        8              5
- *                12                        8              4
- *                13                        8              4
- *                14                        8              4
- *          More than 14                Not encodeable
- *
- * The 'index' bits can be logically divided into groups of 8 bits.  The
- * first (upper) group of 8 bits is used to select either one of 256
- * combinations of 7 or more colorant or to select a pointer to a sub
- * level.  If a sub level pointer is specified, then the next group of 8
- * index bits is used to select either one of 256 combinations of 6 colorants
- * of a sub level pointer.  A sub level pointer points to one of 256
- * combinations of 5 colorants.  If we have fewer than 5 colorants being
- * used, we add extra componnents to bring the total up to 5 colorants.
- * This is done to prevent having a bunch of 1 or two colorant combinations.
- */
-gx_color_index
-devn_encode_compressed_color(gx_device *pdev, const gx_color_value colors[],
-                                        gs_devn_params * pdevn_params)
-{
-    int num_comp = pdev->color_info.num_components;
-    int comp_num, comp_count = 0, solid_comp_count = 0, bit_pos = 0;
-    int bit_count, group = 0;
-    int color_resolution = gx_max_color_value / STD_ENCODED_VALUE;
-    bool found, added;
-    comp_bit_map_list_t new_comp_bit_map = {0};
-    comp_bit_map_list_t * pbit_map;
-    gx_color_index color = 0, list_index;
-    COLROUND_VARS;
-
-    /*
-     * Determine what colorants are being used (non zero).  We bit pack
-     * this info.  Note:  We treat any colorant value which is less than
-     * 256 as zero.  Color values are 16 bits and we only keep the top
-     * eight bits.  Likewise for solid (100%) colors.
-     */
-    for (comp_num = 0; comp_num < num_comp; comp_num++) {
-        if (colors[comp_num] > color_resolution) {
-            set_colorant_present(&new_comp_bit_map, colorants, comp_num);
-            comp_count++;
-            /* Check if the color is solid */
-            if (colors[comp_num] > (gx_max_color_value - color_resolution)) {
-                set_colorant_present(&new_comp_bit_map,
-                                                solid_colorants, comp_num);
-                solid_comp_count++;
-            }
-        }
-    }
-    new_comp_bit_map.num_comp = comp_count;
-    new_comp_bit_map.num_non_solid_comp = comp_count - solid_comp_count;
-    /*
-     * We may get less loss of accuracy if instead of checking for zero and
-     * 100% colorant values, we look for a group of colorants with the same
-     * colorant value.
-     */
-    if (new_comp_bit_map.num_non_solid_comp > TOP_ENCODED_LEVEL &&
-                    solid_comp_count < (comp_count / 2)) {
-        short group_size[(gx_max_color_value / STD_ENCODED_VALUE) + 1] = {0};
-        int value, largest_group_size = 0;
-
-        /* Scan to determine the size of the largest group */
-        for (comp_num = 0; comp_num < num_comp; comp_num++) {
-            value = colors[comp_num] / STD_ENCODED_VALUE;
-            group_size[value]++;
-            if (group_size[value] > largest_group_size) {
-                largest_group_size = group_size[value];
-                group = value;
-            }
-        }
-        /*
-         * If using this group instead of the solid colorants will improve
-         * our situation, then switch to using this group.
-         */
-        if (largest_group_size > (solid_comp_count + 1) &&
-                (comp_count - largest_group_size) < MAX_ENCODED_COMPONENTS) {
-            /* Setup the colorant description to use this group */
-            memset(&(new_comp_bit_map.solid_colorants), 0,
-                                        size_of(comp_bit_map_t));
-            for (comp_num = 0; comp_num < num_comp; comp_num++) {
-                value = colors[comp_num] / STD_ENCODED_VALUE;
-                if (value == group) {
-                    set_colorant_present(&new_comp_bit_map,
-                                                solid_colorants, comp_num);
-                }
-            }
-            new_comp_bit_map.solid_not_100 = true;
-            new_comp_bit_map.num_non_solid_comp =
-                                        comp_count - largest_group_size + 1;
-        }
-    }
-
-    /* Our encoding scheme cannot handle too many non solid colorants. */
-    if (new_comp_bit_map.num_non_solid_comp > MAX_ENCODED_COMPONENTS)
-        return NON_ENCODEABLE_COLOR;
-
-    /*
-     * We keep a list of which colorant combinations we have used.  Make
-     * sure that this list has been initialized. Alloc in stable_memory
-     * to make it immune to restore.
-     */
-    if (pdevn_params->compressed_color_list == NULL) {
-        pdevn_params->compressed_color_list =
-                init_compressed_color_list(pdev->memory->stable_memory);
-        if (pdevn_params->compressed_color_list == NULL)
-            return NON_ENCODEABLE_COLOR;        /* Unable to initialize list */
-    }
-
-    /*
-     * Check our list of colorant combinations to see if we already have a
-     * combination that is useable.  I.e. a combination that includes all of our
-     * non zero colorants.
-     */
-    found = search_compressed_color_list(num_comp,
-                        pdevn_params->compressed_color_list,
-                        &new_comp_bit_map, &list_index, &pbit_map);
-
-    /*
-     * If our new colorant list was not found then add it to our encode color
-     * list. This needs to be in stable_memory to be immune to 'restore'.
-     */
-    if (!found) {
-        added = add_compressed_color_list(pdev->memory->stable_memory,
-                                        &new_comp_bit_map,
-                                        pdevn_params->compressed_color_list,
-                                        &list_index);
-        if (!added)
-            return NON_ENCODEABLE_COLOR;
-        pbit_map = &new_comp_bit_map;
-    }
-
-    /*
-     * Form the encoded color gx_color_index value.  This is a combination
-     * of the bits that encode which colorants are used (non zero) and the
-     * colorant values.
-     */
-    bit_count = num_comp_bits[pbit_map->num_non_solid_comp];
-    if (pbit_map->solid_not_100) {
-        color = group >> (8 - bit_count);
-        bit_pos += bit_count;
-    }
-    COLROUND_SETUP(bit_count);
-    for (comp_num = 0; comp_num < num_comp; comp_num++) {
-        if (colorant_present(pbit_map, colorants, comp_num) &&
-           !colorant_present(pbit_map, solid_colorants, comp_num)) {
-            color |= COLROUND_ROUND(colors[comp_num]) << bit_pos;
-            bit_pos += bit_count;
-        }
-    }
-    color |= list_index;
-    /*
-     * Make sure that our color index does not match one of the reserved
-     * values.
-     */
-    if (color == NON_ENCODEABLE_COLOR)
-        color -= 1;
-    else if (color == gx_no_color_index)
-        color -= 2;
-    return color;
-}
-
-/*
- * Find the bit map for given bit map index.
- */
-comp_bit_map_list_t *
-find_bit_map(gx_color_index index, compressed_color_list_t * pcomp_list)
-{
-    int loc = (int)(index >> (NUM_GX_COLOR_INDEX_BITS - 8));
-
-    /*
-     * Search for the level which contains the bit map.  If our index
-     * for this level is less than the number of sub level pointers for
-     * this level then we need to go down another level.
-     */
-    while (loc < pcomp_list->num_sub_level_ptrs) {
-        pcomp_list = pcomp_list->u.sub_level_ptrs[loc];
-        index <<= 8;
-        loc = (int)(index >> (NUM_GX_COLOR_INDEX_BITS - 8));
-    }
-    return &(pcomp_list->u.comp_data[loc]);
-}
-
-/*
- * Decode a gx_color_index value back to a list of colorant values.  This
- * routine assumes that the gx_color_index value is 'encoded' as described
- * for devn_encode_compressed_color.
- *
- * See comments preceding devn_encode_compressed_color for more information
- * about the way that we are compressing colorant values in a gx_color_index.
- */
-int
-devn_decode_compressed_color(gx_device * dev, gx_color_index color,
-                        gx_color_value * out, gs_devn_params * pdevn_params)
-{
-    int comp_num = 0;
-    int factor, bit_count, bit_mask;
-    int ncomp = dev->color_info.num_components;
-    comp_bit_map_list_t * pbitmap;
-    gx_color_value solid_color = gx_max_color_value;
-
-    /*
-     * Set all colorants to max if we get a non encodeable color.  We set the
-     * values to a max since this will represent another non encodeable color.
-     * Thus if we have a non decodable color, it will continue to propogate.
-     */
-    if (color == NON_ENCODEABLE_COLOR) {
-        for (; comp_num < ncomp; comp_num++)
-            out[comp_num] = gx_max_color_value;
-        return 0;
-    }
-    pbitmap = find_bit_map(color, pdevn_params->compressed_color_list);
-    bit_count = num_comp_bits[pbitmap->num_non_solid_comp];
-    bit_mask = (1 << bit_count) - 1;
-    factor = comp_bit_factor[pbitmap->num_non_solid_comp];
-    if (pbitmap->solid_not_100) {
-        solid_color = (factor * ((int)color & bit_mask)) >> 8;
-        color >>= bit_count;
-    }
-    for (; comp_num < ncomp; comp_num++) {
-        if (colorant_present(pbitmap, colorants, comp_num)) {
-            if (colorant_present(pbitmap, solid_colorants, comp_num))
-                out[comp_num] = solid_color;
-            else {
-                out[comp_num] = (factor * ((int)color & bit_mask)) >> 8;
-                color >>= bit_count;
-            }
-        }
-        else
-            out[comp_num] = 0;
-    }
-    return 0;
-}
-
-/*
- * Unpack a row of 'compressed color' values.  These values are encoded as
- * described for the devn_encode_compressed_color routine.
- *
- * The routine takes a raster line of data and expands each pixel into a buffer
- * of 8 bit values for each colorant.
- *
- * See comments preceding devn_encode_compressed_color for more information
- * about the way that we are encoding colorant values in a gx_color_index.
- *
- * Note: For simplicity of coding the calling routines, this routine will also
- * handle 'uncompressed' bit maps.
- */
-int
-devn_unpack_row(gx_device * dev, int num_comp, gs_devn_params * pdevn_params,
-                                         int width, byte * in, byte * out)
-{
-    int i, comp_num, pixel_num;
-
-    if (pdevn_params->compressed_color_list == NULL) {
-        int bytes_pp = dev->color_info.depth >> 3;
-
-        /*
-         * For 'uncompressed' data, the number of bytes per pixel in the input
-         * raster line is defined by the device depth.  This may be more than
-         * the number of actual device components.
-         */
-        for (pixel_num = 0; pixel_num < width; pixel_num++) {
-            for (i = 0; i < num_comp; i++)
-                *out++ = *in++;
-            in += bytes_pp - num_comp;
-        }
-        return 0;
-    }
-    else {
-        int non_encodeable_count = 0;
-        int factor, bit_count, bit_mask;
-        comp_bit_map_list_t * pbitmap;
-        gx_color_index color;
-
-        for (pixel_num = 0; pixel_num < width; pixel_num++) {
-            gx_color_value solid_color = gx_max_color_value;
-
-            /*
-             * Get the encoded color value.
-             */
-            color = ((gx_color_index)(*in++)) << (NUM_GX_COLOR_INDEX_BITS - 8);
-            for (i = NUM_GX_COLOR_INDEX_BITS - 16; i >= 0; i -= 8)
-                color |= ((gx_color_index)(*in++)) << i;
-            /*
-             * Set all colorants to zero if we get a non encodeable color.
-             */
-            if (color == NON_ENCODEABLE_COLOR) {
-                for (comp_num = 0; comp_num < num_comp; comp_num++)
-                    *out++ = 0;
-                non_encodeable_count++;
-            }
-            else {
-                pbitmap = find_bit_map(color,
-                                pdevn_params->compressed_color_list);
-                bit_count = num_comp_bits[pbitmap->num_non_solid_comp];
-                bit_mask = (1 << bit_count) - 1;
-                factor = comp_bit_factor[pbitmap->num_non_solid_comp];
-                if (pbitmap->solid_not_100) {
-                    solid_color = (factor * ((int)color & bit_mask)) >> 8;
-                    color >>= bit_count;
-                }
-                for (comp_num = 0; comp_num < num_comp; comp_num++) {
-                    if (colorant_present(pbitmap, colorants, comp_num)) {
-                        if (colorant_present(pbitmap,
-                                                solid_colorants, comp_num))
-                            *out++ = solid_color >> 8;
-                        else {
-                            *out++ = (factor * ((int)color & bit_mask)) >> 16;
-                            color >>= bit_count;
-                        }
-                    }
-                    else
-                        *out++ = 0;
-                }
-            }
-        }
-        return non_encodeable_count;
-    }
-}
-
 /* ***************** The spotcmyk and devicen devices ***************** */
 
 /* Define the device parameters. */
@@ -1649,28 +828,12 @@ devn_unpack_row(gx_device * dev, int num_comp, gs_devn_params * pdevn_params,
 
 /* The device descriptor */
 static dev_proc_open_device(spotcmyk_prn_open);
-static dev_proc_get_params(spotcmyk_get_params);
-static dev_proc_put_params(spotcmyk_put_params);
 static dev_proc_print_page(spotcmyk_print_page);
-static dev_proc_get_color_mapping_procs(get_spotcmyk_color_mapping_procs);
-static dev_proc_get_color_mapping_procs(get_devicen_color_mapping_procs);
-static dev_proc_get_color_comp_index(spotcmyk_get_color_comp_index);
-static dev_proc_encode_color(spotcmyk_encode_color);
-static dev_proc_decode_color(spotcmyk_decode_color);
-
-/*
- * A structure definition for a DeviceN type device
- */
-typedef struct spotcmyk_device_s {
-    gx_device_common;
-    gx_prn_device_common;
-    gs_devn_params devn_params;
-} spotcmyk_device;
 
 /* GC procedures */
 
 static
-ENUM_PTRS_WITH(spotcmyk_device_enum_ptrs, spotcmyk_device *pdev)
+ENUM_PTRS_WITH(gx_devn_prn_device_enum_ptrs, gx_devn_prn_device *pdev)
 {
     if (index < pdev->devn_params.separations.num_separations)
         ENUM_RETURN(pdev->devn_params.separations.names[index].data);
@@ -1679,36 +842,43 @@ ENUM_PTRS_WITH(spotcmyk_device_enum_ptrs, spotcmyk_device *pdev)
 }
 
 ENUM_PTRS_END
-static RELOC_PTRS_WITH(spotcmyk_device_reloc_ptrs, spotcmyk_device *pdev)
+static RELOC_PTRS_WITH(gx_devn_prn_device_reloc_ptrs, gx_devn_prn_device *pdev)
 {
     RELOC_PREFIX(st_device_printer);
     {
         int i;
 
         for (i = 0; i < pdev->devn_params.separations.num_separations; ++i) {
-            RELOC_PTR(spotcmyk_device, devn_params.separations.names[i].data);
+            RELOC_PTR(gx_devn_prn_device, devn_params.separations.names[i].data);
         }
     }
 }
 RELOC_PTRS_END
 
-/* Even though spotcmyk_device_finalize is the same as gx_device_finalize, */
-/* we need to implement it separately because st_composite_final */
-/* declares all 3 procedures as private. */
-static void
-spotcmyk_device_finalize(const gs_memory_t *cmem, void *vpdev)
+void
+gx_devn_prn_device_finalize(const gs_memory_t *cmem, void *vpdev)
 {
+    devn_free_params((gx_device*) vpdev);
     gx_device_finalize(cmem, vpdev);
 }
 
-gs_private_st_composite_final(st_spotcmyk_device, spotcmyk_device,
-    "spotcmyk_device", spotcmyk_device_enum_ptrs, spotcmyk_device_reloc_ptrs,
-    spotcmyk_device_finalize);
+/* Even though gx_devn_prn_device_finalize is the same as gx_device_finalize, */
+/* we need to implement it separately because st_composite_final */
+/* declares all 3 procedures as private. */
+static void
+static_gx_devn_prn_device_finalize(const gs_memory_t *cmem, void *vpdev)
+{
+    gx_devn_prn_device_finalize(cmem, vpdev);
+}
+
+gs_public_st_composite_final(st_gx_devn_prn_device, gx_devn_prn_device,
+    "gx_devn_prn_device", gx_devn_prn_device_enum_ptrs, gx_devn_prn_device_reloc_ptrs,
+    static_gx_devn_prn_device_finalize);
 
 /*
  * Macro definition for DeviceN procedures
  */
-#define device_procs(get_color_mapping_procs)\
+#define device_procs()\
 {       spotcmyk_prn_open,\
         gx_default_get_initial_matrix,\
         NULL,                           /* sync_output */\
@@ -1722,8 +892,8 @@ gs_private_st_composite_final(st_spotcmyk_device, spotcmyk_device,
         NULL,                           /* copy_color */\
         NULL,                           /* draw_line */\
         NULL,                           /* get_bits */\
-        spotcmyk_get_params,            /* get_params */\
-        spotcmyk_put_params,            /* put_params */\
+        gx_devn_prn_get_params,         /* get_params */\
+        gx_devn_prn_put_params,         /* put_params */\
         NULL,                           /* map_cmyk_color - not used */\
         NULL,                           /* get_xfont_procs */\
         NULL,                           /* get_xfont_device */\
@@ -1758,12 +928,18 @@ gs_private_st_composite_final(st_spotcmyk_device, spotcmyk_device,
         NULL,                           /* begin_transparency_mask */\
         NULL,                           /* end_transparency_mask */\
         NULL,                           /* discard_transparency_layer */\
-        get_color_mapping_procs,        /* get_color_mapping_procs */\
-        spotcmyk_get_color_comp_index,  /* get_color_comp_index */\
-        spotcmyk_encode_color,          /* encode_color */\
-        spotcmyk_decode_color,          /* decode_color */\
+        gx_devn_prn_get_color_mapping_procs,/* get_color_mapping_procs */\
+        gx_devn_prn_get_color_comp_index,/* get_color_comp_index */\
+        gx_devn_prn_encode_color,       /* encode_color */\
+        gx_devn_prn_decode_color,       /* decode_color */\
         NULL,                           /* pattern_manage */\
-        NULL                            /* fill_rectangle_hl_color */\
+        NULL,                           /* fill_rectangle_hl_color */\
+        NULL,                           /* include_color_space */\
+        NULL,                           /* fill_linear_color_scanline */\
+        NULL,                           /* fill_linear_color_trapezoid */\
+        NULL,                           /* fill_linear_color_triangle */\
+        gx_devn_prn_update_spot_equivalent_colors,/* update_spot_equivalent_colors */\
+        gx_devn_prn_ret_devn_params     /* ret_devn_params */\
 }
 
 fixed_colorant_name DeviceCMYKComponents[] = {
@@ -1774,9 +950,9 @@ fixed_colorant_name DeviceCMYKComponents[] = {
         0               /* List terminator */
 };
 
-#define spotcmyk_device_body(procs, dname, ncomp, pol, depth, mg, mc, cn)\
-    std_device_full_body_type_extended(spotcmyk_device, &procs, dname,\
-          &st_spotcmyk_device,\
+#define gx_devn_prn_device_body(procs, dname, ncomp, pol, depth, mg, mc, cn)\
+    std_device_full_body_type_extended(gx_devn_prn_device, &procs, dname,\
+          &st_gx_devn_prn_device,\
           (int)((long)(DEFAULT_WIDTH_10THS) * (X_DPI) / 10),\
           (int)((long)(DEFAULT_HEIGHT_10THS) * (Y_DPI) / 10),\
           X_DPI, Y_DPI,\
@@ -1796,11 +972,11 @@ fixed_colorant_name DeviceCMYKComponents[] = {
 /*
  * Example device with CMYK and spot color support
  */
-static const gx_device_procs spot_cmyk_procs = device_procs(get_spotcmyk_color_mapping_procs);
+static const gx_device_procs spot_cmyk_procs = device_procs();
 
-const spotcmyk_device gs_spotcmyk_device =
+const gx_devn_prn_device gs_spotcmyk_device =
 {
-    spotcmyk_device_body(spot_cmyk_procs, "spotcmyk", 4, GX_CINFO_POLARITY_SUBTRACTIVE, 4, 1, 1, "DeviceCMYK"),
+    gx_devn_prn_device_body(spot_cmyk_procs, "spotcmyk", 4, GX_CINFO_POLARITY_SUBTRACTIVE, 4, 1, 1, "DeviceCMYK"),
     /* DeviceN device specific parameters */
     { 1,                        /* Bits per color - must match ncomp, depth, etc. above */
       DeviceCMYKComponents,     /* Names of color model colorants */
@@ -1816,11 +992,11 @@ const spotcmyk_device gs_spotcmyk_device =
 /*
  * Example DeviceN color device
  */
-static const gx_device_procs devicen_procs = device_procs(get_devicen_color_mapping_procs);
+static const gx_device_procs devicen_procs = device_procs();
 
-const spotcmyk_device gs_devicen_device =
+const gx_devn_prn_device gs_devicen_device =
 {
-    spotcmyk_device_body(devicen_procs, "devicen", 4, GX_CINFO_POLARITY_SUBTRACTIVE, 32, 255, 255, "DeviceCMYK"),
+    gx_devn_prn_device_body(devicen_procs, "devicen", 4, GX_CINFO_POLARITY_SUBTRACTIVE, 32, 255, 255, "DeviceCMYK"),
     /* DeviceN device specific parameters */
     { 8,                        /* Bits per color - must match ncomp, depth, etc. above */
       NULL,                     /* No names for standard DeviceN color model */
@@ -1839,6 +1015,9 @@ spotcmyk_prn_open(gx_device * pdev)
 {
     int code = gdev_prn_open(pdev);
 
+    while (pdev->child)
+        pdev = pdev->child;
+
     set_linear_color_bits_mask_shift(pdev);
     pdev->color_info.separable_and_linear = GX_CINFO_SEP_LIN;
     return code;
@@ -1849,7 +1028,7 @@ spotcmyk_prn_open(gx_device * pdev)
 static void
 gray_cs_to_spotcmyk_cm(gx_device * dev, frac gray, frac out[])
 {
-    int * map = ((spotcmyk_device *) dev)->devn_params.separation_order_map;
+    int * map = ((gx_devn_prn_device *) dev)->devn_params.separation_order_map;
 
     gray_cs_to_devn_cm(dev, map, gray, out);
 }
@@ -1858,7 +1037,7 @@ static void
 rgb_cs_to_spotcmyk_cm(gx_device * dev, const gs_imager_state *pis,
                                    frac r, frac g, frac b, frac out[])
 {
-    int * map = ((spotcmyk_device *) dev)->devn_params.separation_order_map;
+    int * map = ((gx_devn_prn_device *) dev)->devn_params.separation_order_map;
 
     rgb_cs_to_devn_cm(dev, map, pis, r, g, b, out);
 }
@@ -1866,7 +1045,7 @@ rgb_cs_to_spotcmyk_cm(gx_device * dev, const gs_imager_state *pis,
 static void
 cmyk_cs_to_spotcmyk_cm(gx_device * dev, frac c, frac m, frac y, frac k, frac out[])
 {
-    int * map = ((spotcmyk_device *) dev)->devn_params.separation_order_map;
+    int * map = ((gx_devn_prn_device *) dev)->devn_params.separation_order_map;
 
     cmyk_cs_to_devn_cm(dev, map, c, m, y, k, out);
 }
@@ -1875,16 +1054,8 @@ static const gx_cm_color_map_procs spotCMYK_procs = {
     gray_cs_to_spotcmyk_cm, rgb_cs_to_spotcmyk_cm, cmyk_cs_to_spotcmyk_cm
 };
 
-static const gx_cm_color_map_procs *
-get_spotcmyk_color_mapping_procs(const gx_device * dev)
-{
-    return &spotCMYK_procs;
-}
-
-/* Also use the spotcmyk procs for the devicen device. */
-
-static const gx_cm_color_map_procs *
-get_devicen_color_mapping_procs(const gx_device * dev)
+const gx_cm_color_map_procs *
+gx_devn_prn_get_color_mapping_procs(const gx_device * dev)
 {
     return &spotCMYK_procs;
 }
@@ -1892,10 +1063,10 @@ get_devicen_color_mapping_procs(const gx_device * dev)
 /*
  * Encode a list of colorant values into a gx_color_index_value.
  */
-static gx_color_index
-spotcmyk_encode_color(gx_device *dev, const gx_color_value colors[])
+gx_color_index
+gx_devn_prn_encode_color(gx_device *dev, const gx_color_value colors[])
 {
-    int bpc = ((spotcmyk_device *)dev)->devn_params.bitspercomponent;
+    int bpc = ((gx_devn_prn_device *)dev)->devn_params.bitspercomponent;
     gx_color_index color = 0;
     int i = 0;
     int ncomp = dev->color_info.num_components;
@@ -1912,10 +1083,10 @@ spotcmyk_encode_color(gx_device *dev, const gx_color_value colors[])
 /*
  * Decode a gx_color_index value back to a list of colorant values.
  */
-static int
-spotcmyk_decode_color(gx_device * dev, gx_color_index color, gx_color_value * out)
+int
+gx_devn_prn_decode_color(gx_device * dev, gx_color_index color, gx_color_value * out)
 {
-    int bpc = ((spotcmyk_device *)dev)->devn_params.bitspercomponent;
+    int bpc = ((gx_devn_prn_device *)dev)->devn_params.bitspercomponent;
     int mask = (1 << bpc) - 1;
     int i = 0;
     int ncomp = dev->color_info.num_components;
@@ -1930,23 +1101,50 @@ spotcmyk_decode_color(gx_device * dev, gx_color_index color, gx_color_value * ou
 }
 
 /* Get parameters. */
-static int
-spotcmyk_get_params(gx_device * pdev, gs_param_list * plist)
+int
+gx_devn_prn_get_params(gx_device *dev, gs_param_list *plist)
 {
-    int code = gdev_prn_get_params(pdev, plist);
+    gx_devn_prn_device *pdev = (gx_devn_prn_device *)dev;
+    int code = gdev_prn_get_params(dev, plist);
 
     if (code < 0)
         return code;
-    return devn_get_params(pdev, plist,
-        &(((spotcmyk_device *)pdev)->devn_params), NULL);
+    return devn_get_params(dev, plist, &pdev->devn_params,
+                           &pdev->equiv_cmyk_colors);
 }
 
 /* Set parameters. */
-static int
-spotcmyk_put_params(gx_device * pdev, gs_param_list * plist)
+int
+gx_devn_prn_put_params(gx_device *dev, gs_param_list *plist)
 {
-    return devn_printer_put_params(pdev, plist,
-        &(((spotcmyk_device *)pdev)->devn_params), NULL);
+    gx_devn_prn_device *pdev = (gx_devn_prn_device *)dev;
+
+    return devn_printer_put_params(dev, plist, &pdev->devn_params,
+                                   &pdev->equiv_cmyk_colors);
+}
+
+/*
+ *  Device proc for returning a pointer to DeviceN parameter structure
+ */
+gs_devn_params *
+gx_devn_prn_ret_devn_params(gx_device * dev)
+{
+    gx_devn_prn_device *pdev = (gx_devn_prn_device *)dev;
+
+    return &pdev->devn_params;
+}
+
+/*
+ *  Device proc for updating the equivalent CMYK color for spot colors.
+ */
+int
+gx_devn_prn_update_spot_equivalent_colors(gx_device *dev, const gs_state * pgs)
+{
+    gx_devn_prn_device *pdev = (gx_devn_prn_device *)dev;
+
+    update_spot_equivalent_cmyk_colors(dev, pgs, &pdev->devn_params,
+                                       &pdev->equiv_cmyk_colors);
+    return 0;
 }
 
 /*
@@ -1963,13 +1161,19 @@ spotcmyk_put_params(gx_device * pdev, gs_param_list * plist)
  * the colorant is not being used due to a SeparationOrder device parameter.
  * It returns a negative value if not found.
  */
-static int
-spotcmyk_get_color_comp_index(gx_device * dev, const char * pname,
+int
+gx_devn_prn_get_color_comp_index(gx_device * dev, const char * pname,
                                         int name_size, int component_type)
 {
+    gx_devn_prn_device *pdev = (gx_devn_prn_device *)dev;
+
     return devn_get_color_comp_index(dev,
-                &(((spotcmyk_device *)dev)->devn_params), NULL,
-                pname, name_size, component_type, ENABLE_AUTO_SPOT_COLORS);
+                                     &pdev->devn_params,
+                                     &pdev->equiv_cmyk_colors,
+                                     pname,
+                                     name_size,
+                                     component_type,
+                                     ENABLE_AUTO_SPOT_COLORS);
 }
 
 /*
@@ -2087,7 +1291,7 @@ spotcmyk_print_page(gx_device_printer * pdev, FILE * prn_stream)
     int line_size = gdev_mem_bytes_per_scan_line((gx_device *) pdev);
     byte *in = gs_alloc_bytes(pdev->memory, line_size, "spotcmyk_print_page(in)");
     byte *buf = gs_alloc_bytes(pdev->memory, line_size + 3, "spotcmyk_print_page(buf)");
-    const spotcmyk_device * pdevn = (spotcmyk_device *) pdev;
+    const gx_devn_prn_device * pdevn = (gx_devn_prn_device *) pdev;
     int npcmcolors = pdevn->devn_params.num_std_colorant_names;
     int ncomp = pdevn->color_info.num_components;
     int depth = pdevn->color_info.depth;
@@ -2101,10 +1305,10 @@ spotcmyk_print_page(gx_device_printer * pdev, FILE * prn_stream)
     int pcmlinelength = 0; /* Initialize against indeterminizm in case of pdev->height == 0. */
     int linelength[GX_DEVICE_COLOR_MAX_COMPONENTS];
     byte *data;
-    char spotname[gp_file_name_sizeof];
+    char *spotname = (char *)gs_alloc_bytes(pdev->memory, gp_file_name_sizeof, "spotcmyk_print_page(spotname)");
 
-    if (in == NULL || buf == NULL) {
-        code = gs_error_VMerror;
+    if (in == NULL || buf == NULL || spotname == NULL) {
+        code = gs_note_error(gs_error_VMerror);
         goto prn_done;
     }
     /*
@@ -2125,7 +1329,7 @@ spotcmyk_print_page(gx_device_printer * pdev, FILE * prn_stream)
         gs_sprintf(spotname, "%ss%d", pdevn->fname, i);
         spot_file[i] = gp_fopen(spotname, "wb");
         if (spot_file[i] == NULL) {
-            code = gs_error_VMerror;
+            code = gs_note_error(gs_error_VMerror);
             goto prn_done;
         }
     }
@@ -2158,13 +1362,13 @@ spotcmyk_print_page(gx_device_printer * pdev, FILE * prn_stream)
         code = devn_write_pcx_file(pdev, (char *) &pdevn->fname,
                                 npcmcolors, bpc, pcmlinelength);
         if (code < 0)
-            return code;
+            goto prn_done;
     }
     for(i = 0; i < nspot; i++) {
         gs_sprintf(spotname, "%ss%d", pdevn->fname, i);
         code = devn_write_pcx_file(pdev, spotname, 1, bpc, linelength[i]);
         if (code < 0)
-            return code;
+            goto prn_done;
     }
 
     /* Clean up and exit */
@@ -2177,6 +1381,8 @@ spotcmyk_print_page(gx_device_printer * pdev, FILE * prn_stream)
         gs_free_object(pdev->memory, in, "spotcmyk_print_page(in)");
     if (buf != NULL)
         gs_free_object(pdev->memory, buf, "spotcmyk_print_page(buf)");
+    if (spotname != NULL)
+        gs_free_object(pdev->memory, spotname, "spotcmyk_print_page(spotname)");
     return code;
 }
 
@@ -2487,19 +1693,26 @@ devn_write_pcx_file(gx_device_printer * pdev, char * filename, int ncomp,
     pcx_header header;
     int code;
     bool planar;
-    char outname[gp_file_name_sizeof];
-    FILE * in;
-    FILE * out;
+    char *outname = (char *)gs_alloc_bytes(pdev->memory, gp_file_name_sizeof, "devn_write_pcx_file(outname)");
+    FILE * in = NULL;
+    FILE * out = NULL;
     int depth = bpc_to_depth(ncomp, bpc);
 
+    if (outname == NULL) {
+        code = gs_note_error(gs_error_VMerror);
+	goto done;
+    }
+
     in = gp_fopen(filename, "rb");
-    if (!in)
-        return_error(gs_error_invalidfileaccess);
+    if (!in) {
+        code = gs_note_error(gs_error_invalidfileaccess);
+	goto done;
+    }
     gs_sprintf(outname, "%s.pcx", filename);
     out = gp_fopen(outname, "wb");
     if (!out) {
-        fclose(in);
-        return_error(gs_error_invalidfileaccess);
+        code = gs_note_error(gs_error_invalidfileaccess);
+	goto done;
     }
 
     planar = devn_setup_pcx_header(pdev, &header, ncomp, bpc);
@@ -2507,8 +1720,15 @@ devn_write_pcx_file(gx_device_printer * pdev, char * filename, int ncomp,
     if (code >= 0)
         code = devn_finish_pcx_file(pdev, out, &header, ncomp, bpc);
 
-    fclose(in);
-    fclose(out);
+done:
+    if (in)
+      fclose(in);
+    if (out)
+      fclose(out);
+      
+    if (outname)
+      gs_free_object(pdev->memory, outname, "spotcmyk_print_page(outname)");
+
     return code;
 }
 

@@ -176,7 +176,7 @@ get_decodingID(FAPI_server * server, FAPI_font * ff,
 }
 
 static FAPI_retcode
-get_font_bbox(FAPI_server * server, FAPI_font * ff, int BBox[4])
+get_font_bbox(FAPI_server * server, FAPI_font * ff, int BBox[4], int unitsPerEm[2])
 {
     return 0;
 }
@@ -334,6 +334,7 @@ static const FAPI_server If0 = {
     {0},
     0,
     false,
+    1,
     {1, 0, 0, 1, 0, 0},
     ensure_open,
     get_scaled_font,

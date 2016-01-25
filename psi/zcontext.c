@@ -39,11 +39,22 @@
 #include "store.h"
 
 /*
- * Define the rescheduling interval.  A value of max_int effectively
- * disables scheduling.  The only reason not to make this const is to
- * allow it to be changed during testing.
+ *  Define the reschedule_interval, the number of ticks between time
+ *  slice reschedules.  This may be changed by the user by setting the
+ *  TIME_SLICE_INTERVAL variable in systemdict to the desired integer
+ *  prior to running.  If set to be less than the minimum interval (100),
+ *  time slicing will be disabled.  In this case, the time_slice_ticks
+ *  field of the context state will be still be set to the default
+ *  reschedule interval of 250 ticks.  This will still permit the
+ *  interpreter to garbage collect unclaimed memory at appropriate
+ *  intervals, even when time slicing between contexts is disabled.
  */
-static int reschedule_interval = 100;
+enum {
+    default_reschedule_interval = 250,
+    minimum_reschedule_interval = 100
+};
+
+static int reschedule_interval = default_reschedule_interval;
 
 /* Context structure */
 typedef enum {
@@ -173,9 +184,9 @@ index_context(const gs_scheduler_t *psched, long index)
     gs_context_t *pctx;
 
     if (index == 0)
-        return 0;
+        return NULL;
     pctx = psched->table[index % CTX_TABLE_SIZE];
-    while (pctx != 0 && pctx->index != index)
+    while (pctx != NULL && pctx->index != index)
         pctx = pctx->table_next;
     return pctx;
 }
@@ -348,6 +359,7 @@ zcontext_init(i_ctx_t *i_ctx_p)
 static int
 ctx_initialize(i_ctx_t **pi_ctx_p)
 {
+    int interval = reschedule_interval;
     i_ctx_t *i_ctx_p = *pi_ctx_p; /* for gs_imemory */
     gs_ref_memory_t *imem = iimemory_system;
     gs_scheduler_t *psched =
@@ -370,9 +382,12 @@ ctx_initialize(i_ctx_t **pi_ctx_p)
     psched->current->scheduler = psched;
     /* Hook into the interpreter. */
     *pi_ctx_p = &psched->current->state;
+
+    if (interval < minimum_reschedule_interval)
+        interval = minimum_reschedule_interval;
     psched->current->state.reschedule_proc = ctx_reschedule;
     psched->current->state.time_slice_proc = ctx_time_slice;
-    psched->current->state.time_slice_ticks = reschedule_interval;
+    psched->current->state.time_slice_ticks = interval;
     return 0;
 }
 
@@ -423,7 +438,7 @@ ctx_reschedule(i_ctx_t **pi_ctx_p)
                 if (current != 0)
                     context_store(psched, current);
                 lprintf("No context to run!");
-                return_error(e_Fatal);
+                return_error(gs_error_Fatal);
             }
             /* See above for an explanation of the following test. */
             if (ready->state.memory.space_local->saved != 0 &&
@@ -467,7 +482,8 @@ ctx_time_slice(i_ctx_t **pi_ctx_p)
 {
     gs_scheduler_t *psched = ((gs_context_t *)*pi_ctx_p)->scheduler;
 
-    if (psched->active.head_index == 0)
+    if (psched->active.head_index == 0 ||
+        reschedule_interval < minimum_reschedule_interval)
         return 0;
     if_debug0('"', "[\"]time-slice\n");
     add_last(psched, &psched->active, psched->current);
@@ -502,7 +518,7 @@ zdetach(i_ctx_t *i_ctx_p)
     if_debug2('\'', "[']detach %ld, status = %d\n",
               pctx->index, pctx->status);
     if (pctx->joiner_index != 0 || pctx->detach)
-        return_error(e_invalidcontext);
+        return_error(gs_error_invalidcontext);
     switch (pctx->status) {
         case cs_active:
             pctx->detach = true;
@@ -536,7 +552,7 @@ zfork(i_ctx_t *i_ctx_p)
     ref rnull;
 
     if (mcount == 0)
-        return_error(e_unmatchedmark);
+        return_error(gs_error_unmatchedmark);
     make_null(&rnull);
     return do_fork(i_ctx_p, op, &rnull, &rnull, mcount, false);
 }
@@ -548,7 +564,7 @@ zlocalfork(i_ctx_t *i_ctx_p)
     int code;
 
     if (mcount == 0)
-        return_error(e_unmatchedmark);
+        return_error(gs_error_unmatchedmark);
     code = values_older_than(&o_stack, 1, mcount - 1, avm_local);
     if (code < 0)
         return code;
@@ -572,11 +588,11 @@ do_fork(i_ctx_t *i_ctx_p, os_ptr op, const ref * pstdin, const ref * pstdout,
     gs_dual_memory_t dmem;
     gs_context_t *pctx;
     ref old_userdict, new_userdict;
-    int code;
+    int code, interval;
 
     check_proc(*op);
     if (iimemory_local->save_level)
-        return_error(e_invalidcontext);
+        return_error(gs_error_invalidcontext);
     if (r_has_type(pstdout, t_null)) {
         code = zget_stdout(i_ctx_p, &s);
         if (code < 0)
@@ -603,7 +619,7 @@ do_fork(i_ctx_t *i_ctx_p, os_ptr op, const ref * pstdin, const ref * pstdout,
         if (dict_find_string(systemdict, "userdict", &puserdict) <= 0 ||
             !r_has_type(puserdict, t_dictionary)
             )
-            return_error(e_Fatal);
+            return_error(gs_error_Fatal);
         old_userdict = *puserdict;
         userdict_size = dict_maxlength(&old_userdict);
         lmem = ialloc_alloc_state(parent, iimemory_local->chunk_size);
@@ -611,7 +627,7 @@ do_fork(i_ctx_t *i_ctx_p, os_ptr op, const ref * pstdin, const ref * pstdout,
         if (lmem == 0 || lmem_stable == 0) {
             gs_free_object(parent, lmem_stable, "do_fork");
             gs_free_object(parent, lmem, "do_fork");
-            return_error(e_VMerror);
+            return_error(gs_error_VMerror);
         }
         lmem->space = avm_local;
         lmem_stable->space = avm_local;
@@ -669,6 +685,16 @@ do_fork(i_ctx_t *i_ctx_p, os_ptr op, const ref * pstdin, const ref * pstdout,
             }
         }
     }
+    zcontext_init(&pctx->state);
+
+    interval = reschedule_interval;
+    if (interval < minimum_reschedule_interval)
+        interval = default_reschedule_interval;
+    
+    pctx->state.reschedule_proc = ctx_reschedule;
+    pctx->state.time_slice_proc = ctx_time_slice;
+    pctx->state.time_slice_ticks = interval;
+
     pctx->state.op_array_table_global = i_ctx_p->op_array_table_global;
     pctx->state.op_array_table_local  = i_ctx_p->op_array_table_local;
     pctx->state.language_level = i_ctx_p->language_level;
@@ -733,7 +759,7 @@ values_older_than(const ref_stack_t * pstack, uint first, uint last,
 
     for (i = first; i <= last; ++i)
         if (r_space(ref_stack_index(pstack, (long)i)) >= next_space)
-            return_error(e_invalidaccess);
+            return_error(gs_error_invalidaccess);
     return 0;
 }
 
@@ -768,7 +794,7 @@ fork_done(i_ctx_t *i_ctx_p)
 
         if (dict_find_string(systemdict, "restore", &prestore) <= 0) {
             lprintf("restore not found in systemdict!");
-            return_error(e_Fatal);
+            return_error(gs_error_Fatal);
         }
         if (pcur->detach) {
             ref_stack_clear(&o_stack);	/* help avoid invalidrestore */
@@ -840,7 +866,7 @@ zjoin(i_ctx_t *i_ctx_p)
           current->state.memory.space_local ||
         iimemory_local->save_level != 0
         )
-        return_error(e_invalidcontext);
+        return_error(gs_error_invalidcontext);
     switch (pctx->status) {
         case cs_active:
             /*
@@ -888,7 +914,7 @@ finish_join(i_ctx_t *i_ctx_p)
     if_debug2('\'', "[']finish_join %ld, status = %d\n",
               pctx->index, pctx->status);
     if (pctx->joiner_index != current->index)
-        return_error(e_invalidcontext);
+        return_error(gs_error_invalidcontext);
     pctx->joiner_index = 0;
     return zjoin(i_ctx_p);
 }
@@ -932,7 +958,7 @@ zcondition(i_ctx_t *i_ctx_p)
         ialloc_struct(gs_condition_t, &st_condition, "zcondition");
 
     if (pcond == 0)
-        return_error(e_VMerror);
+        return_error(gs_error_VMerror);
     pcond->waiting.head_index = pcond->waiting.tail_index = 0;
     push(1);
     make_istruct(op, a_all, pcond);
@@ -947,7 +973,7 @@ zlock(i_ctx_t *i_ctx_p)
     gs_lock_t *plock = ialloc_struct(gs_lock_t, &st_lock, "zlock");
 
     if (plock == 0)
-        return_error(e_VMerror);
+        return_error(gs_error_VMerror);
     plock->holder_index = 0;
     plock->waiting.head_index = plock->waiting.tail_index = 0;
     push(1);
@@ -976,7 +1002,7 @@ zmonitor(i_ctx_t *i_ctx_p)
              pctx->state.memory.space_local ==
              current->state.memory.space_local)
             )
-            return_error(e_invalidcontext);
+            return_error(gs_error_invalidcontext);
     }
     /*
      * We push on the e-stack:
@@ -1063,7 +1089,7 @@ zwait(i_ctx_t *i_ctx_p)
         (iimemory_local->save_level != 0 &&
          (r_space(op - 1) == avm_local || r_space(op) == avm_local))
         )
-        return_error(e_invalidcontext);
+        return_error(gs_error_invalidcontext);
     check_estack(1);
     lock_release(op - 1);
     add_last(psched, &pcond->waiting, pctx);
@@ -1147,10 +1173,11 @@ context_create(gs_scheduler_t * psched, gs_context_t ** ppctx,
     int code;
     long ctx_index;
     gs_context_t **pte;
+    ref *slice_ref;
 
     pctx = gs_alloc_struct(mem, gs_context_t, &st_context, "context_create");
     if (pctx == 0)
-        return_error(e_VMerror);
+        return_error(gs_error_VMerror);
     if (copy_state) {
         pctx->state = *i_ctx_p;
     } else {
@@ -1162,6 +1189,11 @@ context_create(gs_scheduler_t * psched, gs_context_t ** ppctx,
             return code;
         }
     }
+
+    if (dict_find_string(systemdict, "TIME_SLICE_INTERVAL", &slice_ref) > 0) {
+        reschedule_interval = slice_ref->value.intval;
+    }
+
     ctx_index = gs_next_ids(mem, 1);
     pctx->scheduler = psched;
     pctx->status = cs_active;
@@ -1189,7 +1221,7 @@ context_param(const gs_scheduler_t * psched, os_ptr op, gs_context_t ** ppctx)
     check_type(*op, t_integer);
     pctx = index_context(psched, op->value.intval);
     if (pctx == 0)
-        return_error(e_invalidcontext);
+        return_error(gs_error_invalidcontext);
     *ppctx = pctx;
     return 0;
 }
@@ -1251,7 +1283,7 @@ lock_acquire(os_ptr op, gs_context_t * pctx)
     return o_reschedule;
 }
 
-/* Release a lock.  Return 0 if OK, e_invalidcontext if not. */
+/* Release a lock.  Return 0 if OK, gs_error_invalidcontext if not. */
 static int
 lock_release(ref * op)
 {
@@ -1264,7 +1296,7 @@ lock_release(ref * op)
         activate_waiting(psched, &plock->waiting);
         return 0;
     }
-    return_error(e_invalidcontext);
+    return_error(gs_error_invalidcontext);
 }
 
 /* ------ Initialization procedure ------ */

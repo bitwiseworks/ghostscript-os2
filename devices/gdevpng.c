@@ -70,6 +70,7 @@ static dev_proc_encode_color(pngalpha_encode_color);
 static dev_proc_decode_color(pngalpha_decode_color);
 static dev_proc_copy_alpha(pngalpha_copy_alpha);
 static dev_proc_fillpage(pngalpha_fillpage);
+static dev_proc_put_image(pngalpha_put_image);
 static dev_proc_get_params(pngalpha_get_params);
 static dev_proc_put_params(pngalpha_put_params);
 static dev_proc_create_buf_device(pngalpha_create_buf_device);
@@ -94,7 +95,7 @@ const gx_device_png gs_pngmono_device =
            DEFAULT_WIDTH_10THS, DEFAULT_HEIGHT_10THS,
            X_DPI, Y_DPI,
            0, 0, 0, 0,		/* margins */
-           3, 4, 1, 1, 2, 2, png_print_page),
+           1, 1, 1, 1, 2, 2, png_print_page),
     1, /* downscale_factor */
     0  /* min_feature_size */
 };
@@ -284,7 +285,10 @@ static const gx_device_procs pngalpha_procs =
         NULL, 	/* fill_linear_color_triangle */
         NULL, 	/* update_spot_equivalent_colors */
         NULL, 	/* ret_devn_params */
-        pngalpha_fillpage
+        pngalpha_fillpage,
+        NULL,	/* push_transparency_state */
+        NULL,	/* pop_transparency_state */
+        pngalpha_put_image
 };
 
 const gx_device_pngalpha gs_pngalpha_device = {
@@ -518,6 +522,7 @@ do_png_print_page(gx_device_png * pdev, FILE * file, bool monod)
                 background.gray = 0;
                 bg_needed = true;
             }
+            errdiff = 1;
             break;
         case 48:
             bit_depth = 16;
@@ -635,7 +640,8 @@ do_png_print_page(gx_device_png * pdev, FILE * file, bool monod)
         cmm_profile_t *icc_profile = pdev->icc_struct->device_profile[0];
         /* PNG can only be RGB or gray.  No CIELAB :(  */
         if (icc_profile->data_cs == gsRGB || icc_profile->data_cs == gsGRAY) { 
-            if (icc_profile->num_comps == pdev->color_info.num_components) {
+            if (icc_profile->num_comps == pdev->color_info.num_components &&
+                !(pdev->icc_struct->usefastcolor)) {
                 info_ptr->iccp_name = icc_profile->name;
                 info_ptr->iccp_profile = icc_profile->buffer;
                 info_ptr->iccp_proflen = icc_profile->buffer_size;
@@ -771,7 +777,9 @@ pngalpha_put_params(gx_device * pdev, gs_param_list * plist)
 {
     gx_device_pngalpha *ppdev = (gx_device_pngalpha *)pdev;
     int background;
-    int code;
+    int code, ecode;
+    int dsf = ppdev->downscale_factor;
+    const char *param_name;
 
     /* BackgroundColor in format 16#RRGGBB is used for bKGD chunk */
     switch(code = param_read_int(plist, "BackgroundColor", &background)) {
@@ -786,9 +794,22 @@ pngalpha_put_params(gx_device * pdev, gs_param_list * plist)
             break;
     }
 
+    switch (ecode = param_read_int(plist, (param_name = "DownScaleFactor"), &dsf)) {
+        case 0:
+            if (dsf >= 1)
+                break;
+            ecode = gs_error_rangecheck;
+        default:
+            code = ecode;
+            param_signal_error(plist, param_name, ecode);
+        case 1:
+            break;
+    }
+
     if (code == 0) {
         code = gdev_prn_put_params(pdev, plist);
     }
+    ppdev->downscale_factor = dsf;
     return code;
 }
 
@@ -798,9 +819,16 @@ pngalpha_get_params(gx_device * pdev, gs_param_list * plist)
 {
     gx_device_pngalpha *ppdev = (gx_device_pngalpha *)pdev;
     int code = gdev_prn_get_params(pdev, plist);
+    int ecode;
     if (code >= 0)
         code = param_write_int(plist, "BackgroundColor",
                                 &(ppdev->background));
+    ecode = 0;
+    if (ppdev->downscale_factor < 1)
+        ppdev->downscale_factor = 1;
+    if ((ecode = param_write_int(plist, "DownScaleFactor", &ppdev->downscale_factor)) < 0)
+        code = ecode;
+
     return code;
 }
 
@@ -809,7 +837,7 @@ pngalpha_get_params(gx_device * pdev, gs_param_list * plist)
 static gx_color_index
 pngalpha_encode_color(gx_device * dev, const gx_color_value cv[])
 {
-    /* bits 0-7 are alpha, stored inverted to avoid white/opaque
+    /* low 7 are alpha, stored inverted to avoid white/opaque
      * being 0xffffffff which is also gx_no_color_index.
      * So 0xff is transparent and 0x00 is opaque.
      * We always return opaque colors (bits 0-7 = 0).
@@ -837,6 +865,47 @@ static int
 pngalpha_fillpage(gx_device *dev, gs_imager_state * pis, gx_device_color *pdevc)
 {
     return (*dev_proc(dev, fill_rectangle))(dev, 0, 0, dev->width, dev->height,  0xffffffff);
+}
+
+/* Handle the RGBA planes from the PDF 1.4 compositor */
+static int
+pngalpha_put_image (gx_device *pdev, const byte *buffer, int num_chan, int xstart,
+              int ystart, int width, int height, int row_stride,
+              int plane_stride, int alpha_plane_index, int tag_plane_index)
+{
+    gx_device_memory *pmemdev = (gx_device_memory *)pdev;
+    byte *buffer_prn;
+    int yend = ystart + height;
+    int xend = xstart + width;
+    int x, y;
+    int src_position, des_position;
+
+    /* Eventually, the pdf14 device might be chunky pixels, punt for now */
+    if (plane_stride == 0)
+        return 0;
+    if (num_chan != 3 || alpha_plane_index <= 0)
+            return_error(gs_error_unknownerror);        /* can't handle these cases */
+
+    /* Now we need to convert the 4 channels (RGBA) planar into what   */
+    /* the do_png_print_page expects -- chunky inverted data. For that */
+    /* we need to find the underlying gx_device_memory buffer for the  */
+    /* data (similar to bit_put_image, and borrwed from there).        */
+    /* Drill down to get the appropriate memory buffer pointer */
+    buffer_prn = pmemdev->base;
+    /* Now go ahead and process the planes into chunky as the memory device needs */
+    for ( y = ystart; y < yend; y++ ) {
+        src_position = (y - ystart) * row_stride;
+        des_position = y * pmemdev->raster + xstart * 4;
+        for ( x = xstart; x < xend; x++ ) {
+            buffer_prn[des_position++] =  buffer[src_position];
+            buffer_prn[des_position++] =  buffer[src_position + plane_stride];
+            buffer_prn[des_position++] =  buffer[src_position + 2 * plane_stride];
+            /* Alpha data in low bits. Note that Alpha is inverted. */
+            buffer_prn[des_position++] = (255 - buffer[src_position + alpha_plane_index * plane_stride]);
+            src_position += 1;
+        }
+    }
+    return height;        /* we used all of the data */
 }
 
 /* Implementation for 32-bit RGBA in a memory buffer */

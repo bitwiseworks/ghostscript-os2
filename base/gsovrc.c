@@ -221,15 +221,14 @@ c_overprint_read(
 /*
  * Check for closing compositor.
  */
-static int
+static gs_compositor_closing_state
 c_overprint_is_closing(const gs_composite_t *this, gs_composite_t **ppcte, gx_device *dev)
 {
     if (*ppcte != NULL && (*ppcte)->type->comp_id != GX_COMPOSITOR_OVERPRINT)
-        return 0;
-    return 3;
+        return COMP_ENQUEUE;
+    return COMP_REPLACE_PREV;
 }
 
-static composite_create_default_compositor_proc(c_overprint_create_default_compositor);
 static composite_create_default_compositor_proc(c_overprint_create_default_compositor);
 static composite_equal_proc(c_overprint_equal);
 static composite_write_proc(c_overprint_write);
@@ -363,7 +362,7 @@ gs_private_st_suffix_add0_final( st_overprint_device_t,
                                  overprint_device_t_enum_ptrs,
                                  overprint_device_t_reloc_ptrs,
                                  gx_device_finalize,
-                                 st_device_forward );
+                                 st_device_forward);
 
 /*
  * In the default (overprint false) case, the overprint device is almost
@@ -786,29 +785,30 @@ update_overprint_params(
         gx_color_index                  drawn_comps = 0;
         static const frac               frac_13 = float2frac(1.0 / 3.0);
 
-        if ((pprocs = dev_proc(opdev, get_color_mapping_procs)(dev)) == 0 ||
+        pprocs = get_color_mapping_procs_subclass(dev);
+        if (pprocs == 0 ||
             pprocs->map_gray == 0                                         ||
             pprocs->map_rgb == 0                                          ||
             pprocs->map_cmyk == 0                                           )
             return_error(gs_error_unknownerror);
 
-        pprocs->map_gray(dev, frac_13, cvals);
+        map_gray_subclass(pprocs, dev, frac_13, cvals);
         drawn_comps |= check_drawn_comps(ncomps, cvals);
 
-        pprocs->map_rgb(dev, 0, frac_13, frac_0, frac_0, cvals);
+        map_rgb_subclass(pprocs, dev, 0, frac_13, frac_0, frac_0, cvals);
         drawn_comps |= check_drawn_comps(ncomps, cvals);
-        pprocs->map_rgb(dev, 0, frac_0, frac_13, frac_0, cvals);
+        map_rgb_subclass(pprocs, dev, 0, frac_0, frac_13, frac_0, cvals);
         drawn_comps |= check_drawn_comps(ncomps, cvals);
-        pprocs->map_rgb(dev, 0, frac_0, frac_0, frac_13, cvals);
+        map_rgb_subclass(pprocs, dev, 0, frac_0, frac_0, frac_13, cvals);
         drawn_comps |= check_drawn_comps(ncomps, cvals);
 
-        pprocs->map_cmyk(dev, frac_13, frac_0, frac_0, frac_0, cvals);
+        map_cmyk_subclass(pprocs, dev, frac_13, frac_0, frac_0, frac_0, cvals);
         drawn_comps |= check_drawn_comps(ncomps, cvals);
-        pprocs->map_cmyk(dev, frac_0, frac_13, frac_0, frac_0, cvals);
+        map_cmyk_subclass(pprocs, dev, frac_0, frac_13, frac_0, frac_0, cvals);
         drawn_comps |= check_drawn_comps(ncomps, cvals);
-        pprocs->map_cmyk(dev, frac_0, frac_0, frac_13, frac_0, cvals);
+        map_cmyk_subclass(pprocs, dev, frac_0, frac_0, frac_13, frac_0, cvals);
         drawn_comps |= check_drawn_comps(ncomps, cvals);
-        pprocs->map_cmyk(dev, frac_0, frac_0, frac_0, frac_13, cvals);
+        map_cmyk_subclass(pprocs, dev, frac_0, frac_0, frac_0, frac_13, cvals);
         drawn_comps |= check_drawn_comps(ncomps, cvals);
 
         opdev->drawn_comps = drawn_comps;
@@ -1016,8 +1016,6 @@ overprint_copy_planes(gx_device * dev, const byte * data, int data_x, int raster
     int                     k,j;
     gs_memory_t *           mem = dev->memory;
     gx_color_index          comps = opdev->drawn_comps;
-    gx_color_index          mask;
-    int                     shift;
     byte                    *curr_data = (byte *) data + data_x;
     int                     row, offset;
 
@@ -1033,8 +1031,6 @@ overprint_copy_planes(gx_device * dev, const byte * data, int data_x, int raster
 
         fit_fill(tdev, x, y, w, h);
         byte_depth = depth / num_comps;
-        mask = ((gx_color_index)1 << byte_depth) - 1;
-        shift = 16 - byte_depth;
 
         /* allocate a buffer for the returned data */
         raster = bitmap_raster(w * byte_depth);
@@ -1123,7 +1119,6 @@ overprint_fill_rectangle_hl_color(gx_device *dev,
     gx_color_index          comps = opdev->drawn_comps;
     gx_color_index          mask;
     int                     shift;
-    bool                    blendspot = opdev->blendspot;
 
     if (tdev == 0)
         return 0;
@@ -1181,33 +1176,16 @@ overprint_fill_rectangle_hl_color(gx_device *dev,
                                "overprint_fill_rectangle_hl_color" );
                 return code;
             }
-            if (blendspot) {
-                /* We need to blend the CMYK colorants as we are simulating
-                   the overprint of a spot colorant with its equivalent CMYK
-                   colorants */
-                if ((comps &  0x01) == 1) {
-                    int kk;
-                    byte *cp = gb_params.data[k];
-                    byte new_val = ((pdcolor->colors.devn.values[k]) >> shift & mask);
-                    for (kk = 0; kk < w; kk++, cp++) {
-                        int temp = (255 - *cp) * (255 - new_val);
-                        temp = temp >> 8;
-                        *cp = (255-temp);
-                    }
-                }
-                comps >>= 1;
-            } else {
-                /* Skip the plane if this component is not to be drawn.  We have
-                   to do a get bits for each plane due to the fact that we have
-                   to do a copy_planes at the end.  If we had a copy_plane 
-                   operation we would just get the ones needed and set those. */
-                if ((comps & 0x01) == 1) {
-                    /* Not sure if a loop or a memset is better here */
-                    memset(gb_params.data[k], 
-                           ((pdcolor->colors.devn.values[k]) >> shift & mask), w);
-                }
-                comps >>= 1;
+            /* Skip the plane if this component is not to be drawn.  We have
+                to do a get bits for each plane due to the fact that we have
+                to do a copy_planes at the end.  If we had a copy_plane 
+                operation we would just get the ones needed and set those. */
+            if ((comps & 0x01) == 1) {
+                /* Not sure if a loop or a memset is better here */
+                memset(gb_params.data[k], 
+                        ((pdcolor->colors.devn.values[k]) >> shift & mask), w);
             }
+            comps >>= 1;
         }
         code = dev_proc(tdev, copy_planes)(tdev, gb_buff, 0, raster, 
                                            gs_no_bitmap_id, x, y - 1, w, 1, 1);
@@ -1364,6 +1342,9 @@ c_overprint_create_default_compositor(
 
     gx_device_copy_params((gx_device *)opdev, tdev);
     gx_device_set_target((gx_device_forward *)opdev, tdev);
+    opdev->pad = tdev->pad;
+    opdev->log2_align_mod = tdev->log2_align_mod;
+    opdev->is_planar = tdev->is_planar;
 
     params = ovrpct->params;
     params.idle = ovrpct->idle;

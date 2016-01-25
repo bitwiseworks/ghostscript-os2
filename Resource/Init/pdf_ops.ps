@@ -24,7 +24,7 @@
 systemdict /pdfmark known not
  { userdict /pdfmark { cleartomark } bind put } if
 
-userdict /GS_PDF_ProcSet 127 dict dup begin
+userdict /GS_PDF_ProcSet 256 dict dup begin
 
 % ---------------- Abbreviations ---------------- %
 
@@ -85,7 +85,7 @@ nodict readonly pop
 } bdef
 
 /gput		% <value> <key> gput -
- { 
+ {
    currentdict /n known {
      pop pop
      (   **** Ignoring changes to the graphic state after operator 'W'.\n)
@@ -93,18 +93,49 @@ nodict readonly pop
    } {
      exch currentdict //nodict eq { /self dup load end 5 dict begin def } if
      def
-   } ifelse  
+   } ifelse
  } bdef
 
 /q {
-  gsave //nodict begin
+  %% Special case, if we get a 'q' while accumulating clip/eoclip then
+  %% we need to make sure we close the current dictionary, and reopen it after
+  %% performing the gsave, so that the redefinition of 'n' in particular is correct
+  currentdict /n known {
+    currentdict            %% copy the dicitonary for the accumulation
+    end                    %% and close it (NB *before* the gsave!)
+    gsave //nodict begin   %% execute gsave and start 'nodict' just like normal
+    begin                  %% reopen the accumulation dictionary.
+                           %% when we execute 'n' this will close and we'll go back
+                           %% to the regular 'nodict' opened above. This could cause some
+                           %% odd interactions with 'Q' for unbalanced files.....
+  } {
+    %% ugly hackery to work around badly broken PDF file in Bug #695897. The file has nested BT/ET
+    %% sections, and delimits them with q/Q. The problem is that our code to deal with nested
+    %% text sections looks in the current dictionary for TextSaveMatrix, and a 'q' makes a brand
+    %% new empty dictionary, so it defeats it.
+    %% I tried copying the TextSaveMatrix from the parent state into this one, but that then causes
+    %% other problems because we end up apllying the TextSaveMatrix when we shouold not. Attempting
+    %% to clear the TextSaveMatrix from all saved states on ET then caused it not to be defined at
+    %% times when we needed it.....
+    %% This is all terribly flaky, but defining a new matrix inside gsaves that tells us that we had
+    %% were already in a text block allows us to detect and cope with the nested BT's and leaving the
+    %% original TextSaveMatrix behind allows the matching ET not to throw an error, as well as coping
+    %% with the various other problems listed above. Its not pretty though.
+    currentdict /TextSaveMatrix known {
+      currentdict /TextSaveMatrix get matrix copy
+      gsave //nodict begin
+      /qTextSaveMatrix gput
+    }{
+      gsave //nodict begin
+    }ifelse
+  } ifelse
   PDFusingtransparency { .pushextendedgstate } if
 } bdef
 
 % Some PDF files have excess Q operators!
 /Q {
   //false
-  { currentdict /n known { end pop //true } { exit } ifelse 
+  { currentdict /n known { end pop //true } { exit } ifelse
   } loop {
     (   **** Dropping unfinished 'W' mode at 'Q'.\n)
     pdfformaterror
@@ -117,7 +148,12 @@ nodict readonly pop
       % of the PDF graphics state; see 4.4.1 of PDF reference 3rd ed.
       % Collecting the path with one ctm and re-playing it with another ctm
       % transforms the path exactly as PDF needs.
-      .getpath grestore newpath { exec } forall
+      {.getpath} stopped {
+      (   **** Warning: unable to preserve current path, probable degenerate CTM.\n) pdfformaterror
+      grestore newpath
+      }{
+      grestore newpath { exec } forall
+      } ifelse
       //false
     } {
       //true
@@ -125,8 +161,27 @@ nodict readonly pop
   } {
     //true	% formaterror -- not a gsave dict
   } ifelse
-  { (\n   **** File has unbalanced q/Q operators \(too many Q's\) ****\n)
-    pdfformaterror
+  {
+    (\n   **** File has unbalanced q/Q operators \(too many Q's\) ****\n)
+
+    pdfdict /.Qqwarning_issued .knownget
+    {
+      {
+        pop
+      }
+      {
+        currentglobal pdfdict gcheck .setglobal
+        pdfdict /.Qqwarning_issued //true .forceput
+        .setglobal
+        pdfformaterror
+      } ifelse
+    }
+    {
+      currentglobal pdfdict gcheck .setglobal
+      pdfdict /.Qqwarning_issued //true .forceput
+      .setglobal
+      pdfformaterror
+    } ifelse
   } if
 } bdef
 
@@ -466,6 +521,99 @@ end def
 
 % ---------------- Path painting and clipping ---------------- %
 
+%% Bug #696017 In order to get the correct position of paths and other objects which
+%% are illegally present inside a text block, we need to use the saved TextSaveMatrix
+%% to construct/place them. But we don't want to do lots of lookups on every segment of
+%% a path (we feel its OK to do lookups for images). So what we do is redefine the
+%% path contruction operators at the beginning of a text block, and put them back afterwards.
+%% Here we define the 'normal' and 'inside text' versions of those operators, and routines
+%% to switch the definitions back and forth.
+
+/check_and_set_saved_matrix {
+  currentdict /TextSaveMatrix known {
+    currentdict /TextSaveMatrix get setmatrix
+  }
+  {
+    currentdict /qTextSaveMatrix known {
+      currentdict /qTextSaveMatrix get setmatrix
+    } if
+  } ifelse
+} bind def
+
+/normal_m { { moveto }  stopped { count pdfemptycount sub 2 .min { pop } repeat 0 0 moveto } if } bdef
+/inside_text_m {
+  {
+    matrix currentmatrix 3 1 roll
+    check_and_set_saved_matrix
+    moveto
+    setmatrix
+  }
+  stopped { count pdfemptycount sub 2 .min { pop } repeat 0 0 moveto } if
+} bdef
+
+/normal_l { { lineto }  stopped { count pdfemptycount sub 2 .min { pop } repeat } if } bdef
+/inside_text_l {
+  {
+    matrix currentmatrix 3 1 roll
+    check_and_set_saved_matrix
+    lineto
+    setmatrix
+  }
+  stopped { count pdfemptycount sub 2 .min { pop } repeat } if
+} bdef
+
+/normal_c { { curveto } stopped { count pdfemptycount sub 6 .min { pop } repeat } if } bdef
+/inside_text_c {
+  {
+    matrix currentmatrix 7 1 roll
+    check_and_set_saved_matrix
+    curveto
+    setmatrix
+  }
+  stopped { count pdfemptycount sub 6 .min { pop } repeat } if
+} bdef
+
+/normal_v { count pdfemptycount sub 4 ge {
+         { currentpoint 6 2 roll curveto } stopped { count pdfemptycount sub 6 .min { pop } repeat  } if
+       } {
+         count pdfemptycount sub { pop } repeat
+       } ifelse
+     } bdef
+/inside_text_v { count pdfemptycount sub 4 ge {
+         {
+           matrix currentmatrix 5 1 roll
+           check_and_set_saved_matrix
+           currentpoint 6 2 roll curveto
+           setmatrix
+         } stopped { count pdfemptycount sub 6 .min { pop } repeat  } if
+       } {
+         count pdfemptycount sub { pop } repeat
+       } ifelse
+     } bdef
+
+/normal_y { { 2 copy curveto } stopped { count pdfemptycount sub 6 .min { pop } repeat } if } bdef
+/inside_text_y {
+  {
+    matrix currentmatrix 5 1 roll
+    check_and_set_saved_matrix
+    2 copy curveto
+    setmatrix
+  }
+  stopped { count pdfemptycount sub 6 .min { pop } repeat } if
+} bdef
+
+/normal_re {
+   4 2 roll moveto  exch dup 0 rlineto  0 3 -1 roll rlineto  neg 0 rlineto
+   closepath
+  } bdef
+/inside_text__re {
+   matrix currentmatrix 5 1 roll
+   check_and_set_saved_matrix
+   4 2 roll moveto  exch dup 0 rlineto  0 3 -1 roll rlineto  neg 0 rlineto
+   closepath
+   setmatrix
+  } bdef
+
 /S {
   OFFlevels length 0 eq {
     setstrokestate .swapcolors /stroke fsexec .swapcolors
@@ -573,6 +721,7 @@ end readonly def
    /TextFont //null def
    /FontMatrixNonHV //false def
    /Show { showfirst } def
+   /TextFillStateNeeded //true def
  } bdef
 
 % Contrary to the statement in the PDF manual, BT and ET *can* be nested,
@@ -590,13 +739,25 @@ end readonly def
 /settextstate {
         % The text state can be set even outside BT/ET.
   currentdict /TextSaveMatrix known {
-    TextSaveMatrix setmatrix settextmatrix
+    TextSaveMatrix
+    aload pop
+    5 index 0 ne 3 index 0 ne and
+    5 index 0 ne 5 index 0 ne and or not {
+      (\n   **** Warning: Invalid (0 scaling) text matrix for Tm ****\n)
+      pdfformaterror
+      % handle invalid scale by using a really small value
+      2 -6 roll pop pop pop pop
+      0.00000001 0 0 0.00000001
+      6 -2 roll
+    }if
+    6 array astore
+    setmatrix settextmatrix
   } if
 } bdef
 /settextposition {
                 % Update the TextMatrix translation.
   gsave TextSaveMatrix setmatrix
-  currentpoint TextRise sub TextMatrix 4 2 getinterval astore pop
+  {currentpoint} stopped not { TextRise sub TextMatrix 4 2 getinterval astore pop
                 % We would like to do "grestore currentpoint translate"
                 % here, but some PDF files set a singular text matrix
                 % (0 0 0 0 <x> <y> Tm), so we can't do this.
@@ -604,21 +765,49 @@ end readonly def
   grestore
   TextTempMatrix currentmatrix 4 2 getinterval astore pop
   TextTempMatrix setmatrix
+  } {
+      (   **** Warning: ignoring currentpoint error, probable degenerate CTM.\n) pdfformaterror
+    grestore
+  } ifelse
+} bdef
+
+/switch_to_text_marking_ops {
+    pdfopdict /m {inside_text_m} bind .forceput
+    pdfopdict /l {inside_text_l} bind .forceput
+    pdfopdict /c {inside_text_c} bind .forceput
+    pdfopdict /v {inside_text_v} bind .forceput
+    pdfopdict /y {inside_text_y} bind .forceput
+    pdfopdict /rey {inside_text_re} bind .forceput
+} bdef
+
+/switch_to_normal_marking_ops {
+    pdfopdict /m {normal_m} bind .forceput
+    pdfopdict /l {normal_l} bind .forceput
+    pdfopdict /c {normal_c} bind .forceput
+    pdfopdict /v {normal_v} bind .forceput
+    pdfopdict /y {normal_y} bind .forceput
+    pdfopdict /re {normal_re} bind .forceput
 } bdef
 
 /BT {
   currentdict /TextSaveMatrix known {
-    (   **** Ignoring nested BT operator.\n)
+    (   **** illegal; nested BT operator detected.\n)
     pdfformaterror
     ET
   } if
 
+  %% Bug #695897 see the explanation in /q defined above.
+  currentdict /qTextSaveMatrix known {
+    currentdict /qTextSaveMatrix get /TextSaveMatrix gput
+    (   **** Illegal; nested BT operator (inside a gsave) detected.\n)
+    pdfformaterror
+    ET
+  }if
   % If we are in a W/W* "context", pack away the dictionary
   % into a temporary place, and pop it off the dict stack
   currentdict /n known {
     currentdict end
     /.W exch def
-    currentdict /n known == flush
   } if
 
   currentdict /TextLineMatrix .knownget
@@ -630,11 +819,15 @@ end readonly def
     matrix dup /TextSaveMatrix gput
   } if currentmatrix pop settextmatrix
   matrix /TextTempMatrix gput		% see settextposition
+
+  %% Set the special version of the path constructoin operators, so that
+  %% they will work as expected if they are illgeally present in a text block.
+  switch_to_text_marking_ops
 } bdef
 /ET {
   currentdict /TextSaveMatrix known {
-    TextRenderingMode 4 ge { .currentfilladjust 0 .setfilladjust clip newpath .setfilladjust} if
-    TextSaveMatrix setmatrix
+    TextRenderingMode 4 ge { .currentfilladjust 0 .setfilladjust clip .setfilladjust} if
+    newpath TextSaveMatrix setmatrix
     currentdict /TextSaveMatrix undef
 
     % if we were in a W/W* context, grab the dict, undefine temp entry for it,
@@ -648,13 +841,25 @@ end readonly def
      (   **** Ignoring spurious ET operator.\n)
      pdfformaterror
   } ifelse
+  %% Only switch back to the regular marking operations if we were not
+  %% in a nested text block (inside a gsave).
+  currentdict /qTextSaveMatrix known not {
+    switch_to_normal_marking_ops
+  } if
 } bdef
 /Tc { /TextSpacing gput { showfirst } /Show gput } bdef
 /TL { /TextLeading gput } bdef
 /Tr { dup .settextrenderingmode /TextRenderingMode gput { showfirst } /Show gput } bdef
 /Ts { /TextRise gput settextstate } bdef
 /Tw { /WordSpacing gput { showfirst } /Show gput } bdef
-/Tz { 100 div /TextHScaling gput settextstate} bdef
+/Tz {
+  dup 0 eq {
+    (\n   **** Warning: Invalid 0.0 horizontal text scaling given for Tz ****\n)
+    pdfformaterror
+    pop 0.00000001	% handle invalid scale by using a really small value
+  }{
+    100 div
+  }ifelse /TextHScaling gput settextstate} bdef
 
 % ---------------- Font control ---------------- %
 
@@ -820,12 +1025,36 @@ end readonly def
 % ---------------- Text positioning ---------------- %
 
 /Td {
+  %% Bug #695950 - invalid parameter to 'Td' operator
+  %% Technically the parameters to Td are reals and can vary +/- 3.403x10^38
+  %% However that would be kind of hard to validate, and in any event these
+  %% are somewhat unlikely numbers. We validate against +/- 2^32 instead. If this
+  %% should ever be a problem we'll have to modify this check.
+  %% Testing reveals that Acrobat clamps these out of range values to 0, it doesn't
+  %% simply ignore the error.
+  exch dup dup 4294967295 ge exch 4294967295 neg le or {
+    (   **** invalid argument to Td, Treating argument as 0.\n) pdfformaterror
+    pop 0
+  } if
+  exch dup dup 4294967295 ge exch 4294967295 neg le or {
+    (   **** invalid argument to Td, Treating argument as 0.\n) pdfformaterror
+    pop 0
+  } if
   TextLineMatrix transform TextLineMatrix 4 2 getinterval astore pop
   TextLineMatrix TextMatrix copy pop settextstate
 } bdef
 /TD { dup neg /TextLeading gput Td } bdef
 /T* { 0 TextLeading neg Td } bdef
 /Tm {
+  5 index 0 ne 3 index 0 ne and
+  5 index 0 ne 5 index 0 ne and or not {
+    (\n   **** Warning: Invalid (0 scaling) text matrix for Tm ****\n)
+    pdfformaterror
+    % handle invalid scale by using a really small value
+    2 -6 roll pop pop pop pop
+    0.00000001 0 0 0.00000001
+    6 -2 roll
+  }if
   TextLineMatrix astore TextMatrix copy pop settextstate
 } bdef
 
@@ -923,8 +1152,11 @@ end readonly def
 
 /setstrokeforTrpreservation {
       % Check to see if the current device supports Tr
-      currentdevice 1 dict dup /PreserveTrMode dup put .getdeviceparams
-      dup type /booleantype eq not {cleartomark //false}{3 1 roll cleartomark}ifelse
+      /PreserveTrMode /GetDeviceParam .special_op {
+          exch pop
+      }{
+          //false
+      }ifelse
       {
         TextRenderingMode 1 eq TextRenderingMode 2 eq or
         TextRenderingMode 5 eq TextRenderingMode 6 eq or or {
@@ -948,21 +1180,49 @@ end readonly def
     } if
 } bind def
 
+% conditionally set fillstate to avoid multiple operations during text operators
+/settextfillstate {
+  TextFillStateNeeded { setfillstate //false /TextFillStateNeeded gput } if
+} bind def
+
+/TextTransSetup {	% true TextTransSetup -		% if current path is valid
+                        % false TextTransSetup -	% no path, use clip box
+   % NB: if 'show' is used, then we use the clippath, but a smaller bbox is preferred
+   SoftMask //null ne {
+     mark /Subtype /Group /Isolated //true .dicttomark exch
+     { pathbbox } { gsave clippath pathbbox grestore } ifelse
+     .begintransparencygroup
+   }
+   {
+     pop
+   }	% discard path_valid boolean
+   ifelse
+} bind def
+
+/TextTransTeardown {
+   SoftMask //null ne {
+     .endtransparencygroup
+   } if
+} bind def
+
 /setshowstate
  { WordSpacing 0 eq TextSpacing 0 eq and FontMatrixNonHV not and
     {
       % Check to see if the current device supports Tr
-      currentdevice 1 dict dup /PreserveTrMode dup put .getdeviceparams
-      dup type /booleantype eq not {cleartomark //false}{3 1 roll cleartomark}ifelse
+      /PreserveTrMode /GetDeviceParam .special_op {
+          exch pop
+      }{
+          //false
+      }ifelse
       {
               pdfwrite_textrenderingprocs TextRenderingMode get
       }
       {
               TextRenderingMode 0 eq
               currentfont /FontType get 3 eq TextRenderingMode 3 eq not
-              and or 
+              and or
                {
-                { setfillstate show }
+                { settextfillstate //false TextTransSetup show TextTransTeardown }
               } {
                 TextRenderingMode 3 eq {
                         % Some PDF files execute 'tm' with a singular matrix,
@@ -980,7 +1240,8 @@ end readonly def
                     } if
                     setmatrix
                     currentpoint
-                    4 index setfillstate show % Tr was set to graphic state.
+                    % don't worry about transparency for invisible text
+                    4 index settextfillstate show % Tr was set to graphic state.
                     moveto
                     setmatrix
                     % now set the currentpoint using the original matrix
@@ -1001,11 +1262,13 @@ end readonly def
       % a device supporting text rendering modes, then go through this route.
       %
       TextRenderingMode 0 eq TextRenderingMode 3 eq or
-      
-      currentfont /FontType get 3 eq or 
+      currentfont /FontType get 3 eq or
 
-      currentdevice 1 dict dup /PreserveTrMode dup put .getdeviceparams
-      dup type /booleantype eq not {cleartomark //false}{3 1 roll cleartomark}ifelse
+      /PreserveTrMode /GetDeviceParam .special_op {
+          exch pop
+      }{
+          //false
+      }ifelse
       % pdfwrite can't handle rendering modes which involve clipping
       TextRenderingMode 4 lt and or
       % Tr was set to graphic state.
@@ -1015,7 +1278,7 @@ end readonly def
              % preserve current line width around possible stroke setup
              currentlinewidth exch
              setstrokeforTrpreservation
-             setfillstate
+             settextfillstate //false TextTransSetup
              [ TextSpacing WordSpacing 3 index
                {					    % str [... weach wword c undef|ythis xthis|undef
                  exch % will be removed, unless FontMatrix.xx/yy == 0 (FontMatrixNonHV already true)
@@ -1029,38 +1292,39 @@ end readonly def
                } if
                cshow pop pop ]
              { xshow } { yshow } Vexch pop exec
-             setlinewidth
+             setlinewidth TextTransTeardown
            }
          } {
-           WordSpacing 0 eq { 
+           WordSpacing 0 eq {
              {
                { setstrokeforTrpreservation
-                 setfillstate TextSpacing 0 Vexch 3 -1 roll ashow
-               } 
+                 settextfillstate //false TextTransSetup TextSpacing 0 Vexch 3 -1 roll ashow TextTransTeardown
+               }
                currentlinewidth
                { setlinewidth }
                3 .execn
-             }  
+             }
            } {
-              TextSpacing 0 eq { 
+              TextSpacing 0 eq {
                 { % preserve current line width around possible stroke setup
                   { setstrokeforTrpreservation
-                    setfillstate WordSpacing 0 Vexch 32 4 -1 roll .pdfwidthshow
+                    settextfillstate //false TextTransSetup WordSpacing 0 Vexch 32 4 -1 roll .pdfwidthshow
+                    TextTransTeardown
                   }
                   currentlinewidth
                   { setlinewidth }
                   3 .execn
-                } 
-              } { 
+                }
+              } {
                 { % preserve current line width around possible stroke setup
                   { setstrokeforTrpreservation
-                    setfillstate WordSpacing 0 Vexch 32
-                    TextSpacing 0 Vexch 6 -1 roll .pdfawidthshow
+                    settextfillstate //false TextTransSetup WordSpacing 0 Vexch 32
+                    TextSpacing 0 Vexch 6 -1 roll .pdfawidthshow TextTransTeardown
                   }
                   currentlinewidth
                   { setlinewidth }
                   3 .execn
-                } 
+                }
               } ifelse
            } ifelse
          } ifelse
@@ -1084,8 +1348,11 @@ end readonly def
              % can't handle clipping text, so we *do* want to do the clip path
              % as a 'true charpath'.
              %
-             currentdevice 1 dict dup /PreserveTrMode dup put .getdeviceparams
-             dup type /booleantype eq not {cleartomark //false}{3 1 roll cleartomark}ifelse {
+              /PreserveTrMode /GetDeviceParam .special_op {
+                  exch pop
+              }{
+                  //false
+              }ifelse {
                % NB we must have Tr at least 4 or the test above would have
                % taken a different path, so we *know* the Tr involves clipping
                % or we wouldn't be here. Subtract 4 from the Tr and preserve
@@ -1093,7 +1360,7 @@ end readonly def
                % correctly.
                gsave TextRenderingMode 4 sub .settextrenderingmode
                setstrokeforTrpreservation
-               setstrokestate setfillstate dup show grestore} if
+               setstrokestate settextfillstate //false TextTransSetup dup show grestore TextTransTeardown } if
              //false charpath
              3 copy 32 eq { add } { exch pop } ifelse
                         % Stack: str wthis xorig yorig wword wchar ccode wextra
@@ -1112,8 +1379,11 @@ end readonly def
            % path, so call the correct routine to stroke/fill it (clip is handled when we
            % get ET).
            %
-           currentdevice 1 dict dup /PreserveTrMode dup put .getdeviceparams
-           dup type /booleantype eq not {cleartomark //false}{3 1 roll cleartomark}ifelse not {
+             /PreserveTrMode /GetDeviceParam .special_op {
+                 exch pop not
+             }{
+                 //true
+             }ifelse {
              textrenderingprocs TextRenderingMode get exec
            } if
            setlinewidth
@@ -1126,7 +1396,10 @@ end readonly def
 /showfirst { setshowstate Show } def
 
 /Tj {
-  { 0 0 moveto Show settextposition }
+  {
+    //true /TextFillStateNeeded gput
+    0 0 moveto Show settextposition
+  }
   OFFlevels length 0 eq {
     exec
   } {
@@ -1134,6 +1407,7 @@ end readonly def
     exec
     get-gs-attrs grestore set-gs-attrs
   } ifelse
+    //true /TextFillStateNeeded gput
 } bdef
 /' { T* Tj } bdef
 /" { exch Tc exch Tw T* Tj } bdef
@@ -1146,6 +1420,7 @@ end readonly def
         0 Vexch rmoveto
       } ifelse
     } forall settextposition
+  //true /TextFillStateNeeded gput
   }
   OFFlevels length 0 eq {
     exec
@@ -1154,24 +1429,30 @@ end readonly def
     exec
     get-gs-attrs grestore set-gs-attrs
   } ifelse
+  //true /TextFillStateNeeded gput
 } bdef
 
-/tf { setfillstate currentpoint fill moveto } bdef
+% NB: We don't need clippath when filling or stroking
+/tf {
+      //true /TextFillStateNeeded gput
+      settextfillstate //true TextTransSetup currentpoint fill TextTransTeardown moveto
+} bdef
 /tn { currentpoint newpath moveto } bdef % Obsolete, never used.
 % For stroking characters, temporarily restore the graphics CTM so that
 % the line width will be transformed properly.
 /Tmatrix matrix def
 /tS
- { 
+ {
    currentfont /FontType get 3 eq
    {
-     setfillstate currentpoint fill moveto
+     settextfillstate //true TextTransSetup currentpoint fill TextTransTeardown moveto
    }
    {
-     setstrokestate
-     currentpoint //Tmatrix currentmatrix TextSaveMatrix setmatrix .swapcolors stroke .swapcolors
+     setstrokestate //true TextTransSetup
+     currentpoint //Tmatrix currentmatrix TextSaveMatrix setmatrix .swapcolors stroke TextTransTeardown .swapcolors
      setmatrix moveto
    } ifelse
+   //true /TextFillStateNeeded gput
  } bdef
 
 % Handle transparency the same as /B operator
@@ -1191,30 +1472,143 @@ end readonly def
         } {
           gsave tf grestore tS
         } ifelse
+   //true /TextFillStateNeeded gput
 } bdef
 
 % This does the wrong thing if there have been multiple text operations
 % within a single BT/ET pair, but it's a start.
 /tW { } bdef
 
+%% split a string containing \r or \n into multiple strings)
+%% \r\n is also handled.
+%% (string) .splitstring (string1) (string2) .....
+/.splitstring {
+  0 exch                       %% start_index string
+  dup length 1 sub             %% start_index string (string length - 1)
+  0 1 3 -1 roll                %% start_index string 0 1 (string_length -1)
+  {                            %% start_index string loop_index
+    dup                        %% start_index string loop_index loop_index
+    2 index exch get           %% start_index string loop_index character
+    dup 10 eq exch 13 eq or {  %% start_index string loop_index
+      dup 3 index              %% start_index string loop_index loop_index start_index
+      sub                      %% start_index string loop_index (loop_index - start_index)
+      dup 0 gt {               %% \r\n will give us a 0 length string so ignore it
+        3 index exch           %% start_index string loop_index start_index (loop_index - start_index)
+        3 index 3 1 roll       %% start_index string loop_index string start_index (loop_index - start_index)
+        getinterval            %% start_index string loop_index sub_string
+        4 1 roll               %% sub_string start_index string loop_index
+        1 add
+        3 -1 roll              %% sub_string string loop_index start_index
+        pop exch               %% sub_string loop_index string %% loop_index becomes new start_index
+      }{
+        pop                    %% start_index string loop_index
+        1 add 3 1 roll exch    %% loop_index string start_index
+        pop                    %% loop_index string %% loop_index becomes new start index
+      } ifelse
+    }{
+      pop                      %% start_index string
+    } ifelse
+  } for
+                               %% start_index string
+  dup length 2 index sub dup   %% start_index string (length - start_index) (length - start_index)
+  0 gt {                       %% we have characters left %% start_index string (length - start_index)
+    3 -1 roll exch             %% string start_index (length - start_index)
+    getinterval                %% sub_string
+  } {
+    pop pop pop
+  } ifelse
+} bind def
+
 % Text formatting and painting for the AcroForm field without appearance streams.
 /Tform {                % <MaxLen> (V) <Ff> <Q> Tform -
   clippath pathbbox 4 2 roll pop pop                        % MaxLen (V) Ff Q dx dy
   currentfont /ScaleMatrix .knownget { 3 get } { 1 } ifelse % MaxLen (V) Ff Q dx dy yy
-  currentfont /FontBBox get dup 1 get neg exch 3 get        % MaxLen (V) Ff Q dx dy yy desc asc
+
+  currentfont /FontBBox .knownget
+  not
+  {
+    currentfont dup /FontType get
+    0 eq
+    {
+     /FDepVector get 0 get /FontBBox get}
+    {
+      pop null % force an error
+    } ifelse
+  }if
+  dup 1 get neg exch 3 get        % MaxLen (V) Ff Q dx dy yy desc asc
+
   dup 0 ne { div } { pop pop 0 } ifelse                     % MaxLen (V) Ff Q dx dy yy desc/asc
   1 index mul                                               % MaxLen (V) Ff Q dx dy yy desc/asc*yy
 
-  4 index 16#1000 and 0 ne { % multiline
-    8 { pop } repeat (Multiline form fields are not yet implemented.) =
+  %% Check if this is declared as a multiine text widget, and if it is
+  %% check that the string has at least 2 characters, so we can split it
+  %% into at least two strings....
+  %% Bug #687498.pdf has a multiline text widget with an empty string (amongst
+  %% many other problems with this file).
+  5 index 16#1000 and 0 ne 7 index length 1 gt and{ % multiline
+    %% First lets see how many lines we have, make a copy of the string
+    6 index mark exch .splitstring                      % MaxLen (V) Ff Q dx dy yy desc/asc*yy [ () () ...
+    counttomark 1 add 4 add index                       % MaxLen (V) Ff Q dx dy yy desc/asc*yy [ () () ... count Q
+    dup 0 eq {
+      pop                                               % remove extra copy of Q
+      counttomark dup 2 add 2 add index exch div        % MaxLen (V) Ff Q dx dy yy desc/asc*yy [ () () ... line_height
+      counttomark 1 add 1 roll                          % MaxLen (V) Ff Q dx dy yy desc/asc*yy line_height [ () () ...
+      2 0 moveto                                        % start at bottom left of rect
+      counttomark 1 1 3 -1 roll {                       % for every string
+        pop gsave
+        <FEFF> anchorsearch {
+            pop
+        } if
+        Show grestore                         % pop loop counter, show string (saving current point)
+        counttomark 1 add index 0 exch rmoveto          % get line height, move that amount vertically.
+      } for
+      pop pop
+    }{
+      1 eq {
+        counttomark dup 2 add 2 add index exch div        % MaxLen (V) Ff Q dx dy yy desc/asc*yy [ () () ... line_height
+        counttomark 1 add 1 roll                          % MaxLen (V) Ff Q dx dy yy desc/asc*yy line_height [ () () ...
+        2 0 moveto                                        % start at bottom left of rect
+        counttomark 1 1 3 -1 roll {                       % for every string
+          pop gsave                                       % pop loop counter
+          <FEFF> anchorsearch {
+              pop
+          } if
+          dup stringwidth pop counttomark 5 add index     % get rectangle width
+          exch sub 2 div 0 rmoveto                        % subtract width of string, divide by 2 move that amount
+          Show grestore                                   % show string
+          counttomark 1 add index 0 exch rmoveto          % get line height, move that amount vertically.
+        } for
+        pop pop
+      }{
+        counttomark dup 2 add 2 add index exch div        % MaxLen (V) Ff Q dx dy yy desc/asc*yy [ () () ... line_height
+        counttomark 1 add 1 roll                          % MaxLen (V) Ff Q dx dy yy desc/asc*yy line_height [ () () ...
+        2 0 moveto                                        % start at bottom left of rect
+        counttomark 1 1 3 -1 roll {                       % for every string
+          pop gsave                                       % pop loop counter
+          <FEFF> anchorsearch {
+            pop
+          } if
+          dup stringwidth pop counttomark 5 add index     % get rectangle width
+          exch sub 2 sub 0 rmoveto                        % subtract width of string,move that amount
+          Show grestore                                   % show string
+          counttomark 1 add index 0 exch rmoveto          % get line height, move that amount vertically.
+        } for
+        pop pop
+      }ifelse
+    }ifelse
+    8 { pop } repeat
   } {
-    4 index 16#1000000 and 0 ne { % comb
+    5 index 16#1000000 and 0 ne { % comb
       8 { pop } repeat (Combed form fields are not yet implemented.) =
     } { % plain text
       3 1 roll sub add 2 div             % MaxLen (V) Ff Q dx (dy-yy+desc)/2
       0 exch moveto                      % MaxLen (V) Ff Q dx
       1 index 0 ne {
-        3 index stringwidth pop          % MaxLen (V) Ff Q dx w
+        3 index
+        <FEFF> anchorsearch {
+            pop
+        } if
+        stringwidth pop          % MaxLen (V) Ff Q dx w
         sub exch 1 eq { 2 div } { 2 sub } ifelse % MaxLen (V) Ff (dx-w)/2
         0 rmoveto                        % MaxLen (V) Ff
         pop                              % MaxLen (V)
@@ -1222,7 +1616,11 @@ end readonly def
         pop pop pop                      % MaxLen (V)
         2 0 rmoveto
       } ifelse
-      exch pop Show                      % -
+      exch pop
+      <FEFF> anchorsearch {
+        pop
+      } if
+      Show                      % -
     } ifelse
   } ifelse
 } bdef

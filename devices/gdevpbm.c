@@ -271,8 +271,19 @@ ppm_set_dev_procs(gx_device * pdev)
 static int
 ppm_open(gx_device * pdev)
 {
-    gx_device_pbm * const bdev = (gx_device_pbm *)pdev;
-    int code = gdev_prn_open_planar(pdev, bdev->UsePlanarBuffer);
+    gx_device_pbm * bdev = (gx_device_pbm *)pdev;
+    int code;
+
+#ifdef TEST_PAD_AND_ALIGN
+    pdev->pad = 5;
+    pdev->log2_align_mod = 6;
+#endif
+
+    code = gdev_prn_open_planar(pdev, bdev->UsePlanarBuffer);
+    while (pdev->child)
+        pdev = pdev->child;
+
+    bdev = (gx_device_pbm *)pdev;;
 
     if (code < 0)
         return code;
@@ -638,7 +649,7 @@ pbm_print_page_loop(gx_device_printer * pdev, char magic, FILE * pstream,
              int (*row_proc) (gx_device_printer *, byte *, int, FILE *))
 {
     gx_device_pbm * const bdev = (gx_device_pbm *)pdev;
-    uint raster = gdev_prn_raster(pdev);
+    uint raster = gdev_prn_raster_chunky(pdev);
     byte *data = gs_alloc_bytes(pdev->memory, raster, "pbm_print_page_loop");
     int lnum = 0;
     int code = 0;
@@ -1035,7 +1046,7 @@ pnmcmyk_print_page(gx_device_printer *pdev, FILE *pstream)
     if (pdev->icc_struct->graydetection == true && pdev->icc_struct->pageneutralcolor == true) {
         /* Here we need to convert the data from CMYK to K (gray) then print */
         gx_device_pbm * const bdev = (gx_device_pbm *)pdev;
-        uint raster = gdev_prn_raster(pdev);	/* enough space for the CMYK data */
+        uint raster = gdev_prn_raster_chunky(pdev);	/* enough space for the CMYK data */
         byte *data = gs_alloc_bytes(pdev->memory, raster, "pbm_print_page_loop");
         int lnum = 0;
         int code = 0;
@@ -1215,6 +1226,7 @@ pkm_print_row_4(gx_device_printer * pdev, byte * data, int depth,
     return 0;
 }
 /* Print a row where each pixel occupies 1 or more bytes (depth >= 8). */
+/* Note that the output is scaled up to 255 max value.                 */
 static int
 pkm_print_row(gx_device_printer * pdev, byte * data, int depth,
               FILE * pstream)
@@ -1222,7 +1234,6 @@ pkm_print_row(gx_device_printer * pdev, byte * data, int depth,
     gx_device_pbm * const bdev = (gx_device_pbm *)pdev;
     byte *bp;
     uint x;
-    ulong max_value = pdev->color_info.max_color;
 
     for (bp = data, x = 0; x < pdev->width;) {
         bits32 pixel = 0;
@@ -1248,9 +1259,9 @@ pkm_print_row(gx_device_printer * pdev, byte * data, int depth,
         }
         ++x;
         pkm_map_color_rgb((gx_device *) pdev, pixel, rgb);
-        r = rgb[0] * max_value / gx_max_color_value;
-        g = rgb[1] * max_value / gx_max_color_value;
-        b = rgb[2] * max_value / gx_max_color_value;
+        r = rgb[0] * 0xff / gx_max_color_value;
+        g = rgb[1] * 0xff / gx_max_color_value;
+        b = rgb[2] * 0xff / gx_max_color_value;
         if (bdev->is_raw) {
             if (putc(r, pstream) == EOF)
                 return_error(gs_error_ioerror);

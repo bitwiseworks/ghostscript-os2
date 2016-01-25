@@ -9,14 +9,24 @@ which is part of GPL Ghostscript). The CMap files are copyright
 Adobe Systems Incorporated and covered by a separate, Affero GPL
 compatible license.
 
+Additionally, the font files (in Resource/Font) are distributed
+under the AGPL with the following exemption:
+
+As a special exception, permission is granted to include these font
+programs in a Postscript or PDF file that consists of a document that
+contains text to be displayed or printed using this font, regardless
+of the conditions or license applying to the document itself.
+
+
+
 The files under the jpegxr directory and any subdirectories
 thereof are distributed under a no cost, open source license
 granted by the ITU/ISO/IEC but it is not Affero GPL
 compatible - see jpegxr/COPYRIGHT.txt for details.
 
 GPL Ghostscript is free software; you can redistribute it and/or
-modify it under the terms the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3
+modify it under the terms of the GNU Affero General Public License
+as published by the Free Software Foundation, either version 3
 of the License, or (at your option) any later version.
 
 GPL Ghostscript is distributed in the hope that it will be useful,

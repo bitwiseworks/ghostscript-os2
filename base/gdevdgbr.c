@@ -132,15 +132,7 @@ gx_get_bits_return_pointer(gx_device * dev, int x, int h,
          * the device wants something else, it should implement
          * get_bits_rectangle itself.
          */
-        uint dev_raster =
-            (both & GB_PACKING_CHUNKY ?
-               gx_device_raster(dev, true) :
-             both & GB_PACKING_PLANAR ?
-               bitmap_raster(dev->color_info.depth /
-                             dev->color_info.num_components * dev->width) :
-             both & GB_PACKING_BIT_PLANAR ?
-               bitmap_raster(dev->width) :
-             0 /* not possible */);
+        uint dev_raster = gx_device_raster(dev, true);
         uint raster =
             (options & (GB_RASTER_STANDARD | GB_RASTER_ANY) ? dev_raster :
              params->raster);
@@ -445,7 +437,7 @@ gx_get_bits_std_to_native(gx_device * dev, int x, int w, int h,
             bool do_alpha = false;
             const gx_cm_color_map_procs * map_procs;
 
-            map_procs = dev_proc(dev, get_color_mapping_procs)(dev);
+            map_procs = get_color_mapping_procs_subclass(dev);
 
             /* Fetch the source data. */
             if (stored->options & GB_ALPHA_FIRST) {
@@ -477,13 +469,13 @@ gx_get_bits_std_to_native(gx_device * dev, int x, int w, int h,
 
                 switch (ncolors) {
                 case 1:
-                    map_procs->map_gray(dev, sc[0], dc);
+                    map_gray_subclass(map_procs, dev, sc[0], dc);
                     break;
                 case 3:
-                    map_procs->map_rgb(dev, 0, sc[0], sc[1], sc[2], dc);
+                    map_rgb_subclass(map_procs, dev, 0, sc[0], sc[1], sc[2], dc);
                     break;
                 case 4:
-                    map_procs->map_cmyk(dev, sc[0], sc[1], sc[2], sc[3], dc);
+                    map_cmyk_subclass(map_procs, dev, sc[0], sc[1], sc[2], sc[3], dc);
                     break;
                 default:
                     return_error(gs_error_rangecheck);

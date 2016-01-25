@@ -43,7 +43,7 @@ static const gs_color_space_type gs_color_space_type_DevicePixel = {
     gx_set_overprint_DevicePixel,
     NULL, gx_no_adjust_color_count,
     gx_serialize_DevicePixel,
-    gx_cspace_is_linear_default
+    gx_cspace_is_linear_default, gx_polarity_unknown
 };
 
 /* Create a DevicePixel color space. */
@@ -79,7 +79,7 @@ static void
 gx_restrict_DevicePixel(gs_client_color * pcc, const gs_color_space * pcs)
 {
     /****** NOT ENOUGH BITS IN float OR frac ******/
-    floatp pixel = pcc->paint.values[0];
+    double pixel = pcc->paint.values[0];
     ulong max_value = (1L << pcs->params.pixel.depth) - 1;
 
     pcc->paint.values[0] = (pixel < 0 ? 0 : min(pixel, max_value));

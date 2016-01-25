@@ -1,13 +1,21 @@
-; GHOSTPDF.INF (for Windows 2k, XP and XP x64 edition)
+;
+; This .inf file is intended to be used with the ghostpdf.cat
+; file which should have been supplied with it. The ghostpdf.cat
+; file provides the driver signature necessary for installation
+; on recent versions of Windows without the alarming warnings about
+; unsigned drivers, however it also means that this .inf file cannot
+; be installed using right-click->Install (or double-click on the .inf
+; file). You must install this from the Control Panel using Add Printer.
+;
 
 [Version]
 Signature="$Windows NT$"
-Provider=Ghostgum Software Pty Ltd
+Provider=Artifex Software Inc.
 ClassGUID={4D36E979-E325-11CE-BFC1-08002BE10318}
 Class=Printer
-CatalogFile=oemprint.cat
+CatalogFile=ghostpdf.cat
 
-DriverVer=01/02/2007,1.0.0.1
+DriverVer=01/01/2013,1.0.0.1
 
 ; Manufacturer section
 [Manufacturer]

@@ -82,7 +82,7 @@ gscms_get_clrtname(gcmmhprofile_t profile, int colorcount, gs_memory_t *memory)
     lcms_names = cmsReadColorantTable(profile, icSigColorantTableTag);
     if (colorcount+1 > lcms_names->nColors) return(NULL);
     length = strlen(lcms_names->List[colorcount].Name);
-    name = (char*) gs_alloc_bytes(memory, length, "gscms_get_clrtname");
+    name = (char*) gs_alloc_bytes(memory, length + 1, "gscms_get_clrtname");
     if (name)
         strcpy(name, lcms_names->List[colorcount].Name);
     return name;
@@ -273,7 +273,7 @@ gscms_transform_color(gx_device *dev, gsicc_link_t *icclink, void *inputcolor,
 gcmmhlink_t
 gscms_get_link(gcmmhprofile_t  lcms_srchandle,
                gcmmhprofile_t lcms_deshandle,
-               gsicc_rendering_param_t *rendering_params,
+               gsicc_rendering_param_t *rendering_params, int cmm_flags,
                gs_memory_t *mem)
 {
     DWORD src_data_type,des_data_type;
@@ -306,7 +306,7 @@ gscms_get_link(gcmmhprofile_t  lcms_srchandle,
 /* Create the link */
     return(cmsCreateTransform(lcms_srchandle, src_data_type, lcms_deshandle,
                         des_data_type, rendering_params->rendering_intent,
-               (cmsFLAGS_BLACKPOINTCOMPENSATION | cmsFLAGS_HIGHRESPRECALC |
+               (cmm_flags | cmsFLAGS_BLACKPOINTCOMPENSATION | cmsFLAGS_HIGHRESPRECALC |
                 cmsFLAGS_NOTCACHE )));
     /* cmsFLAGS_HIGHRESPRECALC)  cmsFLAGS_NOTPRECALC  cmsFLAGS_LOWRESPRECALC*/
 }
@@ -319,7 +319,7 @@ gscms_get_link_proof_devlink(gcmmhprofile_t lcms_srchandle,
                              gcmmhprofile_t lcms_deshandle, 
                              gcmmhprofile_t lcms_devlinkhandle, 
                              gsicc_rendering_param_t *rendering_params,
-                             bool src_dev_link,
+                             bool src_dev_link, int cmm_flags,
                              gs_memory_t *mem)
 {
     DWORD src_data_type,des_data_type;
@@ -364,7 +364,7 @@ gscms_get_link_proof_devlink(gcmmhprofile_t lcms_srchandle,
     }
     return(cmsCreateMultiprofileTransform(hProfiles, nProfiles, src_data_type, 
                                           des_data_type, rendering_params->rendering_intent, 
-                                          (cmsFLAGS_BLACKPOINTCOMPENSATION | 
+                                          (cmm_flags | cmsFLAGS_BLACKPOINTCOMPENSATION | 
                                            cmsFLAGS_HIGHRESPRECALC |
                                            cmsFLAGS_NOTCACHE)));
 }
@@ -391,6 +391,8 @@ gscms_release_link(gsicc_link_t *icclink)
 {
     if (icclink->link_handle !=NULL )
         cmsDeleteTransform(icclink->link_handle);
+
+    icclink->link_handle = NULL;
 }
 
 /* Have the CMS release the profile handle */
@@ -497,7 +499,11 @@ void* _cmsMalloc(unsigned int size)
 {
     void *ptr;
 
+#if defined(SHARE_LCMS) && SHARE_LCMS==1
+    ptr = malloc(size);
+#else
     ptr = gs_alloc_bytes(gs_lib_ctx_get_non_gc_memory_t(), size, "lcms");
+#endif
     gs_warn2("lcms malloc (%d) at 0x%x",size,ptr);
     return ptr;
 }
@@ -506,7 +512,14 @@ void* _cmsCalloc(unsigned int nelts, unsigned int size)
 {
     void *ptr;
 
+#if defined(SHARE_LCMS) && SHARE_LCMS==1
+    ptr = malloc(nelts * size);
+#else
     ptr = gs_alloc_byte_array(gs_lib_ctx_get_non_gc_memory_t(), nelts, size, "lcms");
+#endif
+
+    if (ptr != NULL)
+        memset(ptr, 0, nelts * size);
     gs_warn2("lcms calloc (%d) at 0x%x",nelts*size,ptr);
     return ptr;
 }
@@ -515,7 +528,11 @@ void _cmsFree(void *ptr)
 {
     if (ptr != NULL) {
         gs_warn1("lcms free at 0x%x",ptr);
+#if defined(SHARE_LCMS) && SHARE_LCMS==1
+        free(ptr);
+#else
         gs_free_object(gs_lib_ctx_get_non_gc_memory_t(), ptr, "lcms");
+#endif
     }
 }
 
@@ -523,17 +540,35 @@ void _cmsFree(void *ptr)
 
 void* _cmsMalloc(unsigned int size)
 {
+#if defined(SHARE_LCMS) && SHARE_LCMS==1
+    return malloc(size);
+#else
     return gs_alloc_bytes(gs_lib_ctx_get_non_gc_memory_t(), size, "lcms");
+#endif
 }
 
 void* _cmsCalloc(unsigned int nelts, unsigned int size)
 {
-    return gs_alloc_byte_array(gs_lib_ctx_get_non_gc_memory_t(), nelts, size, "lcms");
+    void *ptr;
+
+#if defined(SHARE_LCMS) && SHARE_LCMS==1
+    ptr = malloc(nelts * size);
+#else
+    ptr = gs_alloc_byte_array(gs_lib_ctx_get_non_gc_memory_t(), nelts, size, "lcms");
+#endif
+
+    if (ptr != NULL)
+        memset(ptr, 0, nelts * size);
+    return ptr;
 }
 
 void _cmsFree(void *ptr)
 {
+#if defined(SHARE_LCMS) && SHARE_LCMS==1
+    free(ptr);
+#else
     if (ptr != NULL)
         gs_free_object(gs_lib_ctx_get_non_gc_memory_t(), ptr, "lcms");
+#endif
 }
 #endif

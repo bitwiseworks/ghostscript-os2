@@ -457,6 +457,8 @@ pdf_begin_char_proc(gx_device_pdf * pdev, int w, int h, int x_width,
         max(font->u.simple.s.type3.FontBBox.q.y, y_offset + h);
     font->u.simple.s.type3.max_y_offset =
         max(font->u.simple.s.type3.max_y_offset, h + (h >> 2));
+    pcp->real_width.x = w;
+    pcp->real_width.y = y_offset + h;
     *ppcp = pcp;
     return 0;
 }
@@ -529,9 +531,10 @@ pdf_do_char_image(gx_device_pdf * pdev, const pdf_char_proc_t * pcp,
     values.pdfont = pdfont;
     values.size = 1;
     values.matrix = *pimat;
-    values.render_mode = 0;
+    values.render_mode = pdev->pte->pis->text_rendering_mode;
     values.word_spacing = 0;
     pdf_set_text_state_values(pdev, &values);
+    pdf_bitmap_char_update_bbox(pdev, pcp->x_offset, pcp->y_offset, pcp->real_width.x, pcp->real_width.y);
     pdf_append_chars(pdev, &ch, 1, pdfont->Widths[ch] * pimat->xx, 0.0, false);
     return 0;
 }
@@ -578,9 +581,11 @@ pdf_start_charproc_accum(gx_device_pdf *pdev)
 {
     pdf_char_proc_t *pcp;
     pdf_resource_t *pres;
-    int code = pdf_enter_substream(pdev, resourceCharProc, gs_next_ids(pdev->memory, 1),
+    int id = gs_next_ids(pdev->memory, 1);
+    int code = pdf_enter_substream(pdev, resourceCharProc, id,
                                    &pres, false, pdev->CompressFonts);
 
+    pres->rid = id;
     if (code < 0)
        return code;
     pcp = (pdf_char_proc_t *)pres;
@@ -673,7 +678,7 @@ pdf_open_aside(gx_device_pdf *pdev, pdf_resource_type_t rtype,
 
     pdev->streams.save_strm = pdev->strm;
 
-    if (rtype > NUM_RESOURCE_TYPES)
+    if (rtype >= NUM_RESOURCE_TYPES)
         rtype = resourceOther;
     code = pdf_alloc_aside(pdev, PDF_RESOURCE_CHAIN(pdev, rtype, id),
                 pdf_resource_type_structs[rtype], &pres, reserve_object_id ? 0 : -1);
@@ -814,6 +819,8 @@ pdf_exit_substream(gx_device_pdf *pdev)
         code = code1;
     pdev->context = pdev->sbstack[sbstack_ptr].context;
     pdf_text_state_copy(pdev->text->text_state, pdev->sbstack[sbstack_ptr].text_state);
+    gs_free_object(pdev->pdf_memory, pdev->sbstack[sbstack_ptr].text_state, "free text state for stream");
+    pdev->sbstack[sbstack_ptr].text_state = 0;
     pdev->clip_path = pdev->sbstack[sbstack_ptr].clip_path;
     pdev->sbstack[sbstack_ptr].clip_path = 0;
     pdev->clip_path_id = pdev->sbstack[sbstack_ptr].clip_path_id;

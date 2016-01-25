@@ -83,7 +83,7 @@ ialloc_init(gs_dual_memory_t *dmem, gs_memory_t * rmem, uint chunk_size,
     ialloc_free_state(ismem);
     ialloc_free_state(ilmem_stable);
     ialloc_free_state(ilmem);
-    return_error(e_VMerror);
+    return_error(gs_error_VMerror);
 }
 
 /* ================ Local/global VM ================ */
@@ -160,10 +160,11 @@ gs_alloc_ref_array(gs_ref_memory_t * mem, ref * parr, uint attrs,
                    uint num_refs, client_name_t cname)
 {
     ref *obj;
+    int i;
 
     /* If we're allocating a run of refs already, */
     /* and we aren't about to overflow the maximum run length, use it. */
-    if (mem->cc.rtop == mem->cc.cbot &&
+    if (mem->cc.has_refs == true && mem->cc.rtop == mem->cc.cbot &&
         num_refs < (mem->cc.ctop - mem->cc.cbot) / sizeof(ref) &&
         mem->cc.rtop - (byte *) mem->cc.rcur + num_refs * sizeof(ref) <
         max_size_st_refs
@@ -198,7 +199,7 @@ gs_alloc_ref_array(gs_ref_memory_t * mem, ref * parr, uint attrs,
         obj = gs_alloc_struct_array((gs_memory_t *) mem, num_refs + 1,
                                     ref, &st_refs, cname);
         if (obj == 0)
-            return_error(e_VMerror);
+            return_error(gs_error_VMerror);
         /* Set the terminating ref now. */
         end = (ref *) obj + num_refs;
         make_mark(end);
@@ -224,6 +225,9 @@ gs_alloc_ref_array(gs_ref_memory_t * mem, ref * parr, uint attrs,
             cp->where = (ref_packed *)obj;
         }
     }
+    for (i = 0; i < num_refs; i++) {
+        make_null(&(obj[i]));
+    }
     make_array(parr, attrs | mem->space, num_refs, obj);
     return 0;
 }
@@ -239,7 +243,7 @@ gs_resize_ref_array(gs_ref_memory_t * mem, ref * parr,
     ref *obj = parr->value.refs;
 
     if (new_num_refs > old_num_refs || !r_has_type(parr, t_array))
-        return_error(e_Fatal);
+        return_error(gs_error_Fatal);
     diff = old_num_refs - new_num_refs;
     /* Check for LIFO.  See gs_free_ref_array for more details. */
     if (mem->cc.rtop == mem->cc.cbot &&
@@ -370,7 +374,7 @@ gs_alloc_string_ref(gs_ref_memory_t * mem, ref * psref,
     byte *str = gs_alloc_string((gs_memory_t *) mem, nbytes, cname);
 
     if (str == 0)
-        return_error(e_VMerror);
+        return_error(gs_error_VMerror);
     make_string(psref, attrs | mem->space, nbytes, str);
     return 0;
 }

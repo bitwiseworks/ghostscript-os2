@@ -323,7 +323,7 @@ gsicc_rcm_get_link(const gs_imager_state *pis, gx_device *dev,
     if (fwd_uses_fwd_cmap_procs(dev)) {
         cm_procs = fwd_get_target_cmap_procs(dev);
     } else {
-        cm_procs = dev_proc(dev, get_color_mapping_procs)(dev);
+        cm_procs = get_color_mapping_procs_subclass(dev);
     }
 
     hash.rend_hash = gsCMM_REPLACE;
@@ -355,6 +355,8 @@ gsicc_rcm_get_link(const gs_imager_state *pis, gx_device *dev,
     result->is_identity = false;
     rcm_link = (rcm_link_t *) gs_alloc_bytes(mem, sizeof(rcm_link_t),
                                                "gsicc_rcm_get_link");
+    if (rcm_link == NULL)
+        return NULL;
     result->link_handle = (void*) rcm_link;
     rcm_link->memory = mem;
     rcm_link->num_out = min(dev->color_info.num_components, 

@@ -156,7 +156,7 @@ void __aebi_memmove(void *dest, const void *src, size_t n)
 
 #ifdef  TESTING_WITH_NO_BAND_DONOR
 
-#include <malloc.h>
+#include <malloc_.h>
 
 static void *my_buffer;
 
@@ -387,14 +387,6 @@ static const gx_device_procs plibk_procs =
            gx_default_close_render_device,\
            gx_default_buffer_page\
          },\
-         { PRN_MAX_BITMAP, PRN_BUFFER_SPACE,\
-             { 0, /* page_uses_transparency */\
-               0, /* Bandwidth */\
-               MINBANDHEIGHT, /* BandHeight */\
-               0 /* BandBufferSpace */},\
-           0/*false*/,  /* params_are_read_only */\
-           BandingAlways        /* banding_type */\
-         },\
          { 0 },         /* fname */\
         0/*false*/,     /* OpenOutputFile */\
         0/*false*/,     /* ReopenPerPage */\
@@ -561,13 +553,13 @@ plib_put_params(gx_device * pdev, gs_param_list * plist)
     int bandHeight = ppdev->space_params.band.BandHeight;
 
     code = gdev_prn_put_params(pdev, plist);
-    if (ppdev->space_params.band.BandHeight < MINBANDHEIGHT)
-    {
-        emprintf1(pdev->memory, "Must have a BandHeight of at least %d\n", MINBANDHEIGHT);
-
+    /* Note that 0 means "default". This will encounter a future check in "open" */
+    if (ppdev->space_params.band.BandHeight != 0 &&
+        ppdev->space_params.band.BandHeight < MINBANDHEIGHT) {
+        emprintf2(pdev->memory, "BandHeight of %d not valid, BandHeight minimum is %d\n",
+                  ppdev->space_params.band.BandHeight, MINBANDHEIGHT);
         ecode = gs_error_rangecheck;
-
-        /* Restore to our valid value */
+        /* Restore to the previous (possibly default == 0) value */
         ppdev->space_params.band.BandHeight = bandHeight;
     }
     if (ecode >= 0)
@@ -585,7 +577,7 @@ static int
 set_line_ptrs(gx_device_memory * mdev, byte * base, int raster,
               byte **line_ptrs, int setup_height)
 {
-    int num_planes = mdev->num_planes;
+    int num_planes = mdev->color_info.num_components;
     gx_render_plane_t plane1;
     const gx_render_plane_t *planes;
     int pi;
@@ -599,7 +591,8 @@ set_line_ptrs(gx_device_memory * mdev, byte * base, int raster,
         plane1.depth = mdev->color_info.depth;
         num_planes = 1;
     }
-
+    if (line_ptrs)
+        mdev->line_ptrs = line_ptrs;
     for (pi = 0; pi < num_planes; ++pi) {
         byte **pend = line_ptrs + setup_height;
         byte *scan_line = base;
@@ -638,8 +631,8 @@ plib_setup_buf_device(gx_device *bdev, byte *buffer, int bytes_per_line,
          */
         line_ptrs = (byte **)
             gs_alloc_byte_array(mdev->memory,
-                                (mdev->num_planes ?
-                                 full_height * mdev->num_planes :
+                                (mdev->is_planar ?
+                                 full_height * mdev->color_info.num_components :
                                  setup_height),
                                 sizeof(byte *), "setup_buf_device");
         if (line_ptrs == 0)
@@ -647,11 +640,11 @@ plib_setup_buf_device(gx_device *bdev, byte *buffer, int bytes_per_line,
         mdev->line_pointer_memory = mdev->memory;
         mdev->foreign_line_pointers = false;
         mdev->line_ptrs = line_ptrs;
-        mdev->raster = bandBufferStride * mdev->num_planes;
+        mdev->raster = bandBufferStride * (mdev->is_planar ? mdev->color_info.num_components : 1);
     }
     mdev->height = full_height;
     code = set_line_ptrs(mdev,
-                         bandBufferBase + bandBufferStride*mdev->num_planes*y,
+                         bandBufferBase + bandBufferStride*(mdev->is_planar ? mdev->color_info.num_components : 1)*y,
                          bandBufferStride,
                          line_ptrs,
                          setup_height);
@@ -718,6 +711,7 @@ static int
 plib_open(gx_device * pdev)
 {
     gx_device_plib * const bdev = (gx_device_plib *)pdev;
+    gx_device_printer * const ppdev = (gx_device_printer *)pdev;
     int code;
 
 #ifdef DEBUG_PRINT
@@ -726,6 +720,7 @@ plib_open(gx_device * pdev)
     bdev->printer_procs.buf_procs.create_buf_device = plib_create_buf_device;
     bdev->printer_procs.buf_procs.setup_buf_device = plib_setup_buf_device;
     bdev->printer_procs.buf_procs.size_buf_device = plib_size_buf_device;
+    pdev->is_planar = 1;
 
     /* You might expect us to call gdev_prn_open_planar rather than
      * gdev_prn_open, but if we do that, it overwrites the 2 function
@@ -733,6 +728,13 @@ plib_open(gx_device * pdev)
     code = gdev_prn_open(pdev);
     if (code < 0)
         return code;
+    if (ppdev->space_params.band.BandHeight < MINBANDHEIGHT) {
+        emprintf2(pdev->memory, "BandHeight of %d not valid, BandHeight minimum is %d\n",
+                  ((gx_device_printer *)pdev)->space_params.band.BandHeight,
+                  MINBANDHEIGHT);
+
+        return_error(gs_error_rangecheck);
+    }
     pdev->color_info.separable_and_linear = GX_CINFO_SEP_LIN;
     set_linear_color_bits_mask_shift(pdev);
 

@@ -620,8 +620,9 @@ in:                             /* Initialize for a new page. */
         goto out;
 
     imager_state.line_params.dash.pattern = dash_pattern;
-    if (tdev != 0)
+    if (tdev != 0) {
         gx_set_cmap_procs(&imager_state, tdev);
+    }
     gx_imager_setscreenphase(&imager_state, -x0, -y0, gs_color_select_all);
     halftone_type = ht_type_none;
     pcs = gs_cspace_new_DeviceGray(mem);
@@ -682,7 +683,7 @@ in:                             /* Initialize for a new page. */
                     case cmd_opv_set_tile_size:
                         cbuf.ptr = cbp;
                         code = read_set_tile_size(&cbuf, &tile_bits,
-                                    IS_CLIST_FOR_PATTERN(cdev));
+                                    gx_device_is_pattern_clist((gx_device *)cdev));
                         cbp = cbuf.ptr;
                         if (code < 0)
                             goto out;
@@ -1117,7 +1118,7 @@ in:                             /* Initialize for a new page. */
                 state.tile_index =
                     ((op & 0xf) << 8) + *cbp++;
               sti:state_slot =
-                    (tile_slot *) (cdev->chunk.data +
+                    (tile_slot *) (cdev->cache_chunk->data +
                                  cdev->tile_table[state.tile_index].offset);
                 if_debug2m('L', mem, " index=%u offset=%lu\n",
                            state.tile_index,
@@ -1560,6 +1561,7 @@ idata:                  data_size = 0;
                                     }
                                     if (cbp[0] == cmd_opv_extend && cbp[1] == cmd_opv_ext_create_compositor) {
                                         gs_composite_t *pcomp, *pcomp_opening;
+                                        gs_compositor_closing_state closing_state;
 
                                         cbuf.ptr = cbp += 2;
                                         code = read_create_compositor(&cbuf, mem, &pcomp);
@@ -1576,47 +1578,47 @@ idata:                  data_size = 0;
                                             continue;
                                         }
                                         pcomp_opening = pcomp_last;
-                                        code = pcomp->type->procs.is_closing(pcomp, &pcomp_opening, tdev);
-                                        if (code < 0)
+                                        closing_state = pcomp->type->procs.is_closing(pcomp, &pcomp_opening, tdev);
+                                        if (closing_state < 0)
                                             goto out;
-                                        else if (code == 0) {
+                                        else if (closing_state == COMP_ENQUEUE) {
                                             /* Enqueue. */
                                             enqueue_compositor(&pcomp_first, &pcomp_last, pcomp);
-                                        } else if (code == 1) {
+                                        } else if (closing_state == COMP_EXEC_IDLE) {
                                             /* Execute idle. */
                                             enqueue_compositor(&pcomp_first, &pcomp_last, pcomp);
                                             code = execute_compositor_queue(cdev, &target, &tdev,
                                                 &imager_state, &pcomp_first, &pcomp_last, pcomp_opening, x0, y0, mem, true);
                                             if (code < 0)
                                                 goto out;
-                                        } else if (code == 2) {
+                                        } else if (closing_state == COMP_EXEC_QUEUE) {
                                             /* The opening command was executed. Execute the queue. */
                                             enqueue_compositor(&pcomp_first, &pcomp_last, pcomp);
                                             code = execute_compositor_queue(cdev, &target, &tdev,
                                                 &imager_state, &pcomp_first, &pcomp_last, pcomp_first, x0, y0, mem, false);
                                             if (code < 0)
                                                 goto out;
-                                        } else if (code == 3) {
+                                        } else if (closing_state == COMP_REPLACE_PREV) {
                                             /* Replace last compositors. */
                                             code = execute_compositor_queue(cdev, &target, &tdev,
                                                 &imager_state, &pcomp_first, &pcomp_last, pcomp_opening, x0, y0, mem, true);
                                             if (code < 0)
                                                 goto out;
                                             enqueue_compositor(&pcomp_first, &pcomp_last, pcomp);
-                                        } else if (code == 4) {
+                                        } else if (closing_state == COMP_REPLACE_CURR) {
                                             /* Replace specific compositor. */
                                             code = dequeue_compositor(&pcomp_first, &pcomp_last, pcomp_opening);
                                             if (code < 0)
                                                 goto out;
                                             enqueue_compositor(&pcomp_first, &pcomp_last, pcomp);
                                             free_compositor(pcomp_opening, mem);
-                                        } else if (code == 5) {
+                                        } else if (closing_state == COMP_DROP_QUEUE) {
                                             /* Annihilate the last compositors. */
                                             enqueue_compositor(&pcomp_first, &pcomp_last, pcomp);
                                             code = drop_compositor_queue(&pcomp_first, &pcomp_last, pcomp_opening, mem, x0, y0, &imager_state);
                                             if (code < 0)
                                                 goto out;
-                                        } else if (code == 6) {
+                                        } else if (closing_state == COMP_MARK_IDLE) {
                                             /* Mark as idle. */
                                             enqueue_compositor(&pcomp_first, &pcomp_last, pcomp);
                                             mark_as_idle(pcomp_opening, pcomp);
@@ -2281,7 +2283,8 @@ idata:                  data_size = 0;
             rc_decrement(target, "gxclrast(target compositor)");
         } else {
             /* Ref count was 1. close the device and then free it */
-            dev_proc(target, close_device)(target);
+            if (target->is_open)
+                dev_proc(target, close_device)(target);
             gs_free_object(target->memory, target, "gxclrast discard compositor");
         }
         target = orig_target;
@@ -2397,7 +2400,7 @@ read_set_bits(command_buf_t *pcb, tile_slot *bits, int compress,
     if_debug2m('L', mem, " index=%d offset=%lu\n", pcls->tile_index, offset);
     pcls->tile_index = index;
     cdev->tile_table[pcls->tile_index].offset = offset;
-    slot = (tile_slot *)(cdev->chunk.data + offset);
+    slot = (tile_slot *)(cdev->cache_chunk->data + offset);
     *pslot = slot;
     *slot = *bits;
     tile->data = data = (byte *)(slot + 1);
@@ -2705,6 +2708,7 @@ read_set_color_space(command_buf_t *pcb, gs_imager_state *pis,
         picc_profile->hashcode = icc_information.icc_hash;
         picc_profile->hash_is_valid = true;
         picc_profile->islab = icc_information.is_lab;
+        picc_profile->default_match = icc_information.default_match;
         picc_profile->data_cs = icc_information.data_cs;
         /* Store the clist reader address in the profile
            structure so that we can get to the buffer

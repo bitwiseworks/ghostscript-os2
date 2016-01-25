@@ -46,7 +46,7 @@ static void clist_render_thread(void *param);
 /* to the chunk allocator.                                              */
 /* Exported for use by background printing.                             */
 gx_device *
-setup_device_and_mem_for_thread(gs_memory_t *chunk_base_mem, gx_device *dev, bool bg_print)
+setup_device_and_mem_for_thread(gs_memory_t *chunk_base_mem, gx_device *dev, bool bg_print, gsicc_link_cache_t **cachep)
 {
     int i, code;
     char fmode[4];
@@ -93,12 +93,15 @@ setup_device_and_mem_for_thread(gs_memory_t *chunk_base_mem, gx_device *dev, boo
     npdev->file = pdev->file;               /* For background printing when doing N copies with %d */
     strcpy((npdev->fname), (pdev->fname));
     ndev->color_info = dev->color_info;     /* copy before putdeviceparams */
+    ndev->pad = dev->pad;
+    ndev->log2_align_mod = dev->log2_align_mod;
+    ndev->is_planar = dev->is_planar;
 #if CMM_THREAD_SAFE
         ndev->icc_struct = dev->icc_struct;  /* Set before put params */
         rc_increment(ndev->icc_struct);
 #endif
     /* get the current device parameters to put into the cloned device */
-    gs_c_param_list_write(&paramlist, dev->memory);
+    gs_c_param_list_write(&paramlist, thread_mem);
     if ((code = gs_getdeviceparams(dev, (gs_param_list *)&paramlist)) < 0) {
         emprintf1(dev->memory,
                   "Error getting device params, code=%d. Rendering threads not started.\n",
@@ -169,21 +172,39 @@ setup_device_and_mem_for_thread(gs_memory_t *chunk_base_mem, gx_device *dev, boo
     rc_increment(cdev->icc_cache_cl, "setup_render_thread");
 #else
     /* each thread needs its own link cache */
-    if ((ncdev->icc_cache_cl = gsicc_cache_new(thread_mem)) == NULL)
+    if (cachep != NULL) {
+        if (*cachep == NULL) {
+            /* We don't have one cached that we can reuse, so make one. */
+            if ((*cachep = gsicc_cache_new(thread_mem->thread_safe_memory)) == NULL)
+                goto out_cleanup;
+        }
+        rc_increment(*cachep);
+        ncdev->icc_cache_cl = *cachep;
+    } else if ((ncdev->icc_cache_cl = gsicc_cache_new(thread_mem)) == NULL)
         goto out_cleanup;
 #endif
-    if (bg_print && cdev->icc_table != NULL) {
-        /* This is a background printing thread, so it cannot share the icc_table  */
-        /* since this probably was created with a GC'ed allocator and the bg_print */
-        /* thread can't deal with the relocation. Free the cdev->icc_table and get */
-        /* a new one from the clist.                                               */
-        clist_icc_freetable(cdev->icc_table, cdev->memory);
-        cdev->icc_table = NULL;
-        if ((code = clist_read_icctable((gx_device_clist_reader *)ncdev)) < 0)
+    if (bg_print) {
+        gx_device_clist_reader *ncrdev = (gx_device_clist_reader *)ncdev;
+
+        if (cdev->icc_table != NULL) {
+            /* This is a background printing thread, so it cannot share the icc_table  */
+            /* since this probably was created with a GC'ed allocator and the bg_print */
+            /* thread can't deal with the relocation. Free the cdev->icc_table and get */
+            /* a new one from the clist.                                               */
+            clist_free_icc_table(cdev->icc_table, cdev->memory);
+            cdev->icc_table = NULL;
+            if ((code = clist_read_icctable((gx_device_clist_reader *)ncdev)) < 0)
+                goto out_cleanup;
+        }
+        /* Similarly for the color_usage_array, when the foreground device switches to */
+        /* writer mode, the foreground's array will be freed.                          */
+        if ((code = clist_read_color_usage_array(ncrdev)) < 0)
             goto out_cleanup;
     } else {
-    /* Use the same profile table in each thread */
+    /* Use the same profile table and color usage array in each thread */
         ncdev->icc_table = cdev->icc_table;		/* OK for multiple rendering threads */
+        ((gx_device_clist_reader *)ncdev)->color_usage_array =
+                ((gx_device_clist_reader *)cdev)->color_usage_array;
     }
     /* Needed for case when the target has cielab profile and pdf14 device
        has a RGB profile stored in the profile list of the clist */
@@ -210,7 +231,7 @@ out_cleanup:
 
 /* Set up and start the render threads */
 static int
-clist_setup_render_threads(gx_device *dev, int y)
+clist_setup_render_threads(gx_device *dev, int y, gx_process_page_options_t *options)
 {
     gx_device_printer *pdev = (gx_device_printer *)dev;
     gx_device_clist *cldev = (gx_device_clist *)dev;
@@ -219,8 +240,10 @@ clist_setup_render_threads(gx_device *dev, int y)
     gs_memory_t *mem = cdev->bandlist_memory;
     gs_memory_t *chunk_base_mem = mem->thread_safe_memory;
     gs_memory_status_t mem_status;
-    int i, code, band;
+    int i, band;
+    int code = 0;
     int band_count = cdev->nbands;
+    int band_height = crdev->page_info.band_params.BandHeight;
     crdev->num_render_threads = pdev->num_render_threads_requested;
 
     if(gs_debug[':'] != 0)
@@ -245,12 +268,30 @@ clist_setup_render_threads(gx_device *dev, int y)
     /* Based on the line number requested, decide the order of band rendering */
     /* Almost all devices go in increasing line order (except the bmp* devices ) */
     crdev->thread_lookahead_direction = (y < (cdev->height - 1)) ? 1 : -1;
-    band = y / crdev->page_info.band_params.BandHeight;
+    band = y / band_height;
 
     /* If the 'mem' is not thread safe, we need to wrap it in a locking memory */
     gs_memory_status(chunk_base_mem, &mem_status);
     if (mem_status.is_thread_safe == false) {
             return_error(gs_error_VMerror);
+    }
+
+    /* If we don't have one large enough already, create an icc cache list */
+    if (crdev->num_render_threads > crdev->icc_cache_list_len) {
+        void *old = crdev->icc_cache_list;
+        crdev->icc_cache_list = (gsicc_link_cache_t **)gs_alloc_byte_array(mem->thread_safe_memory,
+                                    crdev->num_render_threads,
+                                    sizeof(void*), "clist_render_setup_threads");
+        if (crdev->icc_cache_list == NULL) {
+            crdev->icc_cache_list = NULL;
+            return_error(gs_error_VMerror);
+        }
+        if (crdev->icc_cache_list_len > 0)
+            memcpy(crdev->icc_cache_list, old, sizeof(void *)*crdev->icc_cache_list_len);
+        memset(&crdev->icc_cache_list[crdev->icc_cache_list_len], 0,
+            (crdev->num_render_threads - crdev->icc_cache_list_len) * sizeof(void *));
+        crdev->icc_cache_list_len = crdev->num_render_threads;
+        gs_free_object(mem, old, "clist_render_setup_threads");
     }
 
     /* Loop creating the devices and semaphores for each thread, then start them */
@@ -259,7 +300,7 @@ clist_setup_render_threads(gx_device *dev, int y)
         gx_device *ndev;
         clist_render_thread_control_t *thread = &(crdev->render_threads[i]);
 
-        ndev = setup_device_and_mem_for_thread(chunk_base_mem, dev, false);
+        ndev = setup_device_and_mem_for_thread(chunk_base_mem, dev, false, &crdev->icc_cache_list[i]);
         if (ndev == NULL) {
             code = gs_error_VMerror;	/* set code to an error for cleanup after the loop */
             break;
@@ -268,6 +309,13 @@ clist_setup_render_threads(gx_device *dev, int y)
         thread->cdev = ndev;
         thread->memory = ndev->memory;
         thread->band = -1;              /* a value that won't match any valid band */
+        thread->options = options;
+        thread->buffer = NULL;
+        if (options && options->init_buffer_fn) {
+            code = options->init_buffer_fn(options->arg, dev, thread->memory, dev->width, band_height, &thread->buffer);
+            if (code < 0)
+                break;
+        }
 
         /* create the buf device for this thread, and allocate the semaphores */
         if ((code = gdev_create_buf_device(cdev->buf_procs.create_buf_device,
@@ -303,6 +351,10 @@ clist_setup_render_threads(gx_device *dev, int y)
             gdev_prn_free_memory((gx_device *)thread_cdev);
             gs_free_object(crdev->render_threads[i].memory, thread_cdev,
             "clist_setup_render_threads");
+        }
+        if (crdev->render_threads[i].buffer != NULL && options && options->free_buffer_fn != NULL) {
+            options->free_buffer_fn(options->arg, dev, crdev->render_threads[i].memory, crdev->render_threads[i].buffer);
+            crdev->render_threads[i].buffer = NULL;
         }
         if (crdev->render_threads[i].memory != NULL) {
             gs_memory_chunk_release(crdev->render_threads[i].memory);
@@ -363,25 +415,40 @@ teardown_device_and_mem_for_thread(gx_device *dev, gp_thread_id thread_id, bool 
     if (bg_print) {
         /* we are cleaning up a background printing thread, so we clean up similarly to */
         /* what is done  by clist_finish_page, but without re-opening the clist files.  */
-        gs_free_object(thread_cdev->memory, thread_crdev->color_usage_array, "clist_color_usage_array");
-        thread_crdev->color_usage_array = NULL;
         clist_teardown_render_threads(dev);	/* we may have used multiple threads */
         /* free the thread's icc_table since this was not done by clist_finish_page */
-        clist_icc_freetable(thread_crdev->icc_table, thread_memory);
-        rc_decrement(thread_crdev->icc_cache_cl, "teardown_render_thread");
-     }
-     /*
-      * Free the BufferSpace, close the band files, optionally unlinking them.
-      * We unlink the files if this call is cleaning up from bg printing.
+        clist_free_icc_table(thread_crdev->icc_table, thread_memory);
+        thread_crdev->icc_table = NULL;
+        /* NB: gdev_prn_free_memory below will free the color_usage_array */
+    } else {
+        /* make sure this doesn't get freed by gdev_prn_free_memory below */
+        ((gx_device_clist_reader *)thread_cdev)->color_usage_array = NULL;
+
+        /* For non-bg_print cases the icc_table is shared between devices, but
+         * is not reference counted or anything. We rely on it being shared with
+         * and owned by the "parent" device in the interpreter thread, hence
+         * null it here to avoid it being freed as we cleanup the thread device.
+         */
+        thread_crdev->icc_table = NULL;
+    }
+    rc_decrement(thread_crdev->icc_cache_cl, "teardown_render_thread");
+    thread_crdev->icc_cache_cl = NULL;
+    /*
+     * Free the BufferSpace, close the band files, optionally unlinking them.
+     * We unlink the files if this call is cleaning up from bg printing.
      * Note that the BufferSpace is freed using 'ppdev->buf' so the 'data'
      * pointer doesn't need to be the one that the thread started with
      */
     /* If this thread was being used for background printing and NumRenderingThreads > 0 */
     /* the clist_setup_render_threads may have already closed these files                */
-    if (thread_cdev->page_info.cfile != NULL)
-        thread_cdev->page_info.io_procs->fclose(thread_cdev->page_info.bfile, thread_cdev->page_info.bfname, bg_print);
+    /* Note that in the case of back ground printing, we only want to close the instance  */
+    /* of the files for the reader (hence the final parameter being false). We'll clean  */
+    /* the original instance of the files in prn_finish_bg_print()                       */
     if (thread_cdev->page_info.bfile != NULL)
-        thread_cdev->page_info.io_procs->fclose(thread_cdev->page_info.cfile, thread_cdev->page_info.cfname, bg_print);
+        thread_cdev->page_info.io_procs->fclose(thread_cdev->page_info.bfile, thread_cdev->page_info.bfname, false);
+    if (thread_cdev->page_info.cfile != NULL)
+        thread_cdev->page_info.io_procs->fclose(thread_cdev->page_info.cfile, thread_cdev->page_info.cfname, false);
+    thread_cdev->page_info.bfile = thread_cdev->page_info.cfile = NULL;
     thread_cdev->do_not_open_or_close_bandfiles = true; /* we already closed the files */
 
     gdev_prn_free_memory((gx_device *)thread_cdev);
@@ -403,11 +470,10 @@ clist_teardown_render_threads(gx_device *dev)
     gx_device_clist *cldev = (gx_device_clist *)dev;
     gx_device_clist_common *cdev = (gx_device_clist_common *)dev;
     gx_device_clist_reader *crdev = &cldev->reader;
-    gs_memory_t *mem = cdev->bandlist_memory, *chunk_base_mem;
+    gs_memory_t *mem = cdev->bandlist_memory;
     int i;
 
     if (crdev->render_threads != NULL) {
-        chunk_base_mem = gs_memory_chunk_target(crdev->render_threads[0].memory);
         /* Wait for each thread to finish then free its memory */
         for (i = (crdev->num_render_threads - 1); i >= 0; i--) {
             clist_render_thread_control_t *thread = &(crdev->render_threads[i]);
@@ -420,6 +486,14 @@ clist_teardown_render_threads(gx_device *dev)
             gx_semaphore_free(thread->sema_this);
             /* destroy the thread's buffer device */
             thread_cdev->buf_procs.destroy_buf_device(thread->bdev);
+
+            if (thread->options) {
+                if (thread->options->free_buffer_fn && thread->buffer) {
+                    thread->options->free_buffer_fn(thread->options->arg, dev, thread->memory, thread->buffer);
+                    thread->buffer = NULL;
+                }
+                thread->options = NULL;
+            }
 
             /* before freeing this device's memory, swap with cdev if it was the main_thread_data */
             if (thread_cdev->data == crdev->main_thread_data) {
@@ -480,7 +554,8 @@ clist_render_thread(void *data)
     gx_device *bdev = thread->bdev;
     gs_int_rect band_rect;
     byte *mdata = crdev->data + crdev->page_tile_cache_size;
-    uint raster = bitmap_raster(dev->width * dev->color_info.depth);
+    byte *mlines = (crdev->page_line_ptrs_offset == 0 ? NULL : mdata + crdev->page_line_ptrs_offset);
+    uint raster = gx_device_raster_plane(dev, NULL);
     int code;
     int band_height = crdev->page_band_height;
     int band = thread->band;
@@ -497,13 +572,17 @@ clist_render_thread(void *data)
     band_num_lines = band_end_line - band_begin_line;
 
     code = crdev->buf_procs.setup_buf_device
-            (bdev, mdata, raster, NULL, 0, band_num_lines, band_num_lines);
+            (bdev, mdata, raster, (byte **)mlines, 0, band_num_lines, band_num_lines);
     band_rect.p.x = 0;
     band_rect.p.y = band_begin_line;
     band_rect.q.x = dev->width;
     band_rect.q.y = band_end_line;
     if (code >= 0)
         code = clist_render_rectangle(cldev, &band_rect, bdev, NULL, true);
+
+    if (code >= 0 && thread->options && thread->options->process_fn)
+        code = thread->options->process_fn(thread->options->arg, dev, bdev, &band_rect, thread->buffer);
+
     /* Reset the band boundaries now */
     crdev->ymin = band_begin_line;
     crdev->ymax = band_end_line;
@@ -536,7 +615,7 @@ clist_render_thread(void *data)
  * next band remaining to do (if any)
  */
 static int
-clist_get_band_from_thread(gx_device *dev, int band_needed)
+clist_get_band_from_thread(gx_device *dev, int band_needed, gx_process_page_options_t *options)
 {
     gx_device_clist *cldev = (gx_device_clist *)dev;
     gx_device_clist_common *cdev = (gx_device_clist_common *)dev;
@@ -589,6 +668,12 @@ clist_get_band_from_thread(gx_device *dev, int band_needed)
     if (thread->status == THREAD_ERROR)
         return gs_error_unknownerror;          /* FAIL */
 
+    if (options && options->output_fn) {
+        code = options->output_fn(options->arg, dev, thread->buffer);
+        if (code < 0)
+            return code;
+    }
+
     /* Swap the data areas to avoid the copy */
     tmp = cdev->data;
     cdev->data = thread_cdev->data;
@@ -634,7 +719,7 @@ clist_get_bits_rect_mt(gx_device *dev, const gs_int_rect * prect,
     int lines_rasterized;
     gx_device *bdev;
     byte *mdata;
-    uint raster = bitmap_raster(dev->width * dev->color_info.depth);
+    uint raster = gx_device_raster(dev, 1);
     int my;
     int code = 0;
 
@@ -656,7 +741,7 @@ clist_get_bits_rect_mt(gx_device *dev, const gs_int_rect * prect,
 
     if (crdev->ymin == 0 && crdev->ymax == 0 && crdev->render_threads == NULL) {
         /* Haven't done any rendering yet, try to set up the threads */
-        if (clist_setup_render_threads(dev, y) < 0)
+        if (clist_setup_render_threads(dev, y, NULL) < 0)
             /* problem setting up the threads, revert to single threaded */
             return clist_get_bits_rectangle(dev, prect, params, unread);
     } else {
@@ -668,7 +753,7 @@ clist_get_bits_rect_mt(gx_device *dev, const gs_int_rect * prect,
     }
     /* If we already have the band's data, just return it */
     if (y < crdev->ymin || end_y > crdev->ymax)
-        code = clist_get_band_from_thread(dev, band);
+        code = clist_get_band_from_thread(dev, band, NULL);
     if (code < 0)
         goto free_thread_out;
     mdata = crdev->data + crdev->page_tile_cache_size;
@@ -750,6 +835,121 @@ free_thread_out:
     return code;
 }
 
+int
+clist_process_page(gx_device *dev, gx_process_page_options_t *options)
+{
+    gx_device_clist *cldev = (gx_device_clist *)dev;
+    gx_device_clist_reader *crdev = &cldev->reader;
+    gx_device_clist_common *cdev = (gx_device_clist_common *)dev;
+    int y;
+    int line_count;
+    int band_height = crdev->page_band_height;
+    gs_int_rect band_rect;
+    int lines_rasterized;
+    gx_device *bdev;
+    gx_render_plane_t render_plane;
+    int my;
+    int code;
+    void *buffer = NULL;
+
+    if (0 > (code = clist_close_writer_and_init_reader(cldev)))
+        return code;
+
+    if (options->init_buffer_fn) {
+        code = options->init_buffer_fn(options->arg, dev, dev->memory, dev->width, band_height, &buffer);
+        if (code < 0)
+            return code;
+    }
+
+    render_plane.index = -1;
+    for (y = 0; y < dev->height; y += lines_rasterized)
+    {
+        line_count = band_height;
+        if (line_count > dev->height - y)
+            line_count = dev->height - y;
+        code = gdev_create_buf_device(cdev->buf_procs.create_buf_device,
+                                      &bdev, cdev->target, y, &render_plane,
+                                      dev->memory,
+                                      &(crdev->color_usage_array[y/band_height]));
+        if (code < 0)
+            return code;
+        code = clist_rasterize_lines(dev, y, line_count, bdev, &render_plane, &my);
+        if (code >= 0)
+        {
+            lines_rasterized = min(code, line_count);
+
+            /* Return as much of the rectangle as falls within the rasterized lines. */
+            band_rect.p.x = 0;
+            band_rect.p.y = y;
+            band_rect.q.x = dev->width;
+            band_rect.q.y = y + lines_rasterized;
+            if (options->process_fn)
+                code = options->process_fn(options->arg, dev, bdev, &band_rect, buffer);
+        }
+        if (code >= 0 && options->output_fn)
+            code = options->output_fn(options->arg, dev, buffer);
+        cdev->buf_procs.destroy_buf_device(bdev);
+        if (code < 0)
+            break;
+    }
+
+    if (options->free_buffer_fn) {
+        options->free_buffer_fn(options->arg, dev, dev->memory, buffer);
+    }
+
+    return code;
+}
+
+static int
+clist_process_page_mt(gx_device *dev, gx_process_page_options_t *options)
+{
+    gx_device_printer *pdev = (gx_device_printer *)dev;
+    gx_device_clist *cldev = (gx_device_clist *)dev;
+    gx_device_clist_reader *crdev = &cldev->reader;
+    int band_height = crdev->page_info.band_params.BandHeight;
+    int band;
+    int num_bands = (dev->height + band_height-1)/band_height;
+    int code;
+    int reverse = !!(options->options & GX_PROCPAGE_BOTTOM_UP);
+
+    /* This page might not want multiple threads */
+    /* Also we don't support plane extraction using multiple threads */
+    if (pdev->num_render_threads_requested < 1)
+        return clist_process_page(dev, options);
+
+    if ((code = clist_close_writer_and_init_reader(cldev)) < 0)
+        return code;	/* can't recover from this */
+
+    /* Haven't done any rendering yet, try to set up the threads */
+    if (clist_setup_render_threads(dev, reverse ? dev->height-1 : 0, options) < 0)
+        /* problem setting up the threads, revert to single threaded */
+        return clist_process_page(dev, options);
+
+    if (reverse)
+    {
+        for (band = num_bands-1; band > 0; band--)
+        {
+            code = clist_get_band_from_thread(dev, band, options);
+            if (code < 0)
+                goto free_thread_out;
+        }
+    }
+    else
+    {
+        for (band = 0; band < num_bands; band++)
+        {
+            code = clist_get_band_from_thread(dev, band, options);
+            if (code < 0)
+                goto free_thread_out;
+        }
+    }
+
+    /* Always free up thread stuff before exiting*/
+free_thread_out:
+    clist_teardown_render_threads(dev);
+    return code;
+}
+
 static void
 test_threads(void *dummy)
 {
@@ -771,6 +971,7 @@ clist_enable_multi_thread_render(gx_device *dev)
     }
     gp_thread_finish(thread);
     set_dev_proc(dev, get_bits_rectangle, clist_get_bits_rect_mt);
+    set_dev_proc(dev, process_page, clist_process_page_mt);
 
     return 1;
 }

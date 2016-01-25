@@ -28,7 +28,7 @@
 
 /* Forward references */
 static int common_arc(i_ctx_t *,
-          int (*)(gs_state *, floatp, floatp, floatp, floatp, floatp));
+          int (*)(gs_state *, double, double, double, double, double));
 static int common_arct(i_ctx_t *, float *);
 
 /* <x> <y> <r> <ang1> <ang2> arc - */
@@ -48,7 +48,7 @@ zarcn(i_ctx_t *i_ctx_p)
 /* Common code for arc[n] */
 static int
 common_arc(i_ctx_t *i_ctx_p,
-      int (*aproc)(gs_state *, floatp, floatp, floatp, floatp, floatp))
+      int (*aproc)(gs_state *, double, double, double, double, double))
 {
     os_ptr op = osp;
     double xyra[5];		/* x, y, r, ang1, ang2 */
@@ -197,7 +197,7 @@ zpathforall(i_ctx_t *i_ctx_p)
     check_estack(8);
 
     if ((penum = gs_path_enum_alloc(imemory, "pathforall")) == 0)
-        return_error(e_VMerror);
+        return_error(gs_error_VMerror);
     code = gs_path_enum_init(imemory, penum, igs);
     if (code < 0) {
         ifree_object(penum, "path_cleanup");

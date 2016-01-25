@@ -59,6 +59,7 @@ gsicc_link_t* gsicc_get_link_profile(const gs_imager_state *pis, gx_device *dev,
 void gsicc_release_link(gsicc_link_t *icclink);
 void gsicc_link_free(gsicc_link_t *icc_link, gs_memory_t *memory);
 void gsicc_get_icc_buff_hash(unsigned char *buffer, int64_t *hash, unsigned int buff_size);
+int64_t gsicc_get_hash(cmm_profile_t *profile);
 int gsicc_transform_named_color(const float tint_values[],
                             gsicc_namedcolor_t color_names[], 
                             uint num_names,
@@ -67,5 +68,7 @@ int gsicc_transform_named_color(const float tint_values[],
                             cmm_profile_t *gs_output_profile,
                             gsicc_rendering_param_t *rendering_params);
 int  gsicc_get_device_profile_comps(cmm_dev_profile_t *dev_profile);
-
+gsicc_link_t * gsicc_alloc_link_dev(gs_memory_t *memory, cmm_profile_t *src_profile,
+    cmm_profile_t *des_profile, gsicc_rendering_param_t *rendering_params);
+void gsicc_free_link_dev(gs_memory_t *memory, gsicc_link_t *link);
 #endif

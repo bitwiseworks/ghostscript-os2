@@ -58,7 +58,15 @@ extern "C" {
 
 #ifdef _Windows
 # ifndef GSDLLEXPORT
-#  define GSDLLEXPORT __declspec(dllexport)
+/* We don't need both the "__declspec(dllexport)" declaration
+ * and the listing in the .def file - having both results in
+ * a linker warning on x64 builds (but is incorrect on x86, too)
+ */
+#  if 0
+#    define GSDLLEXPORT __declspec(dllexport)
+#  else
+#    define GSDLLEXPORT
+#  endif
 # endif
 # ifndef GSDLLAPI
 #  define GSDLLAPI __stdcall
@@ -189,6 +197,23 @@ GSDLLEXPORT int GSDLLAPI gsapi_set_poll(void *instance,
 GSDLLEXPORT int GSDLLAPI gsapi_set_display_callback(
    void *instance, display_callback *callback);
 
+/* Set the string containing the list of default device names
+ * for example "display x11alpha x11 bbox". Allows the calling
+ * application to influence which device(s) gs will try in order
+ * to select the default device
+ *
+ * *Must* be called after gsapi_new_instance() and before
+ * gsapi_init_with_args().
+ */
+GSDLLEXPORT int GSDLLAPI
+gsapi_set_default_device_list(void *lib, char *list, int listlen);
+
+/* Returns a pointer to the current default device string
+ * *Must* be called after gsapi_new_instance().
+ */
+GSDLLEXPORT int GSDLLAPI
+gsapi_get_default_device_list(void *lib, char **list, int *listlen);
+
 /* Set the encoding used for the args. By default we assume
  * 'local' encoding. For windows this equates to whatever the current
  * codepage is. For linux this is utf8.
@@ -208,10 +233,10 @@ enum {
 /* Initialise the interpreter.
  * This calls gs_main_init_with_args() in imainarg.c
  * 1. If quit or EOF occur during gsapi_init_with_args(),
- *    the return value will be e_Quit.  This is not an error.
+ *    the return value will be gs_error_Quit.  This is not an error.
  *    You must call gsapi_exit() and must not call any other
  *    gsapi_XXX functions.
- * 2. If usage info should be displayed, the return value will be e_Info
+ * 2. If usage info should be displayed, the return value will be gs_error_Info
  *    which is not an error.  Do not call gsapi_exit().
  * 3. Under normal conditions this returns 0.  You would then
  *    call one or more gsapi_run_*() functions and then finish
@@ -234,7 +259,7 @@ GSDLLEXPORT int GSDLLAPI gsapi_init_with_argsW(void *instance,
  * If these functions return <= -100, either quit or a fatal
  * error has occured.  You then call gsapi_exit() next.
  * The only exception is gsapi_run_string_continue()
- * which will return e_NeedInput if all is well.
+ * which will return gs_error_NeedInput if all is well.
  */
 
 GSDLLEXPORT int GSDLLAPI
@@ -299,6 +324,10 @@ typedef int (GSDLLAPIPTR PFN_gsapi_set_poll)(void *instance,
     int(GSDLLCALLPTR poll_fn)(void *caller_handle));
 typedef int (GSDLLAPIPTR PFN_gsapi_set_display_callback)(
     void *instance, display_callback *callback);
+typedef int (GSDLLAPIPTR PFN_gsapi_set_default_device_list)(
+    void *lib, char *list, int listlen);
+typedef int (GSDLLAPIPTR PFN_gsapi_get_default_device_list)(
+    void *lib, char **list, int *listlen);
 typedef int (GSDLLAPIPTR PFN_gsapi_init_with_args)(
     void *instance, int argc, char **argv);
 #ifdef __WIN32__

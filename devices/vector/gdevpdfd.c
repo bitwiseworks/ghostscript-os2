@@ -51,6 +51,36 @@ gdev_pdf_fill_rectangle(gx_device * dev, int x, int y, int w, int h,
     gx_device_pdf *pdev = (gx_device_pdf *) dev;
     int code;
 
+    if (pdev->Eps2Write) {
+        float x0, y0, x1, y1;
+        gs_rect *Box;
+
+        if (!pdev->accumulating_charproc) {
+            Box = &pdev->BBox;
+            x0 = x / (pdev->HWResolution[0] / 72.0);
+            y0 = y / (pdev->HWResolution[1] / 72.0);
+            x1 = x0 + (w / (pdev->HWResolution[0] / 72.0));
+            y1 = y0 + (h / (pdev->HWResolution[1] / 72.0));
+        }
+        else {
+            Box = &pdev->charproc_BBox;
+            x0 = (float)x / 100;
+            y0 = (float)y / 100;
+            x1 = x0 + (w / 100);
+            y1 = y0 + (h / 100);
+        }
+
+        if (Box->p.x > x0)
+            Box->p.x = x0;
+        if (Box->p.y > y0)
+            Box->p.y = y0;
+        if (Box->q.x < x1)
+            Box->q.x = x1;
+        if (Box->q.y < y1)
+            Box->q.y = y1;
+        if (pdev->AccumulatingBBox)
+            return 0;
+    }
     code = pdf_open_page(pdev, PDF_IN_STREAM);
     if (code < 0)
         return code;
@@ -72,7 +102,7 @@ gdev_pdf_fill_rectangle(gx_device * dev, int x, int y, int w, int h,
 /* ------ Vector device implementation ------ */
 
 static int
-pdf_setlinewidth(gx_device_vector * vdev, floatp width)
+pdf_setlinewidth(gx_device_vector * vdev, double width)
 {
     /* Acrobat Reader doesn't accept negative line widths. */
     return psdf_setlinewidth(vdev, fabs(width));
@@ -275,6 +305,28 @@ pdf_is_same_clip_path(gx_device_pdf * pdev, const gx_clip_path * pcpath)
     return (code == 0);
 }
 
+int
+pdf_check_soft_mask(gx_device_pdf * pdev, gs_imager_state * pis)
+{
+    int code = 0;
+
+    if (pis && pdev->state.soft_mask_id != pis->soft_mask_id) {
+    /*
+     * The contents must be open already, so the following will only exit
+     * text or string context.
+     */
+    code = pdf_open_contents(pdev, PDF_IN_STREAM);
+    if (code < 0)
+        return code;
+    if (pdev->vgstack_depth > pdev->vgstack_bottom) {
+        code = pdf_restore_viewer_state(pdev, pdev->strm);
+        if (code < 0)
+            return code;
+    }
+    }
+    return code;
+}
+
 /* Test whether we will need to put the clipping path. */
 bool
 pdf_must_put_clip_path(gx_device_pdf * pdev, const gx_clip_path * pcpath)
@@ -374,7 +426,16 @@ pdf_put_clip_path(gx_device_pdf * pdev, const gx_clip_path * pcpath)
         code = pdf_save_viewer_state(pdev, s);
         if (code < 0)
             return code;
-        if (cpath_is_rectangle(pcpath, &rect)) {
+        /* path_valid states that the clip path is a simple path. If the clip is an intersection of
+         * two paths, then path_valid is false. The problem is that the rectangle list is the
+         * scan-converted result of the clip, and ths is at the device resolution. Its possible
+         * that the intersection of the clips, at device resolution, is rectangular but the
+         * two paths are not, and that at a different resolution, nor is the intersection.
+         * So we *only* want to write a rectangle, if the clip is rectangular, and its the
+         * result of a simple rectangle. Otherwise we want to write the paths that create
+         * the clip. However, see below about the path_list.
+         */
+        if (pcpath->path_valid && cpath_is_rectangle(pcpath, &rect)) {
             /* Use unrounded coordinates. */
             pprintg4(s, "%g %g %g %g re",
                 fixed2float(rect.p.x), fixed2float(rect.p.y),
@@ -388,6 +449,15 @@ pdf_put_clip_path(gx_device_pdf * pdev, const gx_clip_path * pcpath)
 
             gdev_vector_dopath_init(&state, (gx_device_vector *)pdev,
                                     gx_path_type_fill, NULL);
+            /* the comment below is (now) incorrect. Previously in gx_clip_to_rectangle()
+             * we would create a rectangular clip, without using a path to do so. This results
+             * in a rectangular clip, where path_valid is false. However, we did *not* clear
+             * the path_list! So if there had previously been a clip path set, by setting paths,
+             * we did not clear it. This is not sensible, and caused massive confusion for this code
+             * so it has been altered to clear path_list, indicating that there is a clip,
+             * the path is not valid, and that it was not created using arbitrary paths.
+             * In this case we just emit the rectangle as well (there should be only one).
+             */
             if (pcpath->path_list == NULL) {
                 /*
                  * We think this should be never executed.
@@ -434,7 +504,7 @@ pdf_put_clip_path(gx_device_pdf * pdev, const gx_clip_path * pcpath)
  */
 static bool
 make_rect_scaling(const gx_device_pdf *pdev, const gs_fixed_rect *bbox,
-                  floatp prescale, double *pscale)
+                  double prescale, double *pscale)
 {
     double bmin, bmax;
 
@@ -477,6 +547,10 @@ prepare_fill_with_clip(gx_device_pdf *pdev, const gs_imager_state * pis,
             return 1;		/* empty clipping path */
         *box = cbox;
     }
+    code = pdf_check_soft_mask(pdev, (gs_imager_state *)pis);
+    if (code < 0)
+        return code;
+
     new_clip = pdf_must_put_clip_path(pdev, pcpath);
     if (have_path || pdev->context == PDF_IN_NONE || new_clip) {
         if (new_clip)
@@ -647,6 +721,7 @@ static void
 compute_subimage(int width, int height, int raster, byte *base,
                  int x0, int y0, long MaxClipPathSize, int *x1, int *y1)
 {
+    int bytes = (width + 7) / 8;
     /* Returns a semiopen range : [x0:x1)*[y0:y1). */
     if (x0 != 0) {
         long count;
@@ -674,7 +749,7 @@ compute_subimage(int width, int height, int raster, byte *base,
             count1 -= count;
             yy = y + 1;
             for (; yy < height; yy++)
-                if (memcmp(base + raster * y, base + raster * yy, raster))
+                if (memcmp(base + raster * y, base + raster * yy, bytes))
                     break;
             y = yy;
 
@@ -733,14 +808,14 @@ static int
 mask_to_clip(gx_device_pdf *pdev, int width, int height,
              int raster, byte *base, int x0, int y0, int x1, int y1)
 {
-    int y, yy, code = 0;
+    int y, yy, code = 0, bytes = (width + 7) / 8;
     bool has_segments = false;
 
     for (y = y0; y < y1 && code >= 0;) {
         yy = y + 1;
         if (x0 == 0) {
         for (; yy < y1; yy++)
-            if (memcmp(base + raster * y, base + raster * yy, raster))
+            if (memcmp(base + raster * y, base + raster * yy, bytes))
                 break;
         }
         code = image_line_to_clip(pdev, base + raster * y, x0, x1, y, yy, has_segments);
@@ -853,16 +928,31 @@ pdf_dump_converted_image(gx_device_pdf *pdev, pdf_lcvd_t *cvd)
         inst.templat.BBox.q.y = cvd->mdev.height;
         inst.templat.XStep = (float)cvd->mdev.width;
         inst.templat.YStep = (float)cvd->mdev.height;
-        code = (*dev_proc(pdev, dev_spec_op))((gx_device *)pdev,
-            gxdso_pattern_start_accum, &inst, id);
+
+        {
+            pattern_accum_param_s param;
+            param.pinst = (void *)&inst;
+            param.graphics_state = (void *)&s;
+            param.pinst_id = inst.id;
+
+            code = (*dev_proc(pdev, dev_spec_op))((gx_device *)pdev,
+                gxdso_pattern_start_accum, &param, sizeof(pattern_accum_param_s));
+        }
+
         if (code >= 0) {
             stream_puts(pdev->strm, "W n\n");
             code = write_image(pdev, &cvd->mdev, NULL);
         }
         pres = pdev->accumulating_substream_resource;
-        if (code >= 0)
+        if (code >= 0) {
+            pattern_accum_param_s param;
+            param.pinst = (void *)&inst;
+            param.graphics_state = (void *)&s;
+            param.pinst_id = inst.id;
+
             code = (*dev_proc(pdev, dev_spec_op))((gx_device *)pdev,
-                gxdso_pattern_finish_accum, &inst, id);
+                gxdso_pattern_finish_accum, &param, id);
+        }
         if (code >= 0)
             code = (*dev_proc(pdev, dev_spec_op))((gx_device *)pdev,
                 gxdso_pattern_load, &inst, id);
@@ -983,6 +1073,7 @@ pdf_setup_masked_image_converter(gx_device_pdf *pdev, gs_memory_t *mem, const gs
         gs_make_mem_mono_device(mask, mem, (gx_device *)pdev);
         mask->width = cvd->mdev.width;
         mask->height = cvd->mdev.height;
+        mask->raster = gx_device_raster((gx_device *)mask, 1);
         mask->bitmap_memory = mem;
         code = (*dev_proc(mask, open_device))((gx_device *)mask);
         if (code < 0)
@@ -1050,7 +1141,31 @@ gdev_pdf_fill_path(gx_device * dev, const gs_imager_state * pis, gx_path * ppath
      */
     bool have_path;
     gs_fixed_rect box = {{0, 0}, {0, 0}}, box1;
+    gs_rect box2;
 
+    if (pdev->Eps2Write) {
+        gx_path_bbox(ppath, &box1);
+        if (box1.p.x != 0 || box1.p.y != 0 || box1.q.x != 0 || box1.q.y != 0){
+            if (pcpath != 0)
+                rect_intersect(box1, pcpath->outer_box);
+            /* convert fixed point co-ordinates to floating point and account for resolution */
+            box2.p.x = fixed2int(box1.p.x) / (pdev->HWResolution[0] / 72.0);
+            box2.p.y = fixed2int(box1.p.y) / (pdev->HWResolution[1] / 72.0);
+            box2.q.x = fixed2int(box1.q.x) / (pdev->HWResolution[0] / 72.0);
+            box2.q.y = fixed2int(box1.q.y) / (pdev->HWResolution[1] / 72.0);
+            /* Finally compare the new BBox of the path with the existing EPS BBox */
+            if (box2.p.x < pdev->BBox.p.x)
+                pdev->BBox.p.x = box2.p.x;
+            if (box2.p.y < pdev->BBox.p.y)
+                pdev->BBox.p.y = box2.p.y;
+            if (box2.q.x > pdev->BBox.q.x)
+                pdev->BBox.q.x = box2.q.x;
+            if (box2.q.y > pdev->BBox.q.y)
+                pdev->BBox.q.y = box2.q.y;
+        }
+        if (pdev->AccumulatingBBox)
+            return 0;
+    }
     have_path = !gx_path_is_void(ppath);
     if (!have_path && !pdev->vg_initial_set) {
         /* See lib/gs_pdfwr.ps about "initial graphic state". */
@@ -1079,7 +1194,8 @@ gdev_pdf_fill_path(gx_device * dev, const gs_imager_state * pis, gx_path * ppath
         return 0;
     code = pdf_setfillcolor((gx_device_vector *)pdev, pis, pdcolor);
     if (code == gs_error_rangecheck) {
-        const bool convert_to_image = (pdev->CompatibilityLevel <= 1.2 &&
+        const bool convert_to_image = ((pdev->CompatibilityLevel <= 1.2 ||
+                pdev->params.ColorConversionStrategy != ccs_LeaveColorUnchanged) &&
                 gx_dc_is_pattern2_color(pdcolor));
 
         if (!convert_to_image) {
@@ -1232,7 +1348,10 @@ gdev_pdf_stroke_path(gx_device * dev, const gs_imager_state * pis,
 
     if (gx_path_is_void(ppath))
         return 0;		/* won't mark the page */
-    if (pdf_must_put_clip_path(pdev, pcpath))
+    code = pdf_check_soft_mask(pdev, (gs_imager_state *)pis);
+    if (code < 0)
+        return code;
+   if (pdf_must_put_clip_path(pdev, pcpath))
         code = pdf_unclip(pdev);
     else if ((pdev->last_charpath_op & TEXT_DO_FALSE_CHARPATH) && ppath->current_subpath &&
         (ppath->last_charpath_segment == ppath->current_subpath->last) && !pdev->ForOPDFRead) {
@@ -1380,6 +1499,14 @@ gdev_pdf_stroke_path(gx_device * dev, const gs_imager_state * pis,
     s = pdev->strm;
     stream_puts(s, (code ? "s" : "S"));
     stream_puts(s, (set_ctm ? " Q\n" : "\n"));
+    if (pdev->Eps2Write) {
+        pdev->AccumulatingBBox++;
+        code = gx_default_stroke_path(dev, pis, ppath, params, pdcolor,
+                                      pcpath);
+        pdev->AccumulatingBBox--;
+        if (code < 0)
+            return code;
+    }
     return 0;
 }
 
@@ -1426,6 +1553,23 @@ gdev_pdf_fill_rectangle_hl_color(gx_device *dev, const gs_fixed_rect *rect,
                 fixed2float(box1.q.x - box1.p.x) / scale, fixed2float(box1.q.y - box1.p.y) / scale);
         if (psmat)
             stream_puts(pdev->strm, "Q\n");
+        if (pdev->Eps2Write) {
+            gs_rect *Box;
+
+            if (!pdev->accumulating_charproc)
+                Box = &pdev->BBox;
+            else
+                Box = &pdev->charproc_BBox;
+
+            if (fixed2float(box1.p.x) / (pdev->HWResolution[0] / 72.0) < Box->p.x)
+                Box->p.x = fixed2float(box1.p.x) / (pdev->HWResolution[0] / 72.0);
+            if (fixed2float(box1.p.y) / (pdev->HWResolution[1] / 72.0) < Box->p.y)
+                Box->p.y = fixed2float(box1.p.y) / (pdev->HWResolution[1] / 72.0);
+            if (fixed2float(box1.q.x) / (pdev->HWResolution[0] / 72.0) > Box->q.x)
+                Box->q.x = fixed2float(box1.q.x) / (pdev->HWResolution[0] / 72.0);
+            if (fixed2float(box1.q.y) / (pdev->HWResolution[1] / 72.0) > Box->q.y)
+                Box->q.y = fixed2float(box1.q.y) / (pdev->HWResolution[1] / 72.0);
+        }
         return 0;
     } else {
         gx_fill_params params;

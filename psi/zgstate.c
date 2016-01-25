@@ -35,7 +35,7 @@ private_st_int_remap_color_info();
 /* ------ Utilities ------ */
 
 static int
-zset_real(i_ctx_t *i_ctx_p, int (*set_proc)(gs_state *, floatp))
+zset_real(i_ctx_t *i_ctx_p, int (*set_proc)(gs_state *, double))
 {
     os_ptr op = osp;
     double param;
@@ -311,7 +311,7 @@ zsetdash(i_ctx_t *i_ctx_p)
         (float *)gs_alloc_byte_array(mem, n, sizeof(float), "setdash");
 
     if (pattern == 0)
-        return_error(e_VMerror);
+        return_error(gs_error_VMerror);
     for (i = 0, code = 0; i < n && code >= 0; ++i) {
         ref element;
 
@@ -383,7 +383,7 @@ zsetcurvejoin(i_ctx_t *i_ctx_p)
 
     check_type(*op, t_integer);
     if (op->value.intval < -1 || op->value.intval > max_int)
-        return_error(e_rangecheck);
+        return_error(gs_error_rangecheck);
     code = gs_setcurvejoin(igs, (int)op->value.intval);
     if (code < 0)
         return code;

@@ -21,6 +21,7 @@
 #include "gdevpdfx.h"
 #include "gdevpdfo.h"
 #include "gdevpdfg.h"
+#include "gdevpsdf.h"
 #include "gsparamx.h"
 #include "gsicc_manage.h"
 
@@ -91,9 +92,6 @@ static const gs_param_item_t pdf_param_items[] = {
     pi("PatternImagemask", gs_param_type_bool, PatternImagemask),
     pi("MaxClipPathSize", gs_param_type_int, MaxClipPathSize),
     pi("MaxShadingBitmapSize", gs_param_type_int, MaxShadingBitmapSize),
-#ifdef DEPRECATED_906
-    pi("MaxViewerMemorySize", gs_param_type_int, MaxViewerMemorySize),
-#endif
     pi("HaveTrueTypes", gs_param_type_bool, HaveTrueTypes),
     pi("HaveCIDSystem", gs_param_type_bool, HaveCIDSystem),
     pi("HaveTransparency", gs_param_type_bool, HaveTransparency),
@@ -128,8 +126,7 @@ static const gs_param_item_t pdf_param_items[] = {
     pi("NoT3CCITT", gs_param_type_bool, NoT3CCITT),
     pi("PDFUseOldCMS", gs_param_type_bool, UseOldColor),
     pi("FastWebView", gs_param_type_bool, Linearise),
-    pi("FirstPage", gs_param_type_int, FirstPage),
-    pi("LastPage", gs_param_type_int, LastPage),
+    pi("NoOutputFonts", gs_param_type_bool, FlattenFonts),
 #undef pi
     gs_param_item_end
 };
@@ -205,6 +202,52 @@ static const gs_param_item_t pdf_param_items[] = {
 
 */
 
+/* Transfer a collection of parameters. */
+static const byte xfer_item_sizes[] = {
+    GS_PARAM_TYPE_SIZES(0)
+};
+int
+gdev_pdf_get_param(gx_device *dev, char *Param, void *list)
+{
+    gx_device_pdf *pdev = (gx_device_pdf *)dev;
+    const gs_param_item_t *pi;
+    gs_param_list * plist = (gs_param_list *)list;
+    int code = 0;
+
+    for (pi = pdf_param_items; pi->key != 0; ++pi) {
+        if (strcmp(pi->key, Param) == 0) {
+            const char *key = pi->key;
+            const void *pvalue = (const void *)((const char *)pdev + pi->offset);
+            int size = xfer_item_sizes[pi->type];
+            gs_param_typed_value typed;
+
+            memcpy(&typed.value, pvalue, size);
+            typed.type = pi->type;
+            code = (*plist->procs->xmit_typed) (plist, key, &typed);
+            return code;
+        }
+    }
+    if (strcmp(Param, "CoreDistVersion") == 0) {
+        return(param_write_int(plist, "CoreDistVersion", &CoreDistVersion));
+    }
+    if (strcmp(Param, "CompatibilityLevel") == 0) {
+        float f = pdev->CompatibilityLevel;
+        return(param_write_float(plist, "CompatibilityLevel", &f));
+    }
+    if (strcmp(Param, "ForOPDFRead") == 0) {
+        return(param_write_bool(plist, "ForOPDFRead", &pdev->ForOPDFRead));
+    }
+    if (!pdev->is_ps2write) {
+        if (strcmp(Param, "pdfmark")  == 0){
+            return(param_write_null(plist, "pdfmark"));
+        }
+        if (strcmp(Param, "DSC") == 0){
+            return(param_write_null(plist, "DSC"));
+        }
+    }
+    return gdev_psdf_get_param(dev, Param, list);
+}
+
 /* ---------------- Get parameters ---------------- */
 
 /* Get parameters. */
@@ -242,7 +285,7 @@ gdev_pdf_put_params_impl(gx_device * dev, const gx_device_pdf * save_dev, gs_par
     int ecode, code;
     gx_device_pdf *pdev = (gx_device_pdf *) dev;
     float cl = (float)pdev->CompatibilityLevel;
-    bool locked = pdev->params.LockDistillerParams;
+    bool locked = pdev->params.LockDistillerParams, ForOPDFRead;
     gs_param_name param_name;
     enum psdf_color_conversion_strategy save_ccs = pdev->params.ColorConversionStrategy;
 
@@ -322,37 +365,38 @@ gdev_pdf_put_params_impl(gx_device * dev, const gx_device_pdf * save_dev, gs_par
      * LockDistillerParams is read again, and reset if necessary, in
      * psdf_put_params.
      */
-    ecode = code = param_read_bool(plist, "LockDistillerParams", &locked);
+    ecode = param_read_bool(plist, "LockDistillerParams", &locked);
     if (ecode < 0)
         param_signal_error(plist, param_name, ecode);
 
-    if (!(locked && pdev->params.LockDistillerParams)) {
-        /* General parameters. */
+    /* General parameters. */
 
-        {
-            int efo = 1;
+    {
+        int efo = 1;
 
-            ecode = param_put_int(plist, (param_name = ".EmbedFontObjects"), &efo, ecode);
-            if (ecode < 0)
-                param_signal_error(plist, param_name, ecode);
-            if (efo != 1)
-                param_signal_error(plist, param_name, ecode = gs_error_rangecheck);
-        }
-        {
-            int cdv = CoreDistVersion;
+        ecode = param_put_int(plist, (param_name = ".EmbedFontObjects"), &efo, ecode);
+        if (ecode < 0)
+            param_signal_error(plist, param_name, ecode);
+        if (efo != 1)
+            param_signal_error(plist, param_name, ecode = gs_error_rangecheck);
+    }
+    {
+        int cdv = CoreDistVersion;
 
-            ecode = param_put_int(plist, (param_name = "CoreDistVersion"), &cdv, ecode);
-            if (ecode < 0)
-                return gs_note_error(ecode);
-            if (cdv != CoreDistVersion)
-                param_signal_error(plist, param_name, ecode = gs_error_rangecheck);
-        }
+        ecode = param_put_int(plist, (param_name = "CoreDistVersion"), &cdv, ecode);
+        if (ecode < 0)
+            return gs_note_error(ecode);
+        if (cdv != CoreDistVersion)
+            param_signal_error(plist, param_name, ecode = gs_error_rangecheck);
+    }
 
-        switch (code = param_read_float(plist, (param_name = "CompatibilityLevel"), &cl)) {
-            default:
-                ecode = code;
-                param_signal_error(plist, param_name, ecode);
-            case 0:
+    switch (code = param_read_float(plist, (param_name = "CompatibilityLevel"), &cl)) {
+        default:
+            ecode = code;
+            param_signal_error(plist, param_name, ecode);
+            break;
+        case 0:
+            if (!(locked && pdev->params.LockDistillerParams)) {
                 /*
                  * Must be 1.2, 1.3, 1.4, or 1.5.  Per Adobe documentation, substitute
                  * the nearest achievable value.
@@ -371,69 +415,70 @@ gdev_pdf_put_params_impl(gx_device * dev, const gx_device_pdf * save_dev, gs_par
                     cl = (float)1.6;
                 else
                     cl = (float)1.7;
-            case 1:
-                break;
-        }
-        {   /* HACK : gs_param_list_s::memory is documented in gsparam.h as
-               "for allocating coerced arrays". Not sure why zputdeviceparams
-               sets it to the current memory space, while the device
-               assumes to store them in the device's memory space.
-               As a hackish workaround we temporary replace it here.
-               Doing so because we don't want to change the global code now
-               because we're unable to test it with all devices.
-               Bug 688531 "Segmentation fault running pdfwrite from 219-01.ps".
-
-               This solution to be reconsidered after fixing
-               the bug 688533 "zputdeviceparams specifies a wrong memory space.".
-            */
-            gs_memory_t *mem = plist->memory;
-
-            plist->memory = pdev->pdf_memory;
-            code = gs_param_read_items(plist, pdev, pdf_param_items);
-            if (code < 0 ||
-                (!pdev->is_ps2write && (code = param_read_bool(plist, "ForOPDFRead", &pdev->ForOPDFRead)) < 0)
-                ){
             }
-            plist->memory = mem;
-        }
-        if (code < 0)
-            ecode = code;
+        case 1:
+            break;
+    }
+    {   /* HACK : gs_param_list_s::memory is documented in gsparam.h as
+           "for allocating coerced arrays". Not sure why zputdeviceparams
+           sets it to the current memory space, while the device
+           assumes to store them in the device's memory space.
+           As a hackish workaround we temporary replace it here.
+           Doing so because we don't want to change the global code now
+           because we're unable to test it with all devices.
+           Bug 688531 "Segmentation fault running pdfwrite from 219-01.ps".
+
+           This solution to be reconsidered after fixing
+           the bug 688533 "zputdeviceparams specifies a wrong memory space.".
+        */
+        gs_memory_t *mem = plist->memory;
+
+        plist->memory = pdev->pdf_memory;
+        code = gs_param_read_items(plist, pdev, pdf_param_items);
+        if (code < 0 || (code = param_read_bool(plist, "ForOPDFRead", &ForOPDFRead)) < 0)
         {
-            /*
-             * Setting FirstObjectNumber is only legal if the file
-             * has just been opened and nothing has been written,
-             * or if we are setting it to the same value.
-             */
-            long fon = pdev->FirstObjectNumber;
+        }
+        if (code == 0 && !pdev->is_ps2write && !(locked && pdev->params.LockDistillerParams))
+            pdev->ForOPDFRead = ForOPDFRead;
+        plist->memory = mem;
+    }
+    if (code < 0)
+        ecode = code;
+    {
+        /*
+         * Setting FirstObjectNumber is only legal if the file
+         * has just been opened and nothing has been written,
+         * or if we are setting it to the same value.
+         */
+        long fon = pdev->FirstObjectNumber;
 
-            if (fon != save_dev->FirstObjectNumber) {
-                if (fon <= 0 || fon > 0x7fff0000 ||
-                    (pdev->next_id != 0 &&
-                     pdev->next_id !=
-                     save_dev->FirstObjectNumber + pdf_num_initial_ids)
-                    ) {
-                    ecode = gs_error_rangecheck;
-                    param_signal_error(plist, "FirstObjectNumber", ecode);
-                }
+        if (fon != save_dev->FirstObjectNumber) {
+            if (fon <= 0 || fon > 0x7fff0000 ||
+                (pdev->next_id != 0 &&
+                 pdev->next_id !=
+                 save_dev->FirstObjectNumber + pdf_num_initial_ids)
+                ) {
+                ecode = gs_error_rangecheck;
+                param_signal_error(plist, "FirstObjectNumber", ecode);
             }
         }
-        {
-            /*
-             * Set ProcessColorModel now, because gx_default_put_params checks
-             * it.
-             */
-            static const char *const pcm_names[] = {
-                "DeviceGray", "DeviceRGB", "DeviceCMYK", "DeviceN", 0
-            };
-            int pcm = -1;
+    }
+    {
+        /*
+         * Set ProcessColorModel now, because gx_default_put_params checks
+         * it.
+         */
+        static const char *const pcm_names[] = {
+            "DeviceGray", "DeviceRGB", "DeviceCMYK", "DeviceN", 0
+        };
+        int pcm = -1;
 
-            ecode = param_put_enum(plist, "ProcessColorModel", &pcm,
-                                   pcm_names, ecode);
-            if (pcm >= 0) {
-                pdf_set_process_color_model(pdev, pcm);
-                pdf_set_initial_color(pdev, &pdev->saved_fill_color, &pdev->saved_stroke_color,
-                                &pdev->fill_used_process_color, &pdev->stroke_used_process_color);
-            }
+        ecode = param_put_enum(plist, "ProcessColorModel", &pcm,
+                               pcm_names, ecode);
+        if (pcm >= 0) {
+            pdf_set_process_color_model(pdev, pcm);
+            pdf_set_initial_color(pdev, &pdev->saved_fill_color, &pdev->saved_stroke_color,
+                            &pdev->fill_used_process_color, &pdev->stroke_used_process_color);
         }
     }
     if (ecode < 0)
@@ -478,6 +523,7 @@ gdev_pdf_put_params_impl(gx_device * dev, const gx_device_pdf * save_dev, gs_par
          pdev->HaveTransparency = false;
          pdev->PreserveSMask = false;
     }
+
     /*
      * We have to set version to the new value, because the set of
      * legal parameter values for psdf_put_params varies according to
@@ -534,7 +580,6 @@ gdev_pdf_put_params_impl(gx_device * dev, const gx_device_pdf * save_dev, gs_par
             case ccs_UseDeviceIndependentColor:
             case ccs_UseDeviceIndependentColorForImages:
             case ccs_ByObjectType:
-            case ccs_sRGB:
                 break;
             case ccs_CMYK:
                 if (pdev->icc_struct)
@@ -554,6 +599,7 @@ gdev_pdf_put_params_impl(gx_device * dev, const gx_device_pdf * save_dev, gs_par
                 if (ecode < 0)
                     goto fail;
                 break;
+            case ccs_sRGB:
             case ccs_RGB:
                 /* Only bother to do this if we didn't handle it above */
                 if (!pdev->params.ConvertCMYKImagesToRGB) {
@@ -572,7 +618,8 @@ gdev_pdf_put_params_impl(gx_device * dev, const gx_device_pdf * save_dev, gs_par
     } else {
         if ((pdev->params.ColorConversionStrategy == ccs_CMYK &&
              strcmp(pdev->color_info.cm_name, "DeviceCMYK")) ||
-            (pdev->params.ColorConversionStrategy == ccs_sRGB &&
+            ((pdev->params.ColorConversionStrategy == ccs_RGB ||
+             pdev->params.ColorConversionStrategy == ccs_sRGB) &&
               strcmp(pdev->color_info.cm_name, "DeviceRGB")) ||
             (pdev->params.ColorConversionStrategy == ccs_Gray &&
               strcmp(pdev->color_info.cm_name, "DeviceGray"))) {
@@ -618,19 +665,19 @@ gdev_pdf_put_params_impl(gx_device * dev, const gx_device_pdf * save_dev, gs_par
             }
         }
     }
-    if (cl < 1.5 && pdev->params.ColorImage.Filter != NULL &&
+    if (cl < 1.5f && pdev->params.ColorImage.Filter != NULL &&
             !strcmp(pdev->params.ColorImage.Filter, "JPXEncode")) {
         emprintf(pdev->memory,
                  "JPXEncode requires CompatibilityLevel >= 1.5 .\n");
         ecode = gs_note_error(gs_error_rangecheck);
     }
-    if (cl < 1.5 && pdev->params.GrayImage.Filter != NULL &&
+    if (cl < 1.5f && pdev->params.GrayImage.Filter != NULL &&
             !strcmp(pdev->params.GrayImage.Filter, "JPXEncode")) {
         emprintf(pdev->memory,
                  "JPXEncode requires CompatibilityLevel >= 1.5 .\n");
         ecode = gs_note_error(gs_error_rangecheck);
     }
-    if (cl < 1.4  && pdev->params.MonoImage.Filter != NULL &&
+    if (cl < 1.4f && pdev->params.MonoImage.Filter != NULL &&
             !strcmp(pdev->params.MonoImage.Filter, "JBIG2Encode")) {
         emprintf(pdev->memory,
                  "JBIG2Encode requires CompatibilityLevel >= 1.4 .\n");
@@ -687,6 +734,8 @@ gdev_pdf_put_params_impl(gx_device * dev, const gx_device_pdf * save_dev, gs_par
         pdev->Linearise = false;
     }
 
+    if (pdev->FlattenFonts)
+        pdev->PreserveTrMode = false;
     return 0;
  fail:
     /* Restore all the parameters to their original state. */
@@ -726,6 +775,42 @@ gdev_pdf_put_params(gx_device * dev, gs_param_list * plist)
 
 /* ---------------- Process DSC comments ---------------- */
 
+/* Bug #695850 DSC comments are not actually encoded, nor are they PostScript strings
+ * they are simply a sequence of bytes. SO it would seem we should just preserve that
+ * byte sequence. Bizarrely, Distiller treats the comment as 'almost' a PostScript
+ * string. In particular it converts octal codes into an equivalent binary byte. It
+ * also converts (eg) '\n' and '\r' into 'n' and 'r' and invalid octal escapes
+ * (eg \11) simply have the '\' turned into a '?'.
+ * We think this is nuts and have no intention of trying to mimic it precisely. This
+ * routine will find octal escapes and convert them into binary. The way this works is
+ * a little obscure. The DSC parser does convert the comment into a PostScript string
+ * and so has to escape any unusual characters. This means our octal escaped values in
+ * the original DSC comment have had the escape character ('\') escaped to become '\\'.
+ * All we need to do is remove the escape of the escape and we will end up with a
+ * properly escaped PostScript string.
+ */
+static int unescape_octals(gx_device_pdf * pdev, char *src, int size)
+{
+    char *start, *dest;
+
+    start = src;
+    dest = src;
+
+    while(size) {
+        if (size > 4 && src[0] == '\\' && src[1] == '\\' &&
+                src[2] > 0x29 && src[2] < 0x35 &&
+                src[3] > 0x29 &&src[3] < 0x38 &&
+                src[4] > 0x29 && src[4] < 0x38) {
+            src++;
+            size--;
+        } else {
+            *dest++ = *src++;
+            size--;
+        }
+    }
+    return (dest - start);
+}
+
 static int
 pdf_dsc_process(gx_device_pdf * pdev, const gs_param_string_array * pma)
 {
@@ -746,8 +831,9 @@ pdf_dsc_process(gx_device_pdf * pdev, const gs_param_string_array * pma)
 
     for (i = 0; i + 1 < pma->size && code >= 0; i += 2) {
         const gs_param_string *pkey = &pma->data[i];
-        const gs_param_string *pvalue = &pma->data[i + 1];
+        gs_param_string *pvalue = (gs_param_string *)&pma->data[i + 1];
         const char *key;
+        int newsize;
 
         /*
          * %%For, %%Creator, and %%Title are recognized only if either
@@ -759,13 +845,25 @@ pdf_dsc_process(gx_device_pdf * pdev, const gs_param_string_array * pma)
          * but we do the same -- we ignore %%CreationDate here.
          */
 
-        if (pdf_key_eq(pkey, "Creator"))
+        if (pdf_key_eq(pkey, "Creator")) {
             key = "/Creator";
-        else if (pdf_key_eq(pkey, "Title"))
+            newsize = unescape_octals(pdev, (char *)pvalue->data, pvalue->size);
+            code = cos_dict_put_c_key_string(pdev->Info, key,
+                                             pvalue->data, newsize);
+            continue;
+        } else if (pdf_key_eq(pkey, "Title")) {
             key = "/Title";
-        else if (pdf_key_eq(pkey, "For"))
+            newsize = unescape_octals(pdev, (char *)pvalue->data, pvalue->size);
+            code = cos_dict_put_c_key_string(pdev->Info, key,
+                                             pvalue->data, newsize);
+            continue;
+        } else if (pdf_key_eq(pkey, "For")) {
             key = "/Author";
-        else {
+            newsize = unescape_octals(pdev, (char *)pvalue->data, pvalue->size);
+            code = cos_dict_put_c_key_string(pdev->Info, key,
+                                             pvalue->data, newsize);
+            continue;
+        } else {
             pdf_page_dsc_info_t *ppdi;
             char scan_buf[200]; /* arbitrary */
 
@@ -833,10 +931,6 @@ pdf_dsc_process(gx_device_pdf * pdev, const gs_param_string_array * pma)
             }
             continue;
         }
-
-        if (pdev->ParseDSCCommentsForDocInfo || pdev->PreserveEPSInfo)
-            code = cos_dict_put_c_key_string(pdev->Info, key,
-                                             pvalue->data, pvalue->size);
     }
     return code;
 }

@@ -7,7 +7,7 @@ use Data::Dumper;
 
 my $verbose=0;
 
-# bmpcmp usage: [gs] [pcl] [xps] [gs] [mupdf] [mujstest] [bmpcmp] [lowres] [32] [pdfwrite] [$user] | abort
+# bmpcmp usage: [gs] [pcl] [xps] [mupdf] [mujstest] [bmpcmp] [lowres] [highres] [32] [pdfwrite] [ps2write] [xpswrite] [relaxtimeout] [$user] | abort
 
 
 
@@ -25,11 +25,14 @@ my %products=('abort' =>1,
 my $user;
 my $product="";
 my $filters="";
+my $extras="";
 my $command="";
 my $res="";
 my $w32="";
 my $nr="";
 my $pdfwrite="";
+my $ps2write="";
+my $xpswrite="";
 my $singlePagePDF="";
 my $relaxTimeout="";
 my $t1;
@@ -45,7 +48,7 @@ while ($t1=shift) {
     $w32="32";
   } elsif ($t1 eq "nr" || $t1 eq "nonredundnat") {
     $nr="nonredundant";
-  } elsif ($t1 eq "pdfwrite" || $t1 eq "ps2write") {
+  } elsif ($t1 eq "pdfwrite" || $t1 eq "ps2write" || $t1 eq "xpswrite") {
     $pdfwrite="pdfwrite";
   } elsif ($t1 eq "timeout" || $t1 eq "relaxtimeout") {
     $relaxTimeout="relaxTimeout";
@@ -53,6 +56,8 @@ while ($t1=shift) {
     $command.=$t1.' ';
   } elsif ($t1 =~ m/filter=.*/) {
     $filters.=$t1.' ';
+  } elsif ($t1 =~ m/extras=.*/) {
+    $extras.=$t1.' ';
   } elsif (exists $products{$t1}) {
     $product.=$t1.' ';
   } elsif ($t1 =~ m/ /) {
@@ -77,7 +82,7 @@ $user=""    if (!$user);
 
 unlink "cluster_command.run";
 
-my $host="casper.ghostscript.com";
+my $host="cluster.ghostscript.com";
 my $dir="/home/regression/cluster/users";
 
 # To cater for those whose cluster user name doesn't match the user name
@@ -102,7 +107,7 @@ my $directory=`pwd`;
 chomp $directory;
 
 $directory =~ s|.+/||;
-if ($directory ne 'gs' && $directory ne 'ghostpdl' && $directory ne 'mupdf') {
+if ($directory ne 'gs' && $directory ne 'ghostpdl' && $directory ne 'mupdf' && $directory ne 'ghostpdl.git' && $directory ne 'mupdf.git') {
   $directory="";
   if (-d "base" && -d "Resource") {
     $directory='gs';
@@ -110,7 +115,7 @@ if ($directory ne 'gs' && $directory ne 'ghostpdl' && $directory ne 'mupdf') {
   if (-d "pxl" && -d "pcl") {
     $directory='ghostpdl';
   }
-  if (-d "fitz" && -d "draw" && -d "pdf") {
+  if (-d "source/fitz" && -d "source/draw" && -d "source/pdf") {
     $directory='mupdf';
   }
 }
@@ -132,7 +137,12 @@ print "$user $directory $product\n" if ($verbose);
 
 
 if ($directory eq 'gs') {
-  $directory='ghostpdl/gs';
+  if (-e 'gpdl') {
+    print "new directory structure\n";
+    $directory='ghostpdl';
+  } else {
+    $directory='ghostpdl/gs';
+  }
 }
 
 
@@ -179,6 +189,8 @@ my $cmd="rsync -avxcz ".
 " .".
 " $hostpath";
 
+#print "$cmd\n";  exit;
+
 if ($product ne "abort" ) { #&& $product ne "bmpcmp") {
   print STDERR "syncing\n";
   print "$cmd\n" if ($verbose);
@@ -195,6 +207,7 @@ open(F,">cluster_command.run");
 print F "$user $product $res $w32 $nr $pdfwrite $relaxTimeout $singlePagePDF\n";
 print F "$command\n";
 print F "$filters\n";
+print F "$extras\n";
 close(F);
 
 $cmd="rsync -avxcz".
@@ -208,6 +221,8 @@ if ($product ne "abort") {
   print STDERR "\ndequeueing\n";
 }
 print "$cmd\n" if ($verbose);
+#print "filters=$filters\n";
+#print "extras=$extras\n";
 `$cmd`;
 
 unlink "cluster_command.run";
