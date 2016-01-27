@@ -277,7 +277,7 @@ gx_default_text_restore_state(gs_text_enum_t *pte)
 
 static int
     set_cache_device(gs_show_enum *penum, gs_state *pgs,
-                     floatp llx, floatp lly, floatp urx, floatp ury);
+                     double llx, double lly, double urx, double ury);
 
 /* This is the default implementation of text enumerator set_cache. */
 static int
@@ -362,7 +362,7 @@ gx_show_text_set_cache(gs_text_enum_t *pte, const double *pw,
 /* Note that this returns 1 if the current show operation is */
 /* non-displaying (stringwidth or cshow). */
 int
-set_char_width(gs_show_enum *penum, gs_state *pgs, floatp wx, floatp wy)
+set_char_width(gs_show_enum *penum, gs_state *pgs, double wx, double wy)
 {
     int code;
 
@@ -485,8 +485,8 @@ compute_glyph_raster_params(gs_show_enum *penum, bool in_setcachedevice, int *al
 /* Return 1 if we just set up a cache device. */
 /* Used by setcachedevice and setcachedevice2. */
 static int
-set_cache_device(gs_show_enum * penum, gs_state * pgs, floatp llx, floatp lly,
-                 floatp urx, floatp ury)
+set_cache_device(gs_show_enum * penum, gs_state * pgs, double llx, double lly,
+                 double urx, double ury)
 {
     gs_glyph glyph;
 
@@ -921,7 +921,7 @@ show_move(gs_show_enum * penum)
          */
         if (SHOW_IS_ADD_TO_SPACE(penum)
             && (!penum->single_byte_space
-            || penum->fstack.depth <= 0)) {
+            || penum->bytes_decoded == 1)) {
             gs_char chr = gx_current_char((const gs_text_enum_t *)penum);
 
             if (chr == penum->text.space.s_char) {
@@ -984,7 +984,7 @@ show_proceed(gs_show_enum * penum)
   (++(penum->xy_index), next_char_glyph(pte, pchr, pglyph))
     gs_char chr;
     gs_glyph glyph;
-    int code;
+    int code, start;
     cached_char *cc;
     gs_log2_scale_point log2_scale;
 
@@ -1002,6 +1002,7 @@ show_proceed(gs_show_enum * penum)
     if (penum->can_cache >= 0) {
         /* Loop with cache */
         for (;;) {
+            start = penum->index;
             switch ((code = get_next_char_glyph((gs_text_enum_t *)penum,
                                                 &chr, &glyph))
                     ) {
@@ -1035,6 +1036,7 @@ show_proceed(gs_show_enum * penum)
                         SET_CURRENT_GLYPH(penum, glyph);
                     } else
                         SET_CURRENT_GLYPH(penum, glyph);
+                    penum->bytes_decoded = penum->index - start;
                     penum->is_pure_color = gs_color_writes_pure(penum->pgs); /* Save
                                  this data for compute_glyph_raster_params to work
                                  independently on the color change in BuildChar.
@@ -1488,9 +1490,18 @@ show_set_scale(const gs_show_enum * penum, gs_log2_scale_point *log2_scale)
      * Decide whether to oversample.
      * We have to decide this each time setcachedevice is called.
      */
-    const gs_state *pgs = penum->pgs;
+    const gs_state *pgs = NULL;
 
-    if ((penum->charpath_flag == cpm_show ||
+    if (gs_object_type(penum->pis->memory, penum) == &st_gs_show_enum) {
+        pgs = penum->pgs;
+    } else {
+        if (penum->pis->is_gstate)
+            pgs = (gs_state *)penum->pis;
+        else
+            outprintf(penum->memory, "Warning: cannot calculate text oversample (TextAlphaBits)\n");
+    }
+
+    if (pgs != NULL && (penum->charpath_flag == cpm_show ||
          penum->charpath_flag == cpm_charwidth) &&
         SHOW_USES_OUTLINE(penum)
         /* && gx_path_is_void_inline(pgs->path) */

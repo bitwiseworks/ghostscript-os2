@@ -28,6 +28,7 @@
 #include "gxgetbit.h"
 #include "gxhttile.h"
 #include "gdevplnx.h"
+#include "gdevp14.h"
 #include "gsmemory.h"
 #include "gsmemlok.h"
 #include "vdtrace.h"
@@ -287,9 +288,7 @@ top_up_offset_map(stream_state * st, const byte *buf, const byte *ptr, const byt
 static int
 clist_plane_raster(const gx_device *dev, const gx_render_plane_t *render_plane)
 {
-    return bitmap_raster(dev->width *
-                         (render_plane && render_plane->index >= 0 ?
-                          render_plane->depth : dev->color_info.depth));
+    return gx_device_raster_plane(dev, render_plane);
 }
 
 /* Select full-pixel rendering if required for RasterOp. */
@@ -383,25 +382,42 @@ static int
 clist_find_pseudoband(gx_device_clist_reader *crdev, int band, cmd_block *cb)
 {
 
-    clist_file_ptr bfile = crdev->page_info.bfile;
-    int64_t save_pos = crdev->page_info.bfile_end_pos;
+    gx_band_page_info_t *page_info = &(crdev->page_info);
+    clist_file_ptr bfile = page_info->bfile;
+    int64_t save_pos = page_info->bfile_end_pos;
     int64_t start_pos;
+    int code;
 
+    if (bfile == NULL) {
+        /* files haven't been opened yet. Do it now */
+        char fmode[4];
+
+        strcpy(fmode, "r");
+        strncat(fmode, gp_fmode_binary_suffix, 1);
+        if ((code=page_info->io_procs->fopen(page_info->cfname, fmode,
+                            &page_info->cfile,
+                            crdev->memory, crdev->memory, true)) < 0 ||
+             (code=page_info->io_procs->fopen(page_info->bfname, fmode,
+                            &page_info->bfile,
+                            crdev->memory, crdev->memory, false)) < 0)
+            return code;
+            bfile = page_info->bfile;
+    }
     /* Go to the start of the last command block */
-    start_pos = crdev->page_info.bfile_end_pos - sizeof(cmd_block);
-    crdev->page_info.io_procs->fseek(bfile, start_pos, SEEK_SET, crdev->page_info.bfname);
+    start_pos = page_info->bfile_end_pos - sizeof(cmd_block);
+    page_info->io_procs->fseek(bfile, start_pos, SEEK_SET, page_info->bfname);
     while( 1 ) {
-        crdev->page_info.io_procs->fread_chars(cb, sizeof(cmd_block), bfile);
+        page_info->io_procs->fread_chars(cb, sizeof(cmd_block), bfile);
         if (cb->band_max == band && cb->band_min == band) {
-            crdev->page_info.io_procs->fseek(bfile, save_pos, SEEK_SET, crdev->page_info.bfname);
+            page_info->io_procs->fseek(bfile, save_pos, SEEK_SET, page_info->bfname);
             return(0);  /* Found it */
         }
         start_pos -= sizeof(cmd_block);
         if (start_pos < 0) {
-           crdev->page_info.io_procs->fseek(bfile, save_pos, SEEK_SET, crdev->page_info.bfname);
+           page_info->io_procs->fseek(bfile, save_pos, SEEK_SET, page_info->bfname);
            return(-1);  /* Did not find it before getting into other stuff in normal bands */
         }
-        crdev->page_info.io_procs->fseek(bfile, start_pos, SEEK_SET, crdev->page_info.bfname);
+        page_info->io_procs->fseek(bfile, start_pos, SEEK_SET, page_info->bfname);
     }
 }
 
@@ -536,9 +552,9 @@ clist_render_init(gx_device_clist *dev)
 
     crdev->ymin = crdev->ymax = 0;
     crdev->yplane.index = -1;
-    /* For normal rasterizing, pages and num_pages are zero. */
+    /* For normal rasterizing, pages and num_pages is 1. */
     crdev->pages = 0;
-    crdev->num_pages = 0;
+    crdev->num_pages = 1;		/* always at least one page */
     crdev->offset_map = NULL;
     crdev->icc_table = NULL;
     crdev->color_usage_array = NULL;
@@ -609,15 +625,15 @@ clist_get_bits_rectangle(gx_device *dev, const gs_int_rect * prect,
     if (code < 0)
         return code;
     code = clist_rasterize_lines(dev, y, line_count, bdev, &render_plane, &my);
-    if (code < 0)
-        return code;
-    lines_rasterized = min(code, line_count);
-    /* Return as much of the rectangle as falls within the rasterized lines. */
-    band_rect = *prect;
-    band_rect.p.y = my;
-    band_rect.q.y = my + lines_rasterized;
-    code = dev_proc(bdev, get_bits_rectangle)
-        (bdev, &band_rect, params, unread);
+    if (code >= 0) {
+        lines_rasterized = min(code, line_count);
+        /* Return as much of the rectangle as falls within the rasterized lines. */
+        band_rect = *prect;
+        band_rect.p.y = my;
+        band_rect.q.y = my + lines_rasterized;
+        code = dev_proc(bdev, get_bits_rectangle)
+            (bdev, &band_rect, params, unread);
+    }
     cdev->buf_procs.destroy_buf_device(bdev);
     if (code < 0 || lines_rasterized == line_count)
         return code;
@@ -688,6 +704,7 @@ clist_rasterize_lines(gx_device *dev, int y, int line_count,
     gx_device *target = crdev->target;
     uint raster = clist_plane_raster(target, render_plane);
     byte *mdata = crdev->data + crdev->page_tile_cache_size;
+    byte *mlines = (crdev->page_line_ptrs_offset == 0 ? NULL : mdata + crdev->page_line_ptrs_offset);
     int plane_index = (render_plane ? render_plane->index : -1);
     int code;
 
@@ -712,7 +729,7 @@ clist_rasterize_lines(gx_device *dev, int y, int line_count,
         if (y < 0 || y > dev->height)
             return_error(gs_error_rangecheck);
         code = crdev->buf_procs.setup_buf_device
-            (bdev, mdata, raster, NULL, 0, band_num_lines, band_num_lines);
+            (bdev, mdata, raster, (byte **)mlines, 0, band_num_lines, band_num_lines);
         band_rect.p.x = 0;
         band_rect.p.y = band_begin_line;
         band_rect.q.x = dev->width;
@@ -732,7 +749,7 @@ clist_rasterize_lines(gx_device *dev, int y, int line_count,
     if (line_count > crdev->ymax - y)
         line_count = crdev->ymax - y;
     code = crdev->buf_procs.setup_buf_device
-        (bdev, mdata, raster, NULL, y - crdev->ymin, line_count,
+        (bdev, mdata, raster, (byte **)mlines, y - crdev->ymin, line_count,
          crdev->ymax - crdev->ymin);
     if (code < 0)
         return code;
@@ -756,8 +773,8 @@ clist_render_rectangle(gx_device_clist *cldev, const gs_int_rect *prect,
     int band_height = crdev->page_band_height;
     int band_first = prect->p.y / band_height;
     int band_last = (prect->q.y - 1) / band_height;
-    gx_saved_page current_page;
-    gx_placed_page placed_page;
+    gx_band_page_info_t *pinfo;
+    gx_band_page_info_t page_info;
     int code = 0;
     int i;
     bool save_pageneutralcolor;
@@ -768,49 +785,72 @@ clist_render_rectangle(gx_device_clist *cldev, const gs_int_rect *prect,
         crdev->yplane.index = -1;
     if_debug2m('l', bdev->memory, "[l]rendering bands (%d,%d)\n", band_first, band_last);
 
-    /*
-     * If we aren't rendering saved pages, do the current one.
-     * Note that this is the only case in which we may encounter
-     * a gx_saved_page with non-zero cfile or bfile.
-     */
     ppages = crdev->pages;
-    if (ppages == 0) {
-        current_page.info = crdev->page_info;
-        placed_page.page = &current_page;
-        placed_page.offset.x = placed_page.offset.y = 0;
-        ppages = &placed_page;
-        num_pages = 1;
-    }
+
     /* Before playing back the clist, make sure that the gray detection is disabled */
     /* so we don't slow down the rendering (primarily high level images).           */
     save_pageneutralcolor = crdev->icc_struct->pageneutralcolor;
     crdev->icc_struct->pageneutralcolor = false;
 
     for (i = 0; i < num_pages && code >= 0; ++i) {
-        const gx_placed_page *ppage = &ppages[i];
+        bool pdf14_needed = false;
+        int band;
 
-        /*
-         * Set the band_offset_? values in case the buffer device
-         * needs this. Example, a device may need to adjust the
-         * phase of the dithering based on the page position, NOT
-         * the position within the band buffer to avoid band stitch
-         * lines in the dither pattern. The old wtsimdi device did this
-         *
-         * The band_offset_x is not important for placed pages that
-         * are nested on a 'master' page (imposition) since each
-         * page expects to be dithered independently, but setting
-         * this allows pages to be contiguous without a dithering
-         * shift.
-         *
-         * The following sets the band_offset_? relative to the
-         * master page.
-         */
-        bdev->band_offset_x = ppage->offset.x;
-        bdev->band_offset_y = ppage->offset.y + (band_first * band_height);
-        code = clist_playback_file_bands(playback_action_render,
-                                         crdev, &ppage->page->info,
+        if (ppages == NULL) {
+                /*
+                 * If we aren't rendering saved pages, do the current one.
+                 * Note that this is the only case in which we may encounter
+                 * a gx_saved_page with non-zero cfile or bfile.
+                 */
+                bdev->band_offset_x = 0;
+                bdev->band_offset_y = band_first * band_height;
+                pinfo = &(crdev->page_info);
+        } else {
+            const gx_placed_page *ppage = &ppages[i];
+
+            /* Store the page information. */
+            page_info.cfile = page_info.bfile = NULL;
+            strncpy(page_info.cfname, ppage->page->cfname, sizeof(page_info.cfname));
+            strncpy(page_info.bfname, ppage->page->bfname, sizeof(page_info.bfname));
+            page_info.io_procs = ppage->page->io_procs;
+            page_info.tile_cache_size = ppage->page->tile_cache_size;
+            page_info.bfile_end_pos = ppage->page->bfile_end_pos;
+            page_info.band_params = ppage->page->band_params;
+            pinfo = &page_info;
+
+            /*
+             * Set the band_offset_? values in case the buffer device
+             * needs this. Example, a device may need to adjust the
+             * phase of the dithering based on the page position, NOT
+             * the position within the band buffer to avoid band stitch
+             * lines in the dither pattern. The old wtsimdi device did this
+             *
+             * The band_offset_x is not important for placed pages that
+             * are nested on a 'master' page (imposition) since each
+             * page expects to be dithered independently, but setting
+             * this allows pages to be contiguous without a dithering
+             * shift.
+             *
+             * The following sets the band_offset_? relative to the
+             * master page.
+             */
+            bdev->band_offset_x = ppage->offset.x;
+            bdev->band_offset_y = ppage->offset.y + (band_first * band_height);
+        }
+        /* if any of the requested bands need transparency, use it for all of them   */
+        /* The pdf14_ok_to_optimize checks if the target device (bdev) is compatible */
+        /* with the pdf14 compositor info that was written to the clist: colorspace, */
+        /* colorspace, etc.                                                          */
+        pdf14_needed = !pdf14_ok_to_optimize(bdev);
+        for (band=band_first; !pdf14_needed && band <= band_last; band++)
+            pdf14_needed |= (crdev->color_usage_array[band].trans_bbox.p.y <=
+            crdev->color_usage_array[band].trans_bbox.q.y) ? true : false;
+
+        code = clist_playback_file_bands(pdf14_needed ?
+                                         playback_action_render : playback_action_render_no_pdf14,
+                                         crdev, pinfo,
                                          bdev, band_first, band_last,
-                                         prect->p.x - ppage->offset.x,
+                                         prect->p.x - bdev->band_offset_x,
                                          prect->p.y);
     }
     crdev->icc_struct->pageneutralcolor = save_pageneutralcolor;	/* restore it */

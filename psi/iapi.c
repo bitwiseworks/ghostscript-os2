@@ -21,6 +21,7 @@
 #include "ierrors.h"
 #include "gscdefs.h"
 #include "gstypes.h"
+#include "gdebug.h"
 #include "iapi.h"	/* Public API */
 #include "iref.h"
 #include "iminst.h"
@@ -88,12 +89,12 @@ gsapi_new_instance(void **pinstance, void *caller_handle)
     gs_main_instance *minst = NULL;
 
     if (pinstance == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
 #ifndef GS_THREADSAFE
     /* limited to 1 instance, till it works :) */
     if ( gsapi_instance_counter >= gsapi_instance_max )
-        return e_Fatal;
+        return gs_error_Fatal;
     ++gsapi_instance_counter;
 #endif
 
@@ -108,11 +109,11 @@ gsapi_new_instance(void **pinstance, void *caller_handle)
 
     }
     if (mem == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
     minst = gs_main_alloc_instance(mem);
     if (minst == NULL) {
         gs_malloc_release(mem);
-        return e_Fatal;
+        return gs_error_Fatal;
     }
     mem->gs_lib_ctx->top_of_system = (void*) minst;
     mem->gs_lib_ctx->caller_handle = caller_handle;
@@ -168,7 +169,7 @@ gsapi_set_stdio(void *lib,
 {
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
     ctx->stdin_fn = stdin_fn;
     ctx->stdout_fn = stdout_fn;
     ctx->stderr_fn = stderr_fn;
@@ -182,7 +183,7 @@ gsapi_set_poll(void *lib,
 {
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
     ctx->poll_fn = poll_fn;
     return 0;
 }
@@ -193,10 +194,29 @@ gsapi_set_display_callback(void *lib, display_callback *callback)
 {
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
     get_minst_from_memory(ctx->memory)->display = callback;
     /* not in a language switched build */
     return 0;
+}
+
+/* Set/Get the default device list string */
+GSDLLEXPORT int GSDLLAPI
+gsapi_set_default_device_list(void *lib, char *list, int listlen)
+{
+    gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
+    if (lib == NULL)
+        return gs_error_Fatal;
+    return gs_lib_ctx_set_default_device_list(ctx->memory, list, listlen);
+}
+
+GSDLLEXPORT int GSDLLAPI
+gsapi_get_default_device_list(void *lib, char **list, int *listlen)
+{
+    gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
+    if (lib == NULL)
+        return gs_error_Fatal;
+    return gs_lib_ctx_get_default_device_list(ctx->memory, list, listlen);
 }
 
 static int utf16le_get_codepoint(FILE *file, const char **astr)
@@ -289,7 +309,7 @@ gsapi_set_arg_encoding(void *lib, int encoding)
 {
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
 #if defined(GS_NO_UTF8)
     if (encoding == GS_ARG_ENCODING_LOCAL) {
@@ -320,7 +340,7 @@ gsapi_set_arg_encoding(void *lib, int encoding)
         return 0;
     }
 #endif
-    return e_Fatal;
+    return gs_error_Fatal;
 }
 
 GSDLLEXPORT int GSDLLAPI
@@ -328,7 +348,7 @@ gsapi_init_with_args(void *lib, int argc, char **argv)
 {
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
     return gs_main_init_with_args(get_minst_from_memory(ctx->memory), argc, argv);
 }
@@ -345,7 +365,7 @@ gsapi_run_string_begin(void *lib, int user_errors,
 {
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
     return gs_main_run_string_begin(get_minst_from_memory(ctx->memory),
                                     user_errors, pexit_code,
@@ -358,7 +378,7 @@ gsapi_run_string_continue(void *lib,
 {
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
     return gs_main_run_string_continue(get_minst_from_memory(ctx->memory),
                                        str, length, user_errors, pexit_code,
@@ -371,7 +391,7 @@ gsapi_run_string_end(void *lib,
 {
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
     return gs_main_run_string_end(get_minst_from_memory(ctx->memory),
                                   user_errors, pexit_code,
@@ -384,7 +404,7 @@ gsapi_run_string_with_length(void *lib,
 {
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
     return gs_main_run_string_with_length(get_minst_from_memory(ctx->memory),
                                           str, length, user_errors, pexit_code,
@@ -395,8 +415,7 @@ GSDLLEXPORT int GSDLLAPI
 gsapi_run_string(void *lib,
         const char *str, int user_errors, int *pexit_code)
 {
-    gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
-    return gsapi_run_string_with_length(get_minst_from_memory(ctx->memory),
+    return gsapi_run_string_with_length(lib,
         str, (uint)strlen(str), user_errors, pexit_code);
 }
 
@@ -413,7 +432,7 @@ gsapi_run_file(void *lib, const char *file_name,
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     gs_main_instance *minst;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
     minst = get_minst_from_memory(ctx->memory);
 
 #ifdef GS_NO_UTF8
@@ -421,20 +440,26 @@ gsapi_run_file(void *lib, const char *file_name,
                             &(minst->error_object));
 #else
     /* Convert the file_name to utf8 */
-    len = 1;
-    while ((rune = minst->get_codepoint(NULL, &c)) >= 0)
-        len += codepoint_to_utf8(dummy, rune);
-    temp = (char *)gs_alloc_bytes_immovable(ctx->memory, len, "gsapi_run_file");
-    if (temp == NULL)
-        return 0;
-    c = file_name;
-    d = temp;
-    while ((rune = minst->get_codepoint(NULL, &c)) >= 0)
-       d += codepoint_to_utf8(d, rune);
-    *d = 0;
+    if (minst->get_codepoint) {
+        len = 1;
+        while ((rune = minst->get_codepoint(NULL, &c)) >= 0)
+            len += codepoint_to_utf8(dummy, rune);
+        temp = (char *)gs_alloc_bytes_immovable(ctx->memory, len, "gsapi_run_file");
+        if (temp == NULL)
+            return 0;
+        c = file_name;
+        d = temp;
+        while ((rune = minst->get_codepoint(NULL, &c)) >= 0)
+           d += codepoint_to_utf8(d, rune);
+        *d = 0;
+    }
+    else {
+      temp = (char *)file_name;
+    }
     code =  gs_main_run_file(minst, temp, user_errors, pexit_code,
                              &(minst->error_object));
-    gs_free_object(ctx->memory, temp, "gsapi_run_file");
+    if (temp != file_name)
+        gs_free_object(ctx->memory, temp, "gsapi_run_file");
     return code;
 #endif
 }
@@ -445,13 +470,13 @@ gsapi_init_with_argsW(void *lib, int argc, wchar_t **argv)
 {
 #ifdef GS_NO_UTF8
     /* Cannot call the W entrypoints in a GS_NO_UTF8 build */
-    return e_Fatal;
+    return gs_error_Fatal;
 #else
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     int code;
     gs_arg_get_codepoint *old;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
     old = gs_main_inst_get_arg_decode(get_minst_from_memory(ctx->memory));
     code = gsapi_set_arg_encoding(lib, GS_ARG_ENCODING_UTF16LE);
@@ -470,7 +495,7 @@ gsapi_init_with_argsA(void *lib, int argc, char **argv)
     int code;
     gs_arg_get_codepoint *old;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
     old = gs_main_inst_get_arg_decode(get_minst_from_memory(ctx->memory));
     code = gsapi_set_arg_encoding(lib, GS_ARG_ENCODING_LOCAL);
@@ -487,13 +512,13 @@ gsapi_run_fileW(void *lib, const wchar_t *file_name,
 {
 #ifdef GS_NO_UTF8
     /* Cannot call the W entrypoints in a GS_NO_UTF8 build */
-    return e_Fatal;
+    return gs_error_Fatal;
 #else
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     int code;
     gs_arg_get_codepoint *old;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
     old = gs_main_inst_get_arg_decode(get_minst_from_memory(ctx->memory));
     code = gsapi_set_arg_encoding(lib, GS_ARG_ENCODING_UTF16LE);
@@ -513,7 +538,7 @@ gsapi_run_fileA(void *lib, const char *file_name,
     int code;
     gs_arg_get_codepoint *old;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
     old = gs_main_inst_get_arg_decode(get_minst_from_memory(ctx->memory));
     code = gsapi_set_arg_encoding(lib, GS_ARG_ENCODING_LOCAL);
@@ -531,7 +556,7 @@ gsapi_exit(void *lib)
 {
     gs_lib_ctx_t *ctx = (gs_lib_ctx_t *)lib;
     if (lib == NULL)
-        return e_Fatal;
+        return gs_error_Fatal;
 
     gs_to_exit(ctx->memory, 0);
     return 0;

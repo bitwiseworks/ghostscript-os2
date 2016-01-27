@@ -60,14 +60,15 @@ static int
 zcurrentshowpagecount(i_ctx_t *i_ctx_p)
 {
     os_ptr op = osp;
-    gx_device *dev = gs_currentdevice(igs);
+    gx_device *dev1, *dev = gs_currentdevice(igs);
 
     if ((*dev_proc(dev, get_page_device))(dev) == 0) {
         push(1);
         make_false(op);
     } else {
+        dev1 = (*dev_proc(dev, get_page_device))(dev);
         push(2);
-        make_int(op - 1, dev->ShowpageCount);
+        make_int(op - 1, dev1->ShowpageCount);
         make_true(op);
     }
     return 0;
@@ -100,7 +101,7 @@ zsetpagedevice(i_ctx_t *i_ctx_p)
 
 /******
     if ( igs->in_cachedevice )
-        return_error(e_undefined);
+        return_error(gs_error_undefined);
  ******/
     if (r_has_type(op, t_dictionary)) {
         check_dict_read(*op);
@@ -110,7 +111,7 @@ zsetpagedevice(i_ctx_t *i_ctx_p)
          * the dictionary must be allocated in local VM.
          */
         if (!(r_is_local(op)))
-            return_error(e_invalidaccess);
+            return_error(gs_error_invalidaccess);
 #endif	/****************/
         /* Make the dictionary read-only. */
         code = zreadonly(i_ctx_p);
@@ -175,7 +176,7 @@ zcallendpage(i_ctx_t *i_ctx_p)
         if (code < 0)
             return code;
         if (code > 1)
-            return_error(e_rangecheck);
+            return_error(gs_error_rangecheck);
     } else {
         code = (op->value.intval == 2 ? 0 : 1);
     }

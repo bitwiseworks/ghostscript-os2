@@ -80,11 +80,12 @@ typedef struct gs_transparency_group_params_s {
 /* Define the parameter structure for a transparency mask. */
 typedef enum {
     TRANSPARENCY_MASK_Alpha,
-    TRANSPARENCY_MASK_Luminosity
+    TRANSPARENCY_MASK_Luminosity,
+    TRANSPARENCY_MASK_None          /* special case for removing a SMask from the tos */
 } gs_transparency_mask_subtype_t;
 
 #define GS_TRANSPARENCY_MASK_SUBTYPE_NAMES\
-  "Alpha", "Luminosity"
+  "Alpha", "Luminosity", "None"
 
 /* See the gx_transparency_mask_params_t type below */
 /* (Update gs_trans_mask_params_init if these change.) */
@@ -94,7 +95,7 @@ typedef struct gs_transparency_mask_params_s {
     int Background_components;
     float Background[GS_CLIENT_COLOR_MAX_COMPONENTS];
     float GrayBackground;
-    int (*TransferFunction)(floatp in, float *out, void *proc_data);
+    int (*TransferFunction)(double in, float *out, void *proc_data);
     gs_function_t *TransferFunction_data;
     bool replacing;
     int64_t icc_hashcode;                    /* Needed when we are doing clist reading */

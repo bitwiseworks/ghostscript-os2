@@ -432,8 +432,11 @@ sclose(register stream * s)
         stream_proc_release((*release)) = st->templat->release;
         if (release != 0)
             (*release) (st);
-        if (st != (stream_state *) s && st->memory != 0)
-            gs_free_object(st->memory, st, "s_std_close");
+        if (st != (stream_state *) s && st->memory != 0) {
+            gs_memory_t *mem = st->memory;
+            st->memory = NULL;
+            gs_free_object(mem, st, "s_std_close");
+        }
         s->state = (stream_state *) s;
     }
     s_disable(s);

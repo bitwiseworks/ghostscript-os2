@@ -76,13 +76,15 @@ read_stdin_handler(GIOChannel *channel, GIOCondition condition, gpointer data)
 {
     struct stdin_buf *input = (struct stdin_buf *)data;
     GError *error = NULL;
+    gsize c;
 
     if (condition & (G_IO_PRI)) {
         g_print("input exception");
         input->count = 0;	/* EOF */
     }
     else if (condition & (G_IO_IN)) {
-        g_io_channel_read_chars(channel, input->buf, input->len, (gsize *)&input->count, &error);
+        g_io_channel_read_chars(channel, input->buf, input->len, &c, &error);
+        input->count = (int)c;
         if (error) {
             g_print("%s\n", error->message);
             g_error_free(error);
@@ -143,6 +145,7 @@ gsdll_stderr(void *instance, const char *str, int len)
     fflush(stderr);
     return len;
 }
+
 
 /*********************************************************************/
 /* dll display device */
@@ -504,7 +507,7 @@ static int display_presize(void *handle, void *device, int width, int height,
         int raster, unsigned int format)
 {
     /* Assume everything is OK.
-     * It would be better to return e_rangecheck if we can't
+     * It would be better to return gs_error_rangecheck if we can't
      * support the format.
      */
     return 0;
@@ -560,7 +563,7 @@ static int display_size(void *handle, void *device, int width, int height,
                     return -1;
             }
             else
-                return e_rangecheck;	/* not supported */
+                return gs_error_rangecheck;	/* not supported */
         case DISPLAY_COLORS_GRAY:
             if (depth == DISPLAY_DEPTH_8) {
                 img->rgbbuf = (guchar *)malloc(width * height * 3);
@@ -1142,6 +1145,18 @@ display_callback display = {
     display_separation
 };
 
+static int
+write_stderr(const char *str)
+{
+    fwrite(str, 1, strlen(str), stderr);
+
+    return fflush(stderr);
+}
+
+
+/* Note the space! It makes the string merging simpler */
+#define OUR_DEFAULT_DEV_STR "display "
+
 /*********************************************************************/
 
 int main(int argc, char *argv[])
@@ -1154,13 +1169,16 @@ int main(int argc, char *argv[])
     char dformat[64];
     int exit_code;
     gboolean use_gui;
+    const char *default_devs = NULL;
+    char *our_default_devs = NULL;
+    int len;
 
     /* Gtk initialisation */
     setlocale(LC_ALL, "");
     use_gui = gtk_init_check(&argc, &argv);
 
     /* insert display device parameters as first arguments */
-    gs_sprintf(dformat, "-dDisplayFormat=%d",
+    sprintf(dformat, "-dDisplayFormat=%d",
             DISPLAY_COLORS_RGB | DISPLAY_ALPHA_NONE | DISPLAY_DEPTH_8 |
             DISPLAY_BIGENDIAN | DISPLAY_TOPFIRST);
     nargc = argc + 1;
@@ -1172,16 +1190,38 @@ int main(int argc, char *argv[])
     /* run Ghostscript */
     if ((code = gsapi_new_instance(&instance, NULL)) == 0) {
         gsapi_set_stdio(instance, gsdll_stdin, gsdll_stdout, gsdll_stderr);
-        if (use_gui)
+        if (use_gui) {
             gsapi_set_display_callback(instance, &display);
-        code = gsapi_init_with_args(instance, nargc, nargv);
+
+            code = gsapi_get_default_device_list(instance, &default_devs, &len);
+            if (code >= 0) {
+                our_default_devs = malloc(len + strlen(OUR_DEFAULT_DEV_STR) + 1);
+                if (our_default_devs) {
+                    memcpy(our_default_devs, OUR_DEFAULT_DEV_STR, strlen(OUR_DEFAULT_DEV_STR));
+                    memcpy(our_default_devs + strlen(OUR_DEFAULT_DEV_STR), default_devs, len);
+                    our_default_devs[len + strlen(OUR_DEFAULT_DEV_STR)] = '\0';
+                    code = gsapi_set_default_device_list(instance, our_default_devs, strlen(default_devs));
+                    free(our_default_devs);
+                }
+                else {
+                    code = -1;
+                }
+            }
+            if (code < 0) {
+                write_stderr("Could not set default devices, continuing with existing defaults\n");
+                code = 0;
+            }
+        }
+        
+        if (code == 0)
+            code = gsapi_init_with_args(instance, nargc, nargv);
 
         if (code == 0)
             code = gsapi_run_string(instance, start_string, 0, &exit_code);
         code1 = gsapi_exit(instance);
-        if (code == 0 || code == e_Quit)
+        if (code == 0 || code == gs_error_Quit)
             code = code1;
-        if (code == e_Quit)
+        if (code == gs_error_Quit)
             code = 0;	/* user executed 'quit' */
 
         gsapi_delete_instance(instance);
@@ -1190,10 +1230,10 @@ int main(int argc, char *argv[])
     exit_status = 0;
     switch (code) {
         case 0:
-        case e_Info:
-        case e_Quit:
+        case gs_error_Info:
+        case gs_error_Quit:
             break;
-        case e_Fatal:
+        case gs_error_Fatal:
             exit_status = 1;
             break;
         default:

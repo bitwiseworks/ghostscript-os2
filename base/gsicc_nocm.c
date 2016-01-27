@@ -32,8 +32,6 @@
 
 /* A link structure for our non-cm color transform */
 typedef struct nocm_link_s {
-    /* device (or default) procs to do the transformation */
-    gx_cm_color_map_procs cm_procs;
     /* Since RGB to CMYK requires BG and UCR, we need to have the
        imager state available */
     gs_imager_state *pis;
@@ -252,18 +250,18 @@ gsicc_nocm_transform_general(gx_device *dev, gsicc_link_t *icclink,
             frac_in[k] = byte2frac(data[k]);
         }
     }
-    /* Use the device procedure */
+    /* Use the device procedures to do the mapping */
     switch (num_in) {
         case 1:
-            (link->cm_procs.map_gray)(dev, frac_in[0], frac_out);
+            dev_proc(dev, get_color_mapping_procs)(dev)->map_gray(dev, frac_in[0], frac_out);
             break;
         case 3:
-            (link->cm_procs.map_rgb)(dev, link->pis, frac_in[0], frac_in[1],
-                                 frac_in[2], frac_out);
+            dev_proc(dev, get_color_mapping_procs)(dev)->map_rgb(dev, link->pis, frac_in[0], frac_in[1],
+                frac_in[2], frac_out);
             break;
         case 4:
-            (link->cm_procs.map_cmyk)(dev, frac_in[0], frac_in[1], frac_in[2],
-                                 frac_in[3], frac_out);
+            dev_proc(dev, get_color_mapping_procs)(dev)->map_cmyk(dev, frac_in[0], frac_in[1],
+                frac_in[2], frac_in[3], frac_out);
             break;
         default:
             break;
@@ -298,18 +296,21 @@ gsicc_nocm_freelink(gsicc_link_t *icclink)
 {
     nocm_link_t *nocm_link = (nocm_link_t*) icclink->link_handle;
 
-    if (nocm_link->pis != NULL) {
-        if (nocm_link->pis->black_generation != NULL) {
-            gs_free_object(nocm_link->memory, nocm_link->pis->black_generation,
-                           "gsicc_nocm_freelink");
+    if (nocm_link) {
+        if (nocm_link->pis != NULL) {
+            if (nocm_link->pis->black_generation != NULL) {
+                gs_free_object(nocm_link->memory, nocm_link->pis->black_generation,
+                               "gsicc_nocm_freelink");
+            }
+            if (nocm_link->pis->undercolor_removal != NULL) {
+                gs_free_object(nocm_link->memory, nocm_link->pis->undercolor_removal,
+                               "gsicc_nocm_freelink");
+            }
+            gs_free_object(nocm_link->memory, nocm_link->pis, "gsicc_nocm_freelink");
         }
-        if (nocm_link->pis->undercolor_removal != NULL) {
-            gs_free_object(nocm_link->memory, nocm_link->pis->undercolor_removal,
-                           "gsicc_nocm_freelink");
-        }
-        gs_free_object(nocm_link->memory, nocm_link->pis, "gsicc_nocm_freelink");
+        gs_free_object(nocm_link->memory, nocm_link, "gsicc_nocm_freelink");
+        icclink->link_handle = NULL;
     }
-    gs_free_object(nocm_link->memory, nocm_link, "gsicc_nocm_freelink");
 }
 
 /* Since this is the only occurence of this object we are not going to
@@ -325,10 +326,12 @@ gsicc_nocm_copy_curve(gx_transfer_map *in_map, gs_memory_t *mem)
     } else {
         out_map = (gx_transfer_map*) gs_alloc_bytes(mem, sizeof(gx_transfer_map),
                             "gsicc_nocm_copy_curve");
-        out_map->proc = in_map->proc;
-        memcpy(&(out_map->values[0]), &(in_map->values[0]),
-                sizeof(frac) * transfer_map_size);
-        out_map->id = gs_no_id;
+        if (out_map) {
+            out_map->proc = in_map->proc;
+            memcpy(&(out_map->values[0]), &(in_map->values[0]),
+                    sizeof(frac) * transfer_map_size);
+            out_map->id = gs_no_id;
+        }
         return out_map;
     }
 }
@@ -343,7 +346,6 @@ gsicc_nocm_get_link(const gs_imager_state *pis, gx_device *dev,
     gsicc_hashlink_t hash;
     nocm_link_t *nocm_link;
     gs_memory_t *mem = pis->memory->non_gc_memory;
-    const gx_cm_color_map_procs * cm_procs;
     bool pageneutralcolor = false;
     cmm_dev_profile_t *dev_profile;
     int code;
@@ -352,18 +354,13 @@ gsicc_nocm_get_link(const gs_imager_state *pis, gx_device *dev,
     /* Need to check if we need to monitor for color */
     if (dev != NULL ) {
         code = dev_proc(dev, get_profile)(dev,  &dev_profile);
+        if (code < 0)
+            return NULL;
         if (dev_profile != NULL) {
             pageneutralcolor = dev_profile->pageneutralcolor;
         }
      }
 
-    /* If the cm_procs are forwarding due to the overprint device or other
-       odd thing, drill down now and get the proper ones */
-    if (fwd_uses_fwd_cmap_procs(dev)) {
-        cm_procs = fwd_get_target_cmap_procs(dev);
-    } else {
-        cm_procs = dev_proc(dev, get_color_mapping_procs)(dev);
-    }
     /* We will add this to the link cache so that we can avoid the issue
        of black_generation and undercolor removal being GC values.
        Since the link is not GC we would need to copy the contents over
@@ -397,6 +394,8 @@ gsicc_nocm_get_link(const gs_imager_state *pis, gx_device *dev,
     result->hashcode = hash;
     nocm_link = (nocm_link_t *) gs_alloc_bytes(mem, sizeof(nocm_link_t),
                                                "gsicc_nocm_get_link");
+    if (nocm_link == NULL)
+        return NULL;
     result->link_handle = (void*) nocm_link;
     nocm_link->memory = mem;
     /* Create a dummy imager state and populate the ucr/bg values.  This
@@ -408,6 +407,8 @@ gsicc_nocm_get_link(const gs_imager_state *pis, gx_device *dev,
         nocm_link->pis = (gs_imager_state*)
                           gs_alloc_bytes(mem, sizeof(gs_imager_state),
                                          "gsicc_nocm_get_link");
+        if (nocm_link->pis == NULL)
+            return NULL;
         nocm_link->pis->black_generation = (gx_transfer_map*)
                             gsicc_nocm_copy_curve(pis->black_generation, mem);
         nocm_link->pis->undercolor_removal = (gx_transfer_map*)
@@ -415,9 +416,6 @@ gsicc_nocm_get_link(const gs_imager_state *pis, gx_device *dev,
     }
     nocm_link->num_out = min(dev->color_info.num_components,
                              GS_CLIENT_COLOR_MAX_COMPONENTS);
-    nocm_link->cm_procs.map_cmyk = cm_procs->map_cmyk;
-    nocm_link->cm_procs.map_rgb = cm_procs->map_rgb;
-    nocm_link->cm_procs.map_gray = cm_procs->map_gray;
     nocm_link->num_in = src_index;
 
     result->num_input = nocm_link->num_in;

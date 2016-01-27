@@ -26,16 +26,20 @@ PDF_RESOURCE_LIST=CMap$(D)*
 MISC_INIT_FILES=FCOfontmap-PCLPS2 -C cidfmap \
  FAPIcidfmap FAPIconfig FAPIfontmap Fontmap Fontmap.GS xlatmap \
  gs_cet.ps gs_diskf.ps gs_diskn.ps gs_dscp.ps gs_trap.ps \
- pdf_cslayer.ps -B
+ -B
 
 # In the below list, the Font contents are _not_ compressed since it doesn't help.
-RESOURCE_LIST=CIDFSubst$(D)* CIDFont$(D)* -C $(PDF_RESOURCE_LIST) ColorSpace$(D)* Decoding$(D)* Encoding$(D)* -B -b Font$(D)* -c -C IdiomSet$(D)* ProcSet$(D)* -P $(PSRESDIR)$(D)Init$(D) -d Resource/Init/ -B $(MISC_INIT_FILES)
+PS_RESOURCE_LIST=SubstCID$(D)* CIDFSubst$(D)* CIDFont$(D)* -C $(PDF_RESOURCE_LIST) ColorSpace$(D)* Decoding$(D)* Encoding$(D)* -c -C IdiomSet$(D)* ProcSet$(D)* -P $(PSRESDIR)$(D)Init$(D) -d Resource/Init/ -B $(MISC_INIT_FILES)
+
+PS_FONT_RESOURCE_LIST=-B -b Font$(D)*
 
 #	Notes: gs_cet.ps is only needed to match Adobe CPSI defaults
 PS_ROMFS_ARGS=-c \
-  -d Resource/Init/ -P $(PSRESDIR)$(D)Init$(D) -g gs_init.ps $(gconfig_h) \
-  -d Resource/ -P $(PSRESDIR)$(D) $(RESOURCE_LIST) \
+  -d Resource/Init/ -P $(PSRESDIR)$(D)Init$(D) -g gs_init.ps $(iconfig_h) \
+  -d Resource/ -P $(PSRESDIR)$(D) $(PS_RESOURCE_LIST) \
   -d lib/ -P $(PSLIBDIR)$(D) $(EXTRA_INIT_FILES)
+
+PS_FONT_ROMFS_ARGS=-d Resource/ -P $(PSRESDIR)$(D) $(PS_FONT_RESOURCE_LIST)
 
 # If you add a file remember to add it here. If you forget then builds from
 # clean will work (as all files in the directory are included), but rebuilds
@@ -319,22 +323,22 @@ PS_FONT_DEPS=\
 	$(PSRESDIR)$(D)Font$(D)CenturySchL-Ital \
 	$(PSRESDIR)$(D)Font$(D)CenturySchL-Roma \
 	$(PSRESDIR)$(D)Font$(D)Dingbats \
-	$(PSRESDIR)$(D)Font$(D)NimbusMonL-Bold \
-	$(PSRESDIR)$(D)Font$(D)NimbusMonL-BoldObli \
-	$(PSRESDIR)$(D)Font$(D)NimbusMonL-Regu \
-	$(PSRESDIR)$(D)Font$(D)NimbusMonL-ReguObli \
-	$(PSRESDIR)$(D)Font$(D)NimbusRomNo9L-Medi \
-	$(PSRESDIR)$(D)Font$(D)NimbusRomNo9L-MediItal \
-	$(PSRESDIR)$(D)Font$(D)NimbusRomNo9L-Regu \
-	$(PSRESDIR)$(D)Font$(D)NimbusRomNo9L-ReguItal \
-	$(PSRESDIR)$(D)Font$(D)NimbusSanL-Bold \
+	$(PSRESDIR)$(D)Font$(D)NimbusMono-Bold \
+	$(PSRESDIR)$(D)Font$(D)NimbusMono-BoldOblique \
+	$(PSRESDIR)$(D)Font$(D)NimbusMono-Regular \
+	$(PSRESDIR)$(D)Font$(D)NimbusMono-Oblique \
+	$(PSRESDIR)$(D)Font$(D)NimbusRomNo9L-Med \
+	$(PSRESDIR)$(D)Font$(D)NimbusRomNo9L-MedIta \
+	$(PSRESDIR)$(D)Font$(D)NimbusRomNo9L-Reg \
+	$(PSRESDIR)$(D)Font$(D)NimbusRomNo9L-RegIta \
+	$(PSRESDIR)$(D)Font$(D)NimbusSanL-Bol \
 	$(PSRESDIR)$(D)Font$(D)NimbusSanL-BoldCond \
 	$(PSRESDIR)$(D)Font$(D)NimbusSanL-BoldCondItal \
-	$(PSRESDIR)$(D)Font$(D)NimbusSanL-BoldItal \
-	$(PSRESDIR)$(D)Font$(D)NimbusSanL-Regu \
+	$(PSRESDIR)$(D)Font$(D)NimbusSanL-BolIta \
+	$(PSRESDIR)$(D)Font$(D)NimbusSanL-Reg \
 	$(PSRESDIR)$(D)Font$(D)NimbusSanL-ReguCond \
 	$(PSRESDIR)$(D)Font$(D)NimbusSanL-ReguCondItal \
-	$(PSRESDIR)$(D)Font$(D)NimbusSanL-ReguItal \
+	$(PSRESDIR)$(D)Font$(D)NimbusSanL-RegIta \
 	$(PSRESDIR)$(D)Font$(D)StandardSymL \
 	$(PSRESDIR)$(D)Font$(D)URWBookmanL-DemiBold \
 	$(PSRESDIR)$(D)Font$(D)URWBookmanL-DemiBoldItal \
@@ -372,7 +376,6 @@ PS_INIT_DEPS=\
 	$(PSRESDIR)$(D)Init$(D)gs_cidtt.ps \
 	$(PSRESDIR)$(D)Init$(D)gs_cmap.ps \
 	$(PSRESDIR)$(D)Init$(D)gs_cspace.ps \
-	$(PSRESDIR)$(D)Init$(D)gs_css_e.ps \
 	$(PSRESDIR)$(D)Init$(D)gs_dbt_e.ps \
 	$(PSRESDIR)$(D)Init$(D)gs_diskf.ps \
 	$(PSRESDIR)$(D)Init$(D)gs_diskn.ps \
@@ -410,7 +413,6 @@ PS_INIT_DEPS=\
 	$(PSRESDIR)$(D)Init$(D)gs_type1.ps \
 	$(PSRESDIR)$(D)Init$(D)gs_wan_e.ps \
 	$(PSRESDIR)$(D)Init$(D)pdf_base.ps \
-	$(PSRESDIR)$(D)Init$(D)pdf_cslayer.ps \
 	$(PSRESDIR)$(D)Init$(D)pdf_draw.ps \
 	$(PSRESDIR)$(D)Init$(D)pdf_font.ps \
 	$(PSRESDIR)$(D)Init$(D)pdf_main.ps \
@@ -428,8 +430,7 @@ PS_SUBSTCID_DEPS=\
 PS_MISC_DEPS=\
 	$(PSRESDIR)$(D)Init$(D)FCOfontmap-PCLPS2 \
 	$(PSRESDIR)$(D)Init$(D)cidfmap \
-	$(PSRESDIR)$(D)Init$(D)gs_cet.ps \
-	$(PSRESDIR)$(D)Init$(D)pdf_cslayer.ps
+	$(PSRESDIR)$(D)Init$(D)gs_cet.ps
 
 PS_ROMFS_DEPS=$(PSSRCDIR)$(D)psromfs.mak $(gconfig_h) \
 	$(PDF_RESOURCE_DEPS) $(PS_COLORSPACE_DEPS) $(PS_DECODING_DEPS) $(PS_ENCODING_DEPS) \

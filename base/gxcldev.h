@@ -327,6 +327,7 @@ dev_proc_dev_spec_op(clist_dev_spec_op);
 dev_proc_copy_planes(clist_copy_planes);
 dev_proc_fill_rectangle_hl_color(clist_fill_rectangle_hl_color);
 dev_proc_copy_alpha_hl_color(clist_copy_alpha_hl_color);
+dev_proc_process_page(clist_process_page);
 
 /* In gxclimag.c */
 dev_proc_fill_mask(clist_fill_mask);
@@ -639,7 +640,7 @@ typedef struct cmd_rects_enum_s {
         int band;
         gx_clist_state *pcls;
         int band_end;
-        int nbands;
+        int rect_nbands;
 } cmd_rects_enum_t;
 
 #define RECT_ENUM_INIT(re, yvar, heightvar)\
@@ -647,7 +648,7 @@ typedef struct cmd_rects_enum_s {
         re.height = heightvar;\
         re.yend = re.y + re.height;\
         re.band_height = cdev->page_band_height;\
-        re.nbands = (re.yend - re.y + re.band_height - 1) / re.band_height;
+        re.rect_nbands = (re.yend - re.y + re.band_height - 1) / re.band_height;
 
 #define RECT_STEP_INIT(re)\
             re.band = re.y / re.band_height;\

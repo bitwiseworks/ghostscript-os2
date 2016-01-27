@@ -118,6 +118,9 @@ typedef struct gscms_procs_s {
     gscms_monitor_proc_t is_color;
 } gscms_procs_t;
 
+/* Allow different methods for releasing the opaque profile contents */
+typedef void(*gscms_free_profile_proc_t) (void *profile_handle);
+
 /* Enumerate the ICC rendering intents and other parameters.  A note on 
    these.  0-3 are for different values.   4-7 are for Override cases
    where we are trying to override some value specified in the document.
@@ -182,7 +185,8 @@ typedef enum {
     gsTEXTPROFILE,
     gsPROOFPROFILE,
     gsLINKPROFILE,
-    gsOIPROFILE
+    gsOIPROFILE,
+    gsPRPROFILE
 } gsicc_profile_types_t;
 
 typedef enum {
@@ -259,6 +263,7 @@ typedef struct cmm_dev_profile_s {
         cmm_profile_t  *proof_profile;
         cmm_profile_t  *link_profile;
         cmm_profile_t  *oi_profile;  /* output intent profile */
+        cmm_profile_t  *postren_profile;  /* Profile for use by devices post render */
         gsicc_rendering_param_t rendercond[NUM_DEVICE_PROFILES];
         bool devicegraytok;        /* Used for forcing gray to pure black */
         bool graydetection;        /* Device param for monitoring for gray only page */
@@ -286,6 +291,7 @@ typedef enum {
     DEFAULT_CMYK,   /* The default DeviceCMYK profile */
     NAMED_TYPE,     /* The named color profile */
     LAB_TYPE,       /* The CIELAB profile */
+    XYZ_TYPE,       /* The RGB D50 CIEXYZ profile */
     DEVICEN_TYPE,   /* A special device N profile */
     DEFAULT_GRAY_s, /* Same as default but a source profile from document */
     DEFAULT_RGB_s,  /* Same as default but a source profile from document */
@@ -299,6 +305,12 @@ typedef enum {
     CIE_DEFG,       /* Generated from PS CIEDEFG definition */
     CIE_CRD        /* Generated from PS CRD definition */
 } gsicc_profile_t;
+
+typedef enum {
+    ICCVERS_UNKNOWN,
+    ICCVERS_2,
+    ICCVERS_NOT2
+} gsicc_version_t;
 
 #define gsicc_serial_data\
     unsigned char num_comps;		/* number of device dependent values */\
@@ -330,19 +342,23 @@ typedef struct gsicc_serialized_profile_s {
  */
 struct cmm_profile_s {
     gsicc_serial_data;
-    byte *buffer;               /* A buffer with ICC profile content */
-    gx_device *dev;             /* A pointer to the clist device in which the ICC data may be contained */
-    gsicc_namelist_t *spotnames;  /* Used for profiles that have non-standard colorants */
-    void *profile_handle;       /* The profile handle */
-    rc_header rc;               /* Reference count.  So we know when to free */
-    int name_length;            /* Length of file name */
-    char *name;                 /* Name of file name (if there is one) where profile is found.
-                                 * If it was embedded in the stream, there will not be a file
-                                 * name.  This is primarily here for the system profiles, and
-                                 * so that we avoid resetting them everytime the user params
-                                 * are reloaded. */
-    gs_memory_t *memory;        /* In case we have some in non-gc and some in gc memory */
-    gx_monitor_t *lock;		/* handle for the monitor */
+    byte *buffer;                       /* A buffer with ICC profile content */
+    gx_device *dev;                     /* A pointer to the clist device in which the ICC data may be contained */
+    gsicc_namelist_t *spotnames;        /* Used for profiles that have non-standard colorants */
+    void *profile_handle;               /* The profile handle */
+    rc_header rc;                       /* Reference count.  So we know when to free */
+    int name_length;                    /* Length of file name */
+    char *name;                         /* Name of file name (if there is one) where profile is found.
+                                         * If it was embedded in the stream, there will not be a file
+                                         * name.  This is primarily here for the system profiles, and
+                                         * so that we avoid resetting them everytime the user params
+                                         * are reloaded. */
+    gsicc_version_t vers;               /* Is this profile V2 */
+    byte *v2_data;                      /* V2 data that is equivalent to this profile. Used for PDF-A1 support */
+    int v2_size;                        /* Number of bytes in v2_data */
+    gs_memory_t *memory;                /* In case we have some in non-gc and some in gc memory */
+    gx_monitor_t *lock;                 /* handle for the monitor */
+    gscms_free_profile_proc_t release;  /* Release the profile handle at CMM */
 };
 
 #ifndef cmm_profile_DEFINED
@@ -488,7 +504,7 @@ typedef struct gsicc_smask_s {
     cmm_profile_t *smask_rgb;
     cmm_profile_t *smask_cmyk;
     gs_memory_t *memory;
-    bool swapped;  
+    bool swapped;
 } gsicc_smask_t;
 
 /* The manager object */
@@ -499,6 +515,7 @@ typedef struct gsicc_manager_s {
     cmm_profile_t *default_rgb;     /* Default RGB profile for device RGB */
     cmm_profile_t *default_cmyk;    /* Default CMYK profile for device CMKY */
     cmm_profile_t *lab_profile;     /* Colorspace type ICC profile from LAB to LAB */
+    cmm_profile_t *xyz_profile;     /* RGB based proflie that hands back CIEXYZ values */
     cmm_profile_t *graytok_profile; /* A specialized profile for mapping gray to K */
     gsicc_devicen_t *device_n;      /* A linked list of profiles used for DeviceN support */
     gsicc_smask_t *smask_profiles;  /* Profiles used when we are in a softmask group */

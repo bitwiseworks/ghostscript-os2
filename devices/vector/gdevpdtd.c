@@ -53,24 +53,6 @@
  * Note that non-embedded fonts in the base set of 14 do not have
  * descriptors, nor do Type 0 or (synthetic bitmap) Type 3 fonts.
  */
-/*
- * Start by defining the elements common to font descriptors and sub-font
- * (character class) descriptors.
- */
-typedef struct pdf_font_descriptor_values_s {
-    /* Required elements */
-    int Ascent, CapHeight, Descent, ItalicAngle, StemV;
-    gs_int_rect FontBBox;
-    gs_string FontName;
-    uint Flags;
-    /* Optional elements (default to 0) */
-    int AvgWidth, Leading, MaxWidth, MissingWidth, StemH, XHeight;
-} pdf_font_descriptor_values_t;
-typedef struct pdf_font_descriptor_common_s pdf_font_descriptor_common_t;
-struct pdf_font_descriptor_common_s {
-    pdf_resource_common(pdf_font_descriptor_common_t);
-    pdf_font_descriptor_values_t values;
-};
 /* Flag bits */
 /*#define FONT_IS_FIXED_WIDTH (1<<0)*/  /* defined in gxfont.h */
 #define FONT_IS_SERIF (1<<1)
@@ -93,25 +75,6 @@ struct pdf_font_descriptor_common_s {
 #define FONT_IS_SMALL_CAPS (1<<17)
 #define FONT_IS_FORCE_BOLD (1<<18)
 
-/*
- * Define a (top-level) FontDescriptor.  CID-keyed vs. non-CID-keyed fonts
- * are distinguished by their FontType.
- */
-#ifndef pdf_base_font_DEFINED
-#  define pdf_base_font_DEFINED
-typedef struct pdf_base_font_s pdf_base_font_t;
-#endif
-struct pdf_font_descriptor_s {
-    pdf_font_descriptor_common_t common;
-    pdf_base_font_t *base_font;
-    font_type FontType;		/* (copied from base_font) */
-    bool embed;
-    struct cid_ {		/* (CIDFonts only) */
-        cos_dict_t *Style;
-        char Lang[3];		/* 2 chars + \0 */
-        cos_dict_t *FD;		/* value = COS_VALUE_RESOURCE */
-    } cid;
-};
 /*
  * Define a sub-descriptor for a character class (FD dictionary element).
  */
@@ -262,18 +225,30 @@ int pdf_font_descriptor_free(gx_device_pdf *pdev, pdf_resource_t *pres)
 {
     pdf_font_descriptor_t *pfd = (pdf_font_descriptor_t *)pres;
     pdf_base_font_t *pbfont = pfd->base_font;
-    gs_font *copied = (gs_font *)pbfont->copied;
+    gs_font *copied = NULL, *complete = NULL;
 
-    gs_free_copied_font(copied);
-    if (pbfont && pbfont->font_name.size) {
-        gs_free_string(pdev->memory, pbfont->font_name.data, pbfont->font_name.size, "Free BaseFont FontName string");
-        pbfont->font_name.data = (byte *)0L;
-        pbfont->font_name.size = 0;
+    if (pbfont) {
+        copied = (gs_font *)pbfont->copied;
+        complete = (gs_font *)pbfont->complete;
     }
-    if (pbfont)
+
+    if (complete && copied != complete)
+        gs_free_copied_font(complete);
+
+    if (copied)
+        gs_free_copied_font(copied);
+
+    if (pbfont) {
+        if (pbfont->font_name.size) {
+            gs_free_string(pdev->pdf_memory, pbfont->font_name.data, pbfont->font_name.size, "Free BaseFont FontName string");
+            pbfont->font_name.data = (byte *)0L;
+            pbfont->font_name.size = 0;
+        }
         gs_free_object(cos_object_memory(pres->object), pbfont, "Free base font from FontDescriptor)");
+        pfd->base_font = 0;
+    }
     if (pres->object) {
-        gs_free_object(cos_object_memory(pres->object), pres->object, "free FontDescriptor object");
+        gs_free_object(pdev->pdf_memory, pres->object, "free FontDescriptor object");
         pres->object = NULL;
     }
     return 0;
@@ -705,12 +680,22 @@ pdf_write_FontDescriptor(gx_device_pdf *pdev, pdf_resource_t *pres)
          * Hack: make all embedded TrueType fonts "symbolic" to
          * work around undocumented assumptions in Acrobat Reader.
          */
+        /* See the comments in pdf_make_font_resource(). If we are embedding a font, its
+         * a TrueType font, we are not subsetting it, *and* the original font was not symbolic,
+         * then force the font to be non-symbolic. Otherwise, yes, force it symbolic.
+         */
         pdf_font_descriptor_common_t fd;
 
         fd = pfd->common;
-        if (pfd->embed && pfd->FontType == ft_TrueType)
+        if (pfd->embed && pfd->FontType == ft_TrueType) {
             fd.values.Flags =
                 (fd.values.Flags & ~(FONT_IS_ADOBE_ROMAN)) | FONT_IS_SYMBOLIC;
+
+            if (pfd->base_font->do_subset == DO_SUBSET_NO && ((const gs_font_base *)(pfd->base_font->copied))->nearest_encoding_index != ENCODING_INDEX_UNKNOWN) {
+                fd.values.Flags =
+                    (fd.values.Flags & ~(FONT_IS_SYMBOLIC)) | FONT_IS_ADOBE_ROMAN;
+            }
+        }
         code = write_FontDescriptor_common(pdev, &fd, pfd->embed);
     }
     if (code < 0)
@@ -747,9 +732,7 @@ pdf_write_FontDescriptor(gx_device_pdf *pdev, pdf_resource_t *pres)
     pfd->common.object->written = true;
     {	const cos_object_t *pco = (const cos_object_t *)pdf_get_FontFile_object(pfd->base_font);
         if (pco != NULL) {
-            if (pdev->is_ps2write)
-                pprintld1(s, "%%BeginResource: file (PDF FontFile obj_%ld)\n", pco->id);
-            code = COS_WRITE_OBJECT(pco, pdev, resourceNone);
+            code = COS_WRITE_OBJECT(pco, pdev, resourceFontFile);
             if (code < 0)
                 return code;
         }
@@ -810,7 +793,7 @@ pdf_convert_truetype_font_descriptor(gx_device_pdf *pdev, pdf_font_resource_t *p
     if (pdfont->u.cidfont.CIDToGIDMap == NULL)
         return_error(gs_error_VMerror);
     memset(pdfont->u.cidfont.CIDToGIDMap, 0, length_CIDToGIDMap);
-    if(pdev->PDFA == 1) {
+    if(pdev->PDFA) {
         for (ch = FirstChar; ch <= LastChar; ch++) {
             if (Encoding[ch].glyph != GS_NO_GLYPH) {
                 gs_glyph glyph = pfont->procs.encode_char(pfont, ch, GLYPH_SPACE_INDEX);

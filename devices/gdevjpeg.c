@@ -359,8 +359,8 @@ static void
 jpeg_get_initial_matrix(gx_device *dev, gs_matrix *pmat)
 {
     gx_device_jpeg *pdev = (gx_device_jpeg *)dev;
-    floatp fs_res = (dev->HWResolution[0] / 72.0) * pdev->ViewScale.x;
-    floatp ss_res = (dev->HWResolution[1] / 72.0) * pdev->ViewScale.y;
+    double fs_res = (dev->HWResolution[0] / 72.0) * pdev->ViewScale.x;
+    double ss_res = (dev->HWResolution[1] / 72.0) * pdev->ViewScale.y;
 
     /* NB this device has no paper margins */
 
@@ -445,13 +445,19 @@ jpeg_print_page(gx_device_printer * pdev, FILE * prn_stream)
     state.icc_profile = NULL; /* In case it is not set here */
     if (pdev->icc_struct != NULL && pdev->icc_struct->device_profile[0] != NULL) {
         cmm_profile_t *icc_profile = pdev->icc_struct->device_profile[0];
-        if (icc_profile->num_comps == pdev->color_info.num_components) {
+        if (icc_profile->num_comps == pdev->color_info.num_components &&
+            !(pdev->icc_struct->usefastcolor)) {
             state.icc_profile = icc_profile;
         }
     } 
-    jcdp->memory = state.jpeg_memory = mem;
+    /* We need state.memory for gs_jpeg_create_compress().... */
+    jcdp->memory = state.jpeg_memory = state.memory = mem;
     if ((code = gs_jpeg_create_compress(&state)) < 0)
         goto fail;
+    /* ....but we need it to be NULL so we don't try to free
+     * the stack based state...
+     */
+    state.memory = NULL;
     jcdp->cinfo.image_width = pdev->width;
     jcdp->cinfo.image_height = pdev->height;
     switch (pdev->color_info.depth) {

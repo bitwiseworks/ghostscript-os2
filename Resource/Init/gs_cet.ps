@@ -20,7 +20,10 @@ currentglobal //true setglobal
   /revision 0 put			% match CPSI 3017.103 Tek shows revision 5
   /serialnumber dup {233640} readonly .makeoperator put % match CPSI 3017.102 Tek shows serialnumber 1401788461
   systemdict /deviceinfo undef                  % for CET 20-23-1
+%  /UNROLLFORMS true put                 % CET files do unreasonable things inside forms
 } superexec
+
+/UNROLLFORMS true def
 
 { } bind dup
 setblackgeneration
@@ -85,5 +88,24 @@ userdict /.smoothness currentsmoothness put
    } ifelse
 } bind odef
 /currentsmoothness { userdict /.smoothness get } bind odef % for 09-55.PS, 09-57.PS .
+
+% slightly nasty hack to give consistent cluster results
+/ofnfa systemdict /filenameforall get def
+
+/filenameforall
+{
+  2 index dup length 1 eq
+  {
+    (*) eq
+    {
+      3 -1 roll pop ( ) 3 1 roll
+    } if
+  }
+  {
+    pop
+  } ifelse
+  ofnfa
+} bind def
+% end of slightly nasty hack to give consistent cluster results
 
 //false 0 startjob pop		% re-enter encapsulated mode

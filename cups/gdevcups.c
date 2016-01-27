@@ -109,10 +109,17 @@ int gdev_prn_maybe_realloc_memory(gx_device_printer *pdev,
 #  define cups_page_header_t cups_page_header2_t
 #  define cupsRasterWriteHeader cupsRasterWriteHeader2
 #else
-/* The RGBW colorspace is not defined until CUPS 1.2... */
+/* The RGBW, SW, SRGB, and ADOBERGB colorspaces is not defined until
+   CUPS 1.2... */
 #  define CUPS_CSPACE_RGBW 17
+#  define CUPS_CSPACE_SW 18
+#  define CUPS_CSPACE_SRGB 19
+#  define CUPS_CSPACE_ADOBERGB 20
 #endif /* CUPS_RASTER_SYNCv1 */
 
+#if !defined(CUPS_RASTER_WRITE_PWG)
+    #define CUPS_RASTER_WRITE_PWG 3
+#endif
 
 /*
  * CIE XYZ color constants...
@@ -336,109 +343,118 @@ private gx_device_procs	cups_procs =
 	),\
 	prn_device_body_copies_rest_(print_pages)
 
-gx_device_cups	gs_cups_device =
-{
-  prn_device_body_copies(gx_device_cups,/* type */
-                         cups_procs,	/* procedures */
-			 "cups",	/* device name */
-			 85,		/* initial width */
-			 110,		/* initial height */
-			 100,		/* initial x resolution */
-			 100,		/* initial y resolution */
-                         0,		/* initial left offset */
-			 0,		/* initial top offset */
-			 0,		/* initial left margin */
-			 0,		/* initial bottom margin */
-			 0,		/* initial right margin */
-			 0,		/* initial top margin */
-			 1,		/* number of color components */
-			 1,		/* number of color bits */
-			 1,		/* maximum gray value */
-			 0,		/* maximum color value */
-			 2,		/* number of gray values */
-			 0,		/* number of color values */
-			 cups_print_pages),
-					/* print procedure */
-  0,					/* page */
-  NULL,					/* stream */
-  {					/* header */
-    "",					/* MediaClass */
-    "",					/* MediaColor */
-    "",					/* MediaType */
-    "",					/* OutputType */
-    0,					/* AdvanceDistance */
-    CUPS_ADVANCE_NONE,			/* AdvanceMedia */
-    CUPS_FALSE,				/* Collate */
-    CUPS_CUT_NONE,			/* CutMedia */
-    CUPS_FALSE,				/* Duplex */
-    { 100, 100 },			/* HWResolution */
-    { 0, 0, 612, 792 },			/* ImagingBoundingBox */
-    CUPS_FALSE,				/* InsertSheet */
-    CUPS_JOG_NONE,			/* Jog */
-    CUPS_EDGE_TOP,			/* LeadingEdge */
-    { 0, 0 },				/* Margins */
-    CUPS_FALSE,				/* ManualFeed */
-    0,					/* MediaPosition */
-    0,					/* MediaWeight */
-    CUPS_FALSE,				/* MirrorPrint */
-    CUPS_FALSE,				/* NegativePrint */
-    1,					/* NumCopies */
-    CUPS_ORIENT_0,			/* Orientation */
-    CUPS_FALSE,				/* OutputFaceUp */
-    { 612, 792 },			/* PageSize */
-    CUPS_FALSE,				/* Separations */
-    CUPS_FALSE,				/* TraySwitch */
-    CUPS_FALSE,				/* Tumble */
-    850,				/* cupsWidth */
-    1100,				/* cupsHeight */
-    0,					/* cupsMediaType */
-    1,					/* cupsBitsPerColor */
-    1,					/* cupsBitsPerPixel */
-    107,				/* cupsBytesPerLine */
-    CUPS_ORDER_CHUNKED,			/* cupsColorOrder */
-    CUPS_CSPACE_K,			/* cupsColorSpace */
-    0,					/* cupsCompression */
-    0,					/* cupsRowCount */
-    0,					/* cupsRowFeed */
-    0					/* cupsRowStep */
+
+
 #ifdef CUPS_RASTER_SYNCv1
-    ,
-    1,                                  /* cupsNumColors */
-    1.0,                                /* cupsBorderlessScalingFactor */
-    { 612.0, 792.0 },                   /* cupsPageSize */
-    { 0.0, 0.0, 612.0, 792.0 },         /* cupsImagingBBox */
-    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, /* cupsInteger */
-    { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, /* cupsReal */
-    { "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" },
-                                        /* cupsString */
-    "",                                 /* cupsMarkerType */
-    "",                                 /* cupsRenderingIntent */
+#define RASTER_SYNCv1_ENTRIES \
+    ,\
+    1,                                  /* cupsNumColors */\
+    1.0,                                /* cupsBorderlessScalingFactor */\
+    { 612.0, 792.0 },                   /* cupsPageSize */\
+    { 0.0, 0.0, 612.0, 792.0 },         /* cupsImagingBBox */\
+    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, /* cupsInteger */\
+    { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,\
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, /* cupsReal */\
+    { "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" },\
+                                        /* cupsString */\
+    "",                                 /* cupsMarkerType */\
+    "",                                 /* cupsRenderingIntent */\
     ""                                  /* cupsPageSizeName */
+#else
+#define RASTER_SYNCv1_ENTRIES
 #endif /* CUPS_RASTER_SYNCv1 */
-  },
-  0,                                    /* landscape */
-  0,                                    /* lastpage */
-  0,                                    /* HaveProfile */
-  NULL,                                 /* Profile */
-  NULL,                                 /* PPD */
-  { 0x00, 0x08, 0x04, 0x0c, 0x02, 0x0a, 0x06, 0x0e,
-    0x01, 0x09, 0x05, 0x0d, 0x03, 0x0b, 0x07, 0x0f },/* RevLower1 */
-  { 0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0,
-    0x10, 0x90, 0x50, 0xd0, 0x30, 0xb0, 0x70, 0xf0 },/* RevUpper1 */
-  { 0x00, 0x04, 0x08, 0x0c, 0x01, 0x05, 0x09, 0x0d,
-    0x02, 0x06, 0x0a, 0x0e, 0x03, 0x07, 0x0b, 0x0f },/* RevLower2 */
-  { 0x00, 0x40, 0x80, 0xc0, 0x10, 0x50, 0x90, 0xd0,
-    0x20, 0x60, 0xa0, 0xe0, 0x30, 0x70, 0xb0, 0xf0 },/* RevUpper2 */
-  {0x00},                                  /* DecodeLUT */
-  {0x00},                                  /* EncodeLUT */
-  {0x00},                                  /* Density */
-  {{{0x00},{0x00},{0x00}},
-   {{0x00},{0x00},{0x00}},
-   {{0x00},{0x00},{0x00}}},                /* Matrix */
-  0,                                       /* user_icc */
+
+#define gs_xxx_device(dname, mediaclass)\
+  prn_device_body_copies(gx_device_cups,/* type */\
+                         cups_procs,	/* procedures */\
+			 dname,		/* device name */\
+			 85,		/* initial width */\
+			 110,		/* initial height */\
+			 100,		/* initial x resolution */\
+			 100,		/* initial y resolution */\
+                         0,		/* initial left offset */\
+			 0,		/* initial top offset */\
+			 0,		/* initial left margin */\
+			 0,		/* initial bottom margin */\
+			 0,		/* initial right margin */\
+			 0,		/* initial top margin */\
+			 1,		/* number of color components */\
+			 1,		/* number of color bits */\
+			 1,		/* maximum gray value */\
+			 0,		/* maximum color value */\
+			 2,		/* number of gray values */\
+			 0,		/* number of color values */\
+			 cups_print_pages),\
+					/* print procedure */\
+  0,					/* page */\
+  NULL,					/* stream */\
+  {					/* header */\
+    mediaclass,				/* MediaClass */\
+    "",					/* MediaColor */\
+    "",					/* MediaType */\
+    "",					/* OutputType */\
+    0,					/* AdvanceDistance */\
+    CUPS_ADVANCE_NONE,			/* AdvanceMedia */\
+    CUPS_FALSE,				/* Collate */\
+    CUPS_CUT_NONE,			/* CutMedia */\
+    CUPS_FALSE,				/* Duplex */\
+    { 100, 100 },			/* HWResolution */\
+    { 0, 0, 612, 792 },			/* ImagingBoundingBox */\
+    CUPS_FALSE,				/* InsertSheet */\
+    CUPS_JOG_NONE,			/* Jog */\
+    CUPS_EDGE_TOP,			/* LeadingEdge */\
+    { 0, 0 },				/* Margins */\
+    CUPS_FALSE,				/* ManualFeed */\
+    0,					/* MediaPosition */\
+    0,					/* MediaWeight */\
+    CUPS_FALSE,				/* MirrorPrint */\
+    CUPS_FALSE,				/* NegativePrint */\
+    1,					/* NumCopies */\
+    CUPS_ORIENT_0,			/* Orientation */\
+    CUPS_FALSE,				/* OutputFaceUp */\
+    { 612, 792 },			/* PageSize */\
+    CUPS_FALSE,				/* Separations */\
+    CUPS_FALSE,				/* TraySwitch */\
+    CUPS_FALSE,				/* Tumble */\
+    850,				/* cupsWidth */\
+    1100,				/* cupsHeight */\
+    0,					/* cupsMediaType */\
+    1,					/* cupsBitsPerColor */\
+    1,					/* cupsBitsPerPixel */\
+    107,				/* cupsBytesPerLine */\
+    CUPS_ORDER_CHUNKED,			/* cupsColorOrder */\
+    CUPS_CSPACE_K,			/* cupsColorSpace */\
+    0,					/* cupsCompression */\
+    0,					/* cupsRowCount */\
+    0,					/* cupsRowFeed */\
+    0					/* cupsRowStep */\
+    RASTER_SYNCv1_ENTRIES, /* See above */\
+  },\
+  0,                                    /* landscape */\
+  0,                                    /* lastpage */\
+  0,                                    /* HaveProfile */\
+  NULL,                                 /* Profile */\
+  NULL,                                 /* PPD */\
+  { 0x00, 0x08, 0x04, 0x0c, 0x02, 0x0a, 0x06, 0x0e,\
+    0x01, 0x09, 0x05, 0x0d, 0x03, 0x0b, 0x07, 0x0f },/* RevLower1 */\
+  { 0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0,\
+    0x10, 0x90, 0x50, 0xd0, 0x30, 0xb0, 0x70, 0xf0 },/* RevUpper1 */\
+  { 0x00, 0x04, 0x08, 0x0c, 0x01, 0x05, 0x09, 0x0d,\
+    0x02, 0x06, 0x0a, 0x0e, 0x03, 0x07, 0x0b, 0x0f },/* RevLower2 */\
+  { 0x00, 0x40, 0x80, 0xc0, 0x10, 0x50, 0x90, 0xd0,\
+    0x20, 0x60, 0xa0, 0xe0, 0x30, 0x70, 0xb0, 0xf0 },/* RevUpper2 */\
+  {0x00},                                  /* DecodeLUT */\
+  {0x00},                                  /* EncodeLUT */\
+  {0x00},                                  /* Density */\
+  {{{0x00},{0x00},{0x00}},\
+   {{0x00},{0x00},{0x00}},\
+   {{0x00},{0x00},{0x00}}},                /* Matrix */\
+  0,                                       /* user_icc */\
   3                                     /* cupsRasterVersion */
-};
+
+gx_device_cups	gs_cups_device = { gs_xxx_device("cups", "") };
+gx_device_cups	gs_pwgraster_device = { gs_xxx_device("pwgraster",
+						      "PwgRaster") };
 
 /*
  * Local functions...
@@ -622,6 +638,7 @@ cups_get_color_comp_index(gx_device * pdev, const char * pname,
 	    return -1; /* Indicate that the component name is "unknown" */
         break;
     case CUPS_CSPACE_W :
+    case CUPS_CSPACE_SW :
     case CUPS_CSPACE_WHITE :
         if (compare_color_names(pname, name_size, "White") ||
 	    compare_color_names(pname, name_size, "Luminance") ||
@@ -649,6 +666,8 @@ cups_get_color_comp_index(gx_device * pdev, const char * pname,
 	    return -1;
         break;
     case CUPS_CSPACE_RGB :
+    case CUPS_CSPACE_SRGB :
+    case CUPS_CSPACE_ADOBERGB :
         if (compare_color_names(pname, name_size, "Red"))
 	    return 0;
 	if (compare_color_names(pname, name_size, "Green"))
@@ -883,19 +902,19 @@ cups_get_params(gx_device     *pdev,	/* I - Device info */
   * Then write the CUPS parameters...
   */
 
-  param_string_from_string(s, cups->header.MediaClass);
+  param_string_from_transient_string(s, cups->header.MediaClass);
   if ((code = param_write_string(plist, "MediaClass", &s)) < 0)
     return (code);
 
-  param_string_from_string(s, cups->header.MediaColor);
+  param_string_from_transient_string(s, cups->header.MediaColor);
   if ((code = param_write_string(plist, "MediaColor", &s)) < 0)
     return (code);
 
-  param_string_from_string(s, cups->header.MediaType);
+  param_string_from_transient_string(s, cups->header.MediaType);
   if ((code = param_write_string(plist, "MediaType", &s)) < 0)
     return (code);
 
-  param_string_from_string(s, cups->header.OutputType);
+  param_string_from_transient_string(s, cups->header.OutputType);
   if ((code = param_write_string(plist, "OutputType", &s)) < 0)
     return (code);
 
@@ -1047,20 +1066,20 @@ cups_get_params(gx_device     *pdev,	/* I - Device info */
   for (i = 0; i < 16; i ++)
   {
     sprintf(name, "cupsString%d", i);
-    param_string_from_string(s, cups->header.cupsString[i]);
+    param_string_from_transient_string(s, cups->header.cupsString[i]);
     if ((code = param_write_string(plist, strdup(name), &s)) < 0)
       return (code);
   }
 
-  param_string_from_string(s, cups->header.cupsMarkerType);
+  param_string_from_transient_string(s, cups->header.cupsMarkerType);
   if ((code = param_write_string(plist, "cupsMarkerType", &s)) < 0)
     return (code);
 
-  param_string_from_string(s, cups->header.cupsRenderingIntent);
+  param_string_from_transient_string(s, cups->header.cupsRenderingIntent);
   if ((code = param_write_string(plist, "cupsRenderingIntent", &s)) < 0)
     return (code);
 
-  param_string_from_string(s, cups->header.cupsPageSizeName);
+  param_string_from_transient_string(s, cups->header.cupsPageSizeName);
   if ((code = param_write_string(plist, "cupsPageSizeName", &s)) < 0)
     return (code);
 #endif /* CUPS_RASTER_SYNCv1 */
@@ -1181,6 +1200,7 @@ cups_map_cmyk(gx_device *pdev,		/* I - Device info */
   switch (cups->header.cupsColorSpace)
   {
     case CUPS_CSPACE_W :
+    case CUPS_CSPACE_SW :
         c0 = (c * 31 + m * 61 + y * 8) / 100 + k;
 
 	if (c0 < 0)
@@ -1194,6 +1214,8 @@ cups_map_cmyk(gx_device *pdev,		/* I - Device info */
         out[3] = frac_1;
 
     case CUPS_CSPACE_RGB :
+    case CUPS_CSPACE_SRGB :
+    case CUPS_CSPACE_ADOBERGB :
     case CUPS_CSPACE_RGBW :
         c0 = c + k;
         c1 = m + k;
@@ -2000,12 +2022,15 @@ cups_map_color_rgb(gx_device      *pdev,/* I - Device info */
         break;
 
     case CUPS_CSPACE_W :
+    case CUPS_CSPACE_SW :
         prgb[0] =
         prgb[1] =
         prgb[2] = cups->DecodeLUT[c3];
         break;
 
     case CUPS_CSPACE_RGB :
+    case CUPS_CSPACE_SRGB :
+    case CUPS_CSPACE_ADOBERGB :
         prgb[0] = cups->DecodeLUT[c1];
         prgb[1] = cups->DecodeLUT[c2];
         prgb[2] = cups->DecodeLUT[c3];
@@ -2272,10 +2297,13 @@ cups_map_rgb_color(gx_device      *pdev,/* I - Device info */
   switch (cups->header.cupsColorSpace)
   {
     case CUPS_CSPACE_W :
+    case CUPS_CSPACE_SW :
         i = cups->EncodeLUT[(r * 31 + g * 61 + b * 8) / 100];
         break;
 
     case CUPS_CSPACE_RGB :
+    case CUPS_CSPACE_SRGB :
+    case CUPS_CSPACE_ADOBERGB :
         ic = cups->EncodeLUT[r];
         im = cups->EncodeLUT[g];
         iy = cups->EncodeLUT[b];
@@ -2699,7 +2727,7 @@ cups_map_rgb_color(gx_device      *pdev,/* I - Device info */
               break;
 #ifdef GX_COLOR_INDEX_TYPE
 	  case 16 :
-	      i = (((((ic << 16) | im) << 16) | iy) << 16) | ik;
+	      i = (((ic << 16) | im) << 16) | iy;
 	      break;
 #endif /* GX_COLOR_INDEX_TYPE */
         }
@@ -2881,10 +2909,25 @@ cups_print_pages(gx_device_printer *pdev,
 	return_error(gs_error_unknownerror);
       }
     }
+    /* NOTE: PWG Raster output is only available with shared CUPS CUPS and
+       CUPS image libraries as the built-in libraries of Ghostscript do not
+       contain the new code needed for PWG Raster output. This conditional
+       is a temporary workaround for the time being until up-to-date CUPS
+       libraries get included. */
     if ((cups->stream = cupsRasterOpen(fileno(cups->file),
+#if defined(CUPS_RASTER_HAVE_PWGRASTER)
+                                       (strcasecmp(cups->header.MediaClass,
+						   "PwgRaster") == 0 ?
+					CUPS_RASTER_WRITE_PWG :
+					(cups->cupsRasterVersion == 3 ?
+					 CUPS_RASTER_WRITE :
+					 CUPS_RASTER_WRITE_COMPRESSED)))) ==
+	NULL)
+#else
                                        (cups->cupsRasterVersion == 3 ?
 					CUPS_RASTER_WRITE :
 					CUPS_RASTER_WRITE_COMPRESSED))) == NULL)
+#endif
     {
       perror("ERROR: Unable to open raster stream - ");
       return_error(gs_error_ioerror);
@@ -3630,6 +3673,17 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
                 margins[0], margins[1], margins[2], margins[3]);
 #endif /* CUPS_DEBUG */
     }
+    else
+    {
+      /* If we do not have a PPD file, make sure that margins given via the
+	 input file or via something like
+	 "-c '<</.HWMargins[12 12 12 12] /Margins[0 0]>>setpagedevice'"
+	 on the command line are conserved */
+      margins[0] = pdev->HWMargins[0] / 72.0;
+      margins[1] = pdev->HWMargins[1] / 72.0;
+      margins[2] = pdev->HWMargins[2] / 72.0;
+      margins[3] = pdev->HWMargins[3] / 72.0;
+    }
 
    /*
     * Set the margins to update the bitmap size...
@@ -3733,85 +3787,125 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
     cups->header.cupsPageSize[0] = pdev->MediaSize[1];
     cups->header.cupsPageSize[1] = pdev->MediaSize[0];
 
-    cups->header.cupsImagingBBox[0] = pdev->HWMargins[1];
-    cups->header.cupsImagingBBox[1] = pdev->HWMargins[2];
-    cups->header.cupsImagingBBox[2] = pdev->MediaSize[1] - pdev->HWMargins[3];
-    cups->header.cupsImagingBBox[3] = pdev->MediaSize[0] - pdev->HWMargins[0];
-
     if ((sf = cups->header.cupsBorderlessScalingFactor) < 1.0)
       sf = 1.0;
 
-    cups->header.Margins[0] = pdev->HWMargins[1] * sf;
-    cups->header.Margins[1] = pdev->HWMargins[2] * sf;
+    cups->header.PageSize[0] = (pdev->MediaSize[1] * sf) + 0.5;
+    cups->header.PageSize[1] = (pdev->MediaSize[0] * sf) + 0.5;
 
-    cups->header.PageSize[0] = pdev->MediaSize[1] * sf;
-    cups->header.PageSize[1] = pdev->MediaSize[0] * sf;
-
-    cups->header.ImagingBoundingBox[0] = pdev->HWMargins[1] * sf;
-    cups->header.ImagingBoundingBox[1] = pdev->HWMargins[2] * sf;
-    cups->header.ImagingBoundingBox[2] = (pdev->MediaSize[1] -
-					  pdev->HWMargins[3]) * sf;
-    cups->header.ImagingBoundingBox[3] = (pdev->MediaSize[0] -
-					  pdev->HWMargins[0]) * sf;
+    if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
+    {
+      cups->header.Margins[0] = (pdev->HWMargins[1] * sf) + 0.5;
+      cups->header.Margins[1] = (pdev->HWMargins[2] * sf) + 0.5;
+      cups->header.ImagingBoundingBox[0] = (pdev->HWMargins[1] * sf) + 0.5;
+      cups->header.ImagingBoundingBox[1] = (pdev->HWMargins[2] * sf) + 0.5;
+      cups->header.ImagingBoundingBox[2] = ((pdev->MediaSize[1] -
+					     pdev->HWMargins[3]) * sf) + 0.5;
+      cups->header.ImagingBoundingBox[3] = ((pdev->MediaSize[0] -
+					     pdev->HWMargins[0]) * sf) + 0.5;
+      cups->header.cupsImagingBBox[0] = pdev->HWMargins[1];
+      cups->header.cupsImagingBBox[1] = pdev->HWMargins[2];
+      cups->header.cupsImagingBBox[2] = pdev->MediaSize[1] - pdev->HWMargins[3];
+      cups->header.cupsImagingBBox[3] = pdev->MediaSize[0] - pdev->HWMargins[0];
+    }
+    else
+    {
+      for (i = 0; i < 2; i ++)
+	cups->header.Margins[i] = 0;
+      for (i = 0; i < 4; i ++)
+      {
+	cups->header.ImagingBoundingBox[i] = 0;
+	cups->header.cupsImagingBBox[i] = 0.0;
+      }
+    }
   }
   else
   {
     cups->header.cupsPageSize[0] = pdev->MediaSize[0];
     cups->header.cupsPageSize[1] = pdev->MediaSize[1];
 
-    cups->header.cupsImagingBBox[0] = pdev->HWMargins[0];
-    cups->header.cupsImagingBBox[1] = pdev->HWMargins[1];
-    cups->header.cupsImagingBBox[2] = pdev->MediaSize[0] - pdev->HWMargins[2];
-    cups->header.cupsImagingBBox[3] = pdev->MediaSize[1] - pdev->HWMargins[3];
-
     if ((sf = cups->header.cupsBorderlessScalingFactor) < 1.0)
       sf = 1.0;
 
-    cups->header.Margins[0] = pdev->HWMargins[0] * sf;
-    cups->header.Margins[1] = pdev->HWMargins[1] * sf;
+    cups->header.PageSize[0] = (pdev->MediaSize[0] * sf) + 0.5;
+    cups->header.PageSize[1] = (pdev->MediaSize[1] * sf) + 0.5;
 
-    cups->header.PageSize[0] = pdev->MediaSize[0] * sf;
-    cups->header.PageSize[1] = pdev->MediaSize[1] * sf;
-
-    cups->header.ImagingBoundingBox[0] = pdev->HWMargins[0] * sf;
-    cups->header.ImagingBoundingBox[1] = pdev->HWMargins[1] * sf;
-    cups->header.ImagingBoundingBox[2] = (pdev->MediaSize[0] -
-					  pdev->HWMargins[2]) * sf;
-    cups->header.ImagingBoundingBox[3] = (pdev->MediaSize[1] -
-					  pdev->HWMargins[3]) * sf;
+    if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
+    {
+      cups->header.Margins[0] = (pdev->HWMargins[0] * sf) + 0.5;
+      cups->header.Margins[1] = (pdev->HWMargins[1] * sf) + 0.5;
+      cups->header.ImagingBoundingBox[0] = (pdev->HWMargins[0] * sf) + 0.5;
+      cups->header.ImagingBoundingBox[1] = (pdev->HWMargins[1] * sf) + 0.5;
+      cups->header.ImagingBoundingBox[2] = ((pdev->MediaSize[0] -
+					     pdev->HWMargins[2]) * sf) + 0.5;
+      cups->header.ImagingBoundingBox[3] = ((pdev->MediaSize[1] -
+					     pdev->HWMargins[3]) * sf) + 0.5;
+      cups->header.cupsImagingBBox[0] = pdev->HWMargins[0];
+      cups->header.cupsImagingBBox[1] = pdev->HWMargins[1];
+      cups->header.cupsImagingBBox[2] = pdev->MediaSize[0] - pdev->HWMargins[2];
+      cups->header.cupsImagingBBox[3] = pdev->MediaSize[1] - pdev->HWMargins[3];
+    }
+    else
+    {
+      for (i = 0; i < 2; i ++)
+	cups->header.Margins[i] = 0;
+      for (i = 0; i < 4; i ++)
+      {
+	cups->header.ImagingBoundingBox[i] = 0;
+	cups->header.cupsImagingBBox[i] = 0.0;
+      }
+    }
   }
 
 #else
 
   if (cups->landscape)
   {
-    cups->header.Margins[0] = pdev->HWMargins[1];
-    cups->header.Margins[1] = pdev->HWMargins[2];
+    cups->header.PageSize[0] = pdev->MediaSize[1] + 0.5;
+    cups->header.PageSize[1] = pdev->MediaSize[0] + 0.5;
 
-    cups->header.PageSize[0] = pdev->MediaSize[1];
-    cups->header.PageSize[1] = pdev->MediaSize[0];
-
-    cups->header.ImagingBoundingBox[0] = pdev->HWMargins[1];
-    cups->header.ImagingBoundingBox[1] = pdev->HWMargins[0];
-    cups->header.ImagingBoundingBox[2] = pdev->MediaSize[1] -
-                                         pdev->HWMargins[3];
-    cups->header.ImagingBoundingBox[3] = pdev->MediaSize[0] -
-                                         pdev->HWMargins[2];
+    if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
+    {
+      cups->header.Margins[0] = (pdev->HWMargins[1]) + 0.5;
+      cups->header.Margins[1] = (pdev->HWMargins[2]) + 0.5;
+      cups->header.ImagingBoundingBox[0] = (pdev->HWMargins[1]) + 0.5;
+      cups->header.ImagingBoundingBox[1] = (pdev->HWMargins[0]) + 0.5;
+      cups->header.ImagingBoundingBox[2] = (pdev->MediaSize[1] -
+					    pdev->HWMargins[3]) + 0.5;
+      cups->header.ImagingBoundingBox[3] = (pdev->MediaSize[0] -
+					    pdev->HWMargins[2]) + 0.5;
+    }
+    else
+    {
+      for (i = 0; i < 2; i ++)
+	cups->header.Margins[i] = 0;
+      for (i = 0; i < 4; i ++)
+	cups->header.ImagingBoundingBox[i] = 0;
+    }
   }
   else
   {
-    cups->header.Margins[0] = pdev->HWMargins[0];
-    cups->header.Margins[1] = pdev->HWMargins[1];
+    cups->header.PageSize[0] = pdev->MediaSize[0] + 0.5;
+    cups->header.PageSize[1] = pdev->MediaSize[1] + 0.5;
 
-    cups->header.PageSize[0] = pdev->MediaSize[0];
-    cups->header.PageSize[1] = pdev->MediaSize[1];
-
-    cups->header.ImagingBoundingBox[0] = pdev->HWMargins[0];
-    cups->header.ImagingBoundingBox[1] = pdev->HWMargins[3];
-    cups->header.ImagingBoundingBox[2] = pdev->MediaSize[0] -
-                                         pdev->HWMargins[2];
-    cups->header.ImagingBoundingBox[3] = pdev->MediaSize[1] -
-                                         pdev->HWMargins[1];
+    if (strcasecmp(cups->header.MediaClass, "PwgRaster") != 0)
+    {
+      cups->header.Margins[0] = (pdev->HWMargins[0]) + 0.5;
+      cups->header.Margins[1] = (pdev->HWMargins[1]) + 0.5;
+      cups->header.ImagingBoundingBox[0] = (pdev->HWMargins[0]) + 0.5;
+      cups->header.ImagingBoundingBox[1] = (pdev->HWMargins[3]) + 0.5;
+      cups->header.ImagingBoundingBox[2] = (pdev->MediaSize[0] -
+					    pdev->HWMargins[2]) + 0.5;
+      cups->header.ImagingBoundingBox[3] = (pdev->MediaSize[1] -
+					    pdev->HWMargins[1]) + 0.5;
+    }
+    else
+    {
+      for (i = 0; i < 2; i ++)
+	cups->header.Margins[i] = 0;
+      for (i = 0; i < 4; i ++)
+	cups->header.ImagingBoundingBox[i] = 0;
+    }
   }
 
 #endif /* CUPS_RASTER_SYNCv1 */
@@ -3866,6 +3960,7 @@ cups_set_color_info(gx_device *pdev)	/* I - Device info */
   {
     default :
     case CUPS_CSPACE_W :
+    case CUPS_CSPACE_SW :
     case CUPS_CSPACE_K :
     case CUPS_CSPACE_WHITE :
     case CUPS_CSPACE_GOLD :
@@ -3885,6 +3980,8 @@ cups_set_color_info(gx_device *pdev)	/* I - Device info */
     case CUPS_CSPACE_CMY :
     case CUPS_CSPACE_YMC :
     case CUPS_CSPACE_RGB :
+    case CUPS_CSPACE_SRGB :
+    case CUPS_CSPACE_ADOBERGB :
 #ifdef CUPS_RASTER_SYNCv1
 	cups->header.cupsNumColors      = 3;
 #endif /* CUPS_RASTER_SYNCv1 */
@@ -3987,6 +4084,7 @@ cups_set_color_info(gx_device *pdev)	/* I - Device info */
 	break;
 
     case CUPS_CSPACE_W :
+    case CUPS_CSPACE_SW :
     case CUPS_CSPACE_WHITE :
     case CUPS_CSPACE_K :
     case CUPS_CSPACE_GOLD :
@@ -4009,8 +4107,11 @@ cups_set_color_info(gx_device *pdev)	/* I - Device info */
     default :
     case CUPS_CSPACE_RGBW :
     case CUPS_CSPACE_W :
+    case CUPS_CSPACE_SW :
     case CUPS_CSPACE_WHITE :
     case CUPS_CSPACE_RGB :
+    case CUPS_CSPACE_SRGB :
+    case CUPS_CSPACE_ADOBERGB :
     case CUPS_CSPACE_RGBA :
 #  ifdef CUPS_RASTER_HAVE_COLORIMETRIC
     case CUPS_CSPACE_CIEXYZ :
@@ -4122,8 +4223,14 @@ cups_set_color_info(gx_device *pdev)	/* I - Device info */
             (int)cups->EncodeLUT[gx_max_color_value]);
 #endif /* CUPS_DEBUG */
 
-  for (i = 0; i < cups->color_info.dither_grays; i ++)
-    cups->DecodeLUT[i] = gx_max_color_value * i / max_lut;
+  for (i = 0; i < cups->color_info.dither_grays; i ++) {
+    j = i;
+#if !ARCH_IS_BIG_ENDIAN
+    if (max_lut > 255)
+      j = ((j & 255) << 8) | ((j >> 8) & 255);
+#endif /* !ARCH_IS_BIG_ENDIAN */
+    cups->DecodeLUT[i] = gx_max_color_value * j / max_lut;
+  }
 
 #ifdef CUPS_DEBUG
   dmprintf2(pdev->memory, "DEBUG: num_components = %d, depth = %d\n",
@@ -4262,6 +4369,8 @@ cups_set_color_info(gx_device *pdev)	/* I - Device info */
       default :
       case CUPS_CSPACE_RGBW :
       case CUPS_CSPACE_RGB :
+      case CUPS_CSPACE_SRGB :
+      case CUPS_CSPACE_ADOBERGB :
       case CUPS_CSPACE_RGBA :
       case CUPS_CSPACE_CMY :
       case CUPS_CSPACE_YMC :
@@ -4297,6 +4406,7 @@ cups_set_color_info(gx_device *pdev)	/* I - Device info */
         break;
 
       case CUPS_CSPACE_W :
+      case CUPS_CSPACE_SW :
       case CUPS_CSPACE_WHITE :
       case CUPS_CSPACE_K :
       case CUPS_CSPACE_GOLD :

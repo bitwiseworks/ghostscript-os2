@@ -11,8 +11,12 @@
   General Public License for more details.
 
   You should have received a copy of the GNU General Public License along
-  with this program; if not, write to the Free Software Foundation, Inc.,
-  59 Temple Place, Suite 330, Boston, MA, 02111-1307.
+  with this program; if not, write to:
+
+  Free Software Foundation, Inc.,
+  51 Franklin Street, Fifth Floor
+  Boston, MA 02110-1301
+  USA
 
 */
 
@@ -40,7 +44,7 @@
 #include "string_.h"
 #include "math_.h"
 #include "gx.h"
-#include "ghost.h"
+
 #include "gscdefs.h"
 #include "gsexit.h"
 #include "gsstruct.h"
@@ -56,21 +60,7 @@
 #include "spprint.h"
 #include "ghost.h"
 #include "gzstate.h"
-#include "ialloc.h"
-#include "iddict.h"
-#include "dstack.h"
-#include "ilevel.h"
-#include "iinit.h"
-#include "iname.h"
-#include "imemory.h"
-#include "igstate.h"
-#include "interp.h"
-#include "ipacked.h"
-#include "iparray.h"
-#include "iutil.h"
-#include "ivmspace.h"
-#include "opdef.h"
-#include "store.h"
+
 #include "gspath.h"
 #include "gzpath.h"
 #include "gzcpath.h"
@@ -137,8 +127,8 @@ typedef struct  gx_device_oprp_s {
 
 /* point (internal) */
 typedef struct {
-    floatp x;
-    floatp y;
+    double x;
+    double y;
 } _fPoint;
 
 /* ----- private function prototypes ----- */
@@ -223,12 +213,12 @@ static char cspace_available[] = {
 
 /* vector driver procs */
 static  int opvp_beginpage(gx_device_vector *);
-static  int opvp_setlinewidth(gx_device_vector *, floatp);
+static  int opvp_setlinewidth(gx_device_vector *, double);
 static  int opvp_setlinecap(gx_device_vector *, gs_line_cap);
 static  int opvp_setlinejoin(gx_device_vector *, gs_line_join);
-static  int opvp_setmiterlimit(gx_device_vector *, floatp);
-static  int opvp_setdash(gx_device_vector *, const float *, uint, floatp);
-static  int opvp_setflat(gx_device_vector *, floatp);
+static  int opvp_setmiterlimit(gx_device_vector *, double);
+static  int opvp_setdash(gx_device_vector *, const float *, uint, double);
+static  int opvp_setflat(gx_device_vector *, double);
 static  int opvp_setlogop(gx_device_vector *, gs_logical_operation_t,
                           gs_logical_operation_t);
 #if GS_VERSION_MAJOR >= 8
@@ -244,13 +234,13 @@ static  int opvp_vector_dopath(gx_device_vector *, const gx_path *,
 static  int opvp_vector_dorect(gx_device_vector *, fixed, fixed, fixed, fixed,
                                gx_path_type_t);
 static  int opvp_beginpath(gx_device_vector *, gx_path_type_t);
-static  int opvp_moveto(gx_device_vector *, floatp, floatp, floatp, floatp,
+static  int opvp_moveto(gx_device_vector *, double, double, double, double,
                         gx_path_type_t);
-static  int opvp_lineto(gx_device_vector *, floatp, floatp, floatp, floatp,
+static  int opvp_lineto(gx_device_vector *, double, double, double, double,
                         gx_path_type_t);
-static  int opvp_curveto(gx_device_vector *, floatp, floatp, floatp, floatp,
-                         floatp, floatp, floatp, floatp, gx_path_type_t);
-static  int opvp_closepath(gx_device_vector *, floatp, floatp, floatp, floatp,
+static  int opvp_curveto(gx_device_vector *, double, double, double, double,
+                         double, double, double, double, gx_path_type_t);
+static  int opvp_closepath(gx_device_vector *, double, double, double, double,
                            gx_path_type_t);
 static  int opvp_endpath(gx_device_vector *, gx_path_type_t);
 
@@ -1171,6 +1161,7 @@ typedef enum _FastImageSupportMode {
     FastImageReverseAngle,
     FastImageAll
 } FastImageSupportMode;
+
 static char *fastImage = NULL;
 static FastImageSupportMode FastImageMode = FastImageDisable;
 static bool begin_image = false;
@@ -2054,6 +2045,11 @@ opvp_open(gx_device *dev)
             ecode = code;
             return ecode;
         }
+        while (dev->child) {
+            dev = dev->child;
+        }
+        rdev = (gx_device_oprp *)(dev);
+        pdev = (gx_device_opvp *)(dev);
 #if GS_VERSION_MAJOR >= 8
         if (pdev->bbox_device != NULL) {
             if (pdev->bbox_device->memory == NULL) {
@@ -2069,6 +2065,11 @@ opvp_open(gx_device *dev)
             ecode = ecode;
             return ecode;
         }
+        while (dev->child) {
+            dev = dev->child;
+        }
+        rdev = (gx_device_oprp *)(dev);
+        pdev = (gx_device_opvp *)(dev);
         /* open output stream */
         code = gdev_prn_open_printer_seekable(dev, true, false);
         if (code < 0) {
@@ -4487,7 +4488,7 @@ opvp_beginpage(gx_device_vector *vdev)
  * set line width
  */
 static  int
-opvp_setlinewidth(gx_device_vector *vdev, floatp width)
+opvp_setlinewidth(gx_device_vector *vdev, double width)
 {
     gx_device_opvp *pdev = (gx_device_opvp *)vdev;
     opvp_result_t r = -1;
@@ -4596,7 +4597,7 @@ opvp_setlinejoin(gx_device_vector *vdev, gs_line_join join)
  * set miter limit
  */
 static  int
-opvp_setmiterlimit(gx_device_vector *vdev, floatp limit)
+opvp_setmiterlimit(gx_device_vector *vdev, double limit)
 {
     gx_device_opvp *pdev = (gx_device_opvp *)vdev;
     opvp_result_t r = -1;
@@ -4626,7 +4627,7 @@ opvp_setdash(
     gx_device_vector *vdev,
     const float *pattern,
     uint count,
-    floatp offset)
+    double offset)
 {
     gx_device_opvp *pdev = (gx_device_opvp *)vdev;
     opvp_result_t r = -1;
@@ -4693,7 +4694,7 @@ opvp_setdash(
  * set flat
  */
 static  int
-opvp_setflat(gx_device_vector *vdev, floatp flatness)
+opvp_setflat(gx_device_vector *vdev, double flatness)
 {
     gx_device_opvp *pdev = (gx_device_opvp *)vdev;
     int ecode = 0;
@@ -4838,7 +4839,6 @@ opvp_vector_dopath(
     _fPoint *points = NULL;
     opvp_point_t *opvp_p = NULL;
     _fPoint current;
-    _fPoint check_p;
 #else
     _fPoint points[4];
 #endif
@@ -5002,8 +5002,6 @@ opvp_vector_dopath(
         case gs_pe_curveto:
 #ifdef  OPVP_OPT_MULTI_PATH
             /* curve to */
-            check_p.x = fixed2float(vs[0]) / scale.x;
-            check_p.y = fixed2float(vs[1]) / scale.y;
 
             i = npoints;
             npoints += 3;
@@ -5173,10 +5171,10 @@ opvp_beginpath(gx_device_vector *vdev, gx_path_type_t type)
 static  int
 opvp_moveto(
     gx_device_vector *vdev,
-    floatp x0,
-    floatp y0,
-    floatp x1,
-    floatp y1,
+    double x0,
+    double y0,
+    double x1,
+    double y1,
     gx_path_type_t type)
 {
     gx_device_opvp *pdev = (gx_device_opvp *)vdev;
@@ -5206,10 +5204,10 @@ opvp_moveto(
 static  int
 opvp_lineto(
     gx_device_vector *vdev,
-    floatp x0,
-    floatp y0,
-    floatp x1,
-    floatp y1,
+    double x0,
+    double y0,
+    double x1,
+    double y1,
     gx_path_type_t type)
 {
     gx_device_opvp *pdev = (gx_device_opvp *)vdev;
@@ -5241,28 +5239,25 @@ opvp_lineto(
 static  int
 opvp_curveto(
     gx_device_vector *vdev,
-    floatp x0,
-    floatp y0,
-    floatp x1,
-    floatp y1,
-    floatp x2,
-    floatp y2,
-    floatp x3,
-    floatp y3,
+    double x0,
+    double y0,
+    double x1,
+    double y1,
+    double x2,
+    double y2,
+    double x3,
+    double y3,
     gx_path_type_t type)
 {
     gx_device_opvp *pdev = (gx_device_opvp *)vdev;
     opvp_result_t r = -1;
     int ecode = 0;
-    int npoints[2];
     opvp_point_t points[4];
 
     /* check page-in */
     if (opvp_check_in_page(pdev)) return -1;
 
     /* points */
-    npoints[0] = 4;
-    npoints[1] = 0;
     OPVP_F2FIX(x0, points[0].x);
     OPVP_F2FIX(y0, points[0].y);
     OPVP_F2FIX(x1, points[1].x);
@@ -5292,10 +5287,10 @@ opvp_curveto(
 static  int
 opvp_closepath(
     gx_device_vector *vdev,
-    floatp x,
-    floatp y,
-    floatp x_start,
-    floatp y_start,
+    double x,
+    double y,
+    double x_start,
+    double y_start,
     gx_path_type_t type)
 {
     gx_device_opvp *pdev = (gx_device_opvp *)vdev;

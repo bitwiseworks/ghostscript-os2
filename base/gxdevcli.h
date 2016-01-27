@@ -39,6 +39,7 @@
 #include "gsnamecl.h"
 #include "gp.h"
 #include "gscms.h"
+#include "gxrplane.h"
 
 /* See Drivers.htm for documentation of the driver interface. */
 
@@ -235,16 +236,6 @@ typedef enum {
     GX_CINFO_SEP_LIN_NONE = 0,
     GX_CINFO_SEP_LIN
 } gx_color_enc_sep_lin_t;
-
-/*
- * Color model component polarity. An "unknown" value has been added to
- * this enumeration.
- */
-typedef enum {
-    GX_CINFO_POLARITY_UNKNOWN = -1,
-    GX_CINFO_POLARITY_SUBTRACTIVE = 0,
-    GX_CINFO_POLARITY_ADDITIVE
-} gx_color_polarity_t;
 
 /*
  * Enumerator to indicate if a color model will support overprint mode.
@@ -692,6 +683,38 @@ typedef struct gx_stroked_gradient_recognizer_s {
 typedef struct gx_device_cached_colors_s {
     gx_color_index black, white;
 } gx_device_cached_colors_t;
+
+/*
+ * Define the parameters controlling banding.
+ */
+/* if you make any additions/changes to this structure you need to make
+   the appropriate additions/changes to the compare_gdev_prn_space_params()
+   function in gdevprn.c */
+typedef struct gx_band_params_s {
+    int BandWidth;		/* (optional) band width in pixels */
+    int BandHeight;		/* (optional) */
+    long BandBufferSpace;	/* (optional) */
+} gx_band_params_t;
+
+#define BAND_PARAMS_INITIAL_VALUES 0, 0, 0
+
+typedef enum {
+    BandingAuto = 0,
+    BandingAlways,
+    BandingNever
+} gdev_banding_type;
+
+/* if you make any additions/changes to this structure you need to make
+   the appropriate additions/changes to the compare_gdev_prn_space_params()
+   function in gdevprn.c */
+typedef struct gdev_space_params_s {
+    long MaxBitmap;		/* max size of non-buffered bitmap */
+    long BufferSpace;		/* space to use for buffer */
+    gx_band_params_t band;	/* see gxband.h */
+    bool params_are_read_only;	/* true if put_params may not modify this struct */
+    gdev_banding_type banding_type;	/* used to force banding or bitmap */
+} gdev_space_params;
+
 #define gx_device_common\
         int params_size;		/* OBSOLETE if stype != 0: */\
                                         /* size of this structure */\
@@ -708,6 +731,9 @@ typedef struct gx_device_cached_colors_s {
         rc_header rc;			/* reference count from gstates */\
                                         /* and targets, +1 if retained */\
         bool retained;			/* true if retained */\
+        gx_device *parent;\
+        gx_device *child;\
+        void *subclass_data;    /* Must be immovable, non-GC memory, used to store subclass data */\
         bool is_open;			/* true if device has been opened */\
         int max_fill_band;		/* limit on band size for fill, */\
                                         /* must be 0 or a power of 2 */\
@@ -716,17 +742,28 @@ typedef struct gx_device_cached_colors_s {
         gx_device_cached_colors_t cached_colors;\
         int width;			/* width in pixels */\
         int height;			/* height in pixels */\
+        int pad;                        /* pad to use for buffers; 0 for default */\
+        int log2_align_mod;             /* align to use for buffers; 0 for default */\
+        int is_planar;                  /* 1 planar, 0 for chunky */\
         int LeadingEdge;                /* see below */\
         float MediaSize[2];		/* media dimensions in points */\
         float ImagingBBox[4];		/* imageable region in points */\
-          bool ImagingBBox_set;\
+        bool ImagingBBox_set;\
         float HWResolution[2];		/* resolution, dots per inch */\
-        float MarginsHWResolution[2];	/* resolution for Margins */\
+        float MarginsHWResolution[2];	/* resolution for Margins. The pagedevice */\
+                                        /* documentation implies these units might be */\
+                                        /* different than the physical device units. */\
         float Margins[2];		/* offset of physical page corner */\
                                         /* from device coordinate (0,0), */\
                                         /* in units given by MarginsHWResolution */\
         float HWMargins[4];		/* margins around imageable area, */\
                                         /* in default user units ("points") */\
+        int FirstPage;\
+        int LastPage;\
+        bool PageHandlerPushed;    /* Handles FirstPage and LastPage operations */\
+        bool DisablePageHandler;   /* Can be set by the interpreter if it will process FirstPage and LastPage itself */\
+        int ObjectFilter;          /* Bit field for which object filters to apply */\
+        bool ObjectHandlerPushed;  /* Handles filtering of objects to devices */\
         long PageCount;			/* number of pages written */\
         long ShowpageCount;		/* number of calls on showpage */\
         int NumCopies;\
@@ -738,6 +775,8 @@ typedef struct gx_device_cached_colors_s {
         long band_offset_y;		/* for rendering that is phase sensitive (old wtsimdi) */\
         gx_stroked_gradient_recognizer_t sgr;\
         int MaxPatternBitmap;		/* Threshold for switching to pattern_clist mode */\
+        bool page_uses_transparency;    /* PDF 1.4 transparency is used. */\
+        gdev_space_params space_params;\
         cmm_dev_profile_t *icc_struct;  /* object dependent profiles */\
         gs_graphics_type_tag_t   graphics_type_tag;   /* e.g. vector, image or text */\
         gx_page_device_procs page_procs;       /* must be last */\
@@ -796,6 +835,15 @@ typedef struct gx_device_cached_colors_s {
   if ( dev_proc(dev, p) == 0 ) set_dev_proc(dev, p, dproc)
 #define assign_dev_procs(todev, fromdev)\
   ((todev)->procs = (fromdev)->procs)
+
+/* The bit fields used to filter objects out. If any bit field is set
+ * then objects of that type will not be rendered/output.
+ */
+typedef enum FILTER_FLAGS {
+    FILTERIMAGE = 1,
+    FILTERTEXT = 2,
+    FILTERVECTOR = 4
+} OBJECT_FILTER_FLAGS;
 
 /* ---------------- Device procedures ---------------- */
 
@@ -1145,7 +1193,7 @@ typedef struct gs_param_list_s gs_param_list;
 
                 /* Added in release 5.24 */
 
-     /* ... text_begin ... see gxtext.h for definition */
+     /* ... text_begin ... see gstext.h for definition */
 
                 /* Added in release 6.23 */
 
@@ -1217,11 +1265,13 @@ typedef struct gs_param_list_s gs_param_list;
   dev_t_proc_end_transparency_mask(proc, gx_device)
 
 /*
-  Pop the transparency stack, discarding the top element, which may be
-  either a group or a mask.  Set *ppts to 0 iff the stack is now empty.
+  This will clean up the entire device allocations as something went
+  wrong in the middle of reading in the source content while we are dealing with
+  a transparency device.
 */
 #define dev_t_proc_discard_transparency_layer(proc, dev_t)\
-  int proc(gx_device *dev)
+  int proc(gx_device *dev,\
+    gs_imager_state *pis)
 #define dev_proc_discard_transparency_layer(proc)\
   dev_t_proc_discard_transparency_layer(proc, gx_device)
 
@@ -1474,6 +1524,27 @@ typedef struct gs_devn_params_s gs_devn_params;
 #define dev_proc_copy_alpha_hl_color(proc)\
   dev_t_proc_copy_alpha_hl_color(proc, gx_device)
 
+typedef struct gx_process_page_options_s gx_process_page_options_t;
+
+struct gx_process_page_options_s
+{
+    int (*init_buffer_fn)(void *arg, gx_device *dev, gs_memory_t *memory, int w, int h, void **buffer);
+    void (*free_buffer_fn)(void *arg, gx_device *dev, gs_memory_t *memory, void *buffer);
+    int (*process_fn)(void *arg, gx_device *dev, gx_device *bdev, const gs_int_rect *rect, void *buffer);
+    int (*output_fn)(void *arg, gx_device *dev, void *buffer);
+    void *arg;
+    int options; /* A mask of GX_PROCPAGE_... options bits */
+};
+
+/* If GX_PROCPAGE_BOTTOM_UP, then we run from band n-1 to band 0, rather than
+ * 0 to n-1. */
+#define GX_PROCPAGE_BOTTOM_UP 1
+
+#define dev_t_proc_process_page(proc, dev_t)\
+  int proc(dev_t *dev, gx_process_page_options_t *options)
+#define dev_proc_process_page(proc)\
+  dev_t_proc_process_page(proc, gx_device)
+
 /* Define the device procedure vector template proper. */
 
 #define gx_device_proc_struct(dev_t)\
@@ -1549,6 +1620,7 @@ typedef struct gs_devn_params_s gs_devn_params;
         dev_t_proc_strip_copy_rop2((*strip_copy_rop2), dev_t);\
         dev_t_proc_strip_tile_rect_devn((*strip_tile_rect_devn), dev_t);\
         dev_t_proc_copy_alpha_hl_color((*copy_alpha_hl_color), dev_t);\
+        dev_t_proc_process_page((*process_page), dev_t);\
 }
 
 /*
@@ -1637,8 +1709,8 @@ struct_proc_finalize(gx_device_finalize);	/* public for subclasses */
 /* gx_device can have subclasses. */
 #define public_st_device()	/* in gsdevice.c */\
   gs_public_st_complex_only(st_device, gx_device, "gx_device",\
-    0, gs_no_struct_enum_ptrs, gs_no_struct_reloc_ptrs, gx_device_finalize)
-#define st_device_max_ptrs 0
+    0, device_enum_ptrs, device_reloc_ptrs, gx_device_finalize)
+#define st_device_max_ptrs 2
 
 /* Enumerate or relocate a pointer to a device. */
 /* These take the containing space into account properly. */
@@ -1671,6 +1743,63 @@ extern_st(st_device_forward);
     "gx_device_forward", 0, device_forward_enum_ptrs,\
     device_forward_reloc_ptrs, gx_device_finalize)
 #define st_device_forward_max_ptrs (st_device_max_ptrs + 1)
+
+/* The color mapping procs were used in a way which defeats a 'pipeline'
+ * approach to devices. Certain graphics library routines (eg images)
+ * called the color mapping procs *directly* from the device procs of the
+ * current (ie terminal) device. This prevented any pipeline approach from
+ * working as earlier devices in the chain wouldn't see the call. In particular
+ * this prevented the use of such a device to do 'monochrome mode' in PCL
+ * (see pcpalet.c, pcl_update_mono). This macro walks back up the pipeline
+ * and retrieves the uppermost device color_mapping procs.
+ */
+static inline
+gx_cm_color_map_procs *get_color_mapping_procs_subclass(const gx_device *dev)
+{
+    if (dev == NULL)
+        return NULL;
+    while(dev->parent)
+    {
+        dev = dev->parent;
+    }
+    return (gx_cm_color_map_procs *)dev_proc(dev, get_color_mapping_procs)(dev);
+}
+
+static inline
+void map_rgb_subclass(const gx_cm_color_map_procs *procs, gx_device *dev, const gs_imager_state *pis, frac r, frac g, frac b, frac out[])
+{
+    if (dev == NULL)
+        return;
+    while(dev->parent)
+    {
+        dev = dev->parent;
+    }
+    procs->map_rgb(dev, pis, r, g, b, out);
+}
+
+static inline
+void map_gray_subclass(const gx_cm_color_map_procs *procs, gx_device *dev, frac gray, frac out[])
+{
+    if (dev == NULL)
+        return;
+    while(dev->parent)
+    {
+        dev = dev->parent;
+    }
+    procs->map_gray(dev, gray, out);
+}
+
+static inline
+void map_cmyk_subclass(const gx_cm_color_map_procs *procs, gx_device *dev, frac c, frac m, frac y, frac k, frac out[])
+{
+    if (dev == NULL)
+        return;
+    while(dev->parent)
+    {
+        dev = dev->parent;
+    }
+    procs->map_cmyk(dev, c, m, y, k, out);
+}
 
 /* A null device.  This is used to temporarily disable output. */
 #ifndef gx_device_null_DEFINED
@@ -1724,8 +1853,16 @@ void gx_device_set_target(gx_device_forward *fdev, gx_device *target);
 void gx_device_retain(gx_device *dev, bool retained);
 
 /* Calculate the raster (number of bytes in a scan line), */
-/* with byte or word padding. */
+/* with byte or device padding. */
 uint gx_device_raster(const gx_device * dev, bool pad_to_word);
+
+/* Calculate the raster (number of bytes in a scan line), */
+/* with byte or device padding forcing chunky format. */
+uint gx_device_raster_chunky(const gx_device * dev, bool pad);
+
+/* Calculate the raster (with device padding) optionally for a given
+ * render_plane (may be NULL). */
+uint gx_device_raster_plane(const gx_device * dev, const gx_render_plane_t *render_plane);
 
 /* Adjust the resolution for devices that only have a fixed set of */
 /* geometries, so that the apparent size in inches remains constant. */
@@ -1742,10 +1879,10 @@ void gx_device_set_margins(gx_device * dev, const float *margins /*[4] */ ,
 void gx_device_set_width_height(gx_device * dev, int width, int height);
 
 /* Set the resolution (in pixels per inch), updating width and height. */
-void gx_device_set_resolution(gx_device * dev, floatp x_dpi, floatp y_dpi);
+void gx_device_set_resolution(gx_device * dev, double x_dpi, double y_dpi);
 
 /* Set the MediaSize (in 1/72" units), updating width and height. */
-void gx_device_set_media_size(gx_device * dev, floatp media_width, floatp media_height);
+void gx_device_set_media_size(gx_device * dev, double media_width, double media_height);
 
 /****** BACKWARD COMPATIBILITY ******/
 #define gx_device_set_page_size(dev, w, h)\

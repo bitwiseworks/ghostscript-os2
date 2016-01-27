@@ -34,6 +34,7 @@
 #include "ivmspace.h"
 #include "opdef.h"
 #include "store.h"
+#include "iconf.h"
 
 /* Implementation parameters. */
 /*
@@ -276,7 +277,7 @@ obj_init(i_ctx_t **pi_ctx_p, gs_dual_memory_t *idmem)
             for (def = *tptr; def->oname != 0; def++)
                 if (op_def_is_begin_dict(def)) {
                     if (make_initial_dict(i_ctx_p, def->oname, idicts) == 0)
-                        return_error(e_VMerror);
+                        return_error(gs_error_VMerror);
                 }
         }
 
@@ -290,7 +291,7 @@ obj_init(i_ctx_t **pi_ctx_p, gs_dual_memory_t *idmem)
                 dstack_userdict_index = dsp - dsbot;
             r = make_initial_dict(i_ctx_p, dname, idicts);
             if (r == NULL)
-                return_error(e_VMerror);
+                return_error(gs_error_VMerror);
             ref_assign(dsp, r);
         }
 
@@ -426,7 +427,7 @@ alloc_op_array_table(i_ctx_t *i_ctx_p, uint size, uint space,
         (ushort *) ialloc_byte_array(size, sizeof(ushort),
                                      "op_array nx_table");
     if (opt->nx_table == 0)
-        return_error(e_VMerror);
+        return_error(gs_error_VMerror);
     opt->count = 0;
     opt->attrs = space | a_executable;
     return 0;
@@ -454,9 +455,9 @@ op_init(i_ctx_t *i_ctx_p)
                 if (code < 0)
                     return code;
                 if (!dict_find(systemdict, &nref, &pdict))
-                    return_error(e_Fatal);
+                    return_error(gs_error_Fatal);
                 if (!r_has_type(pdict, t_dictionary))
-                    return_error(e_Fatal);
+                    return_error(gs_error_Fatal);
             } else {
                 ref oper;
                 uint index_in_table = def - *tptr;
@@ -465,14 +466,14 @@ op_init(i_ctx_t *i_ctx_p)
 
                 if (index_in_table >= OP_DEFS_MAX_SIZE) {
                     lprintf1("opdef overrun! %s\n", def->oname);
-                    return_error(e_Fatal);
+                    return_error(gs_error_Fatal);
                 }
                 gs_interp_make_oper(&oper, def->proc, opidx);
                 /* The first character of the name is a digit */
                 /* giving the minimum acceptable number of operands. */
                 /* Check to make sure it's within bounds. */
                 if (*nstr - '0' > gs_interp_max_op_num_args)
-                    return_error(e_Fatal);
+                    return_error(gs_error_Fatal);
                 nstr++;
                 /*
                  * Skip internal operators, and the second occurrence of
@@ -511,7 +512,6 @@ const char *
 op_get_name_string(op_proc_t opproc)
 {
     const op_def *const *tptr;
-    int code;
 
     for (tptr = op_defs_all; *tptr != 0; tptr++) {
         const op_def *def;
@@ -525,3 +525,19 @@ op_get_name_string(op_proc_t opproc)
     return unknown_op_name;
 }
 #endif
+
+int
+i_iodev_init(i_ctx_t *i_ctx_p)
+{
+    int i;
+    int code;
+    extern init_proc(gs_iodev_init);
+
+    code = gs_iodev_init(imemory);
+
+    for (i = 0; i < i_io_device_table_count && code >= 0; i++) {
+        code = gs_iodev_register_dev(imemory, i_io_device_table[i]);
+    }
+
+    return code;
+}

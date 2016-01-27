@@ -28,7 +28,7 @@
 /* to the chunk allocator.                                              */
 /* Exported for use by background printing.                             */
 /* When called to setup for background printing, bg_print is true       */
-gx_device * setup_device_and_mem_for_thread(gs_memory_t *chunk_base_mem, gx_device *dev, bool bg_print);
+gx_device * setup_device_and_mem_for_thread(gs_memory_t *chunk_base_mem, gx_device *dev, bool bg_print, gsicc_link_cache_t **cachep);
 
 /* Close and free the thread's device, finish the thread, free up the   */
 /* thread's memory and its chunk allocator and close the clist files    */
@@ -59,6 +59,10 @@ struct clist_render_thread_control_s {
     gx_device *bdev;	/* this thread's buffer device */
     int band;
     gp_thread_id thread;
+
+    /* For process_page mode */
+    gx_process_page_options_t *options;
+    void *buffer;
 #ifdef DEBUG
     ulong cputime;
 #endif

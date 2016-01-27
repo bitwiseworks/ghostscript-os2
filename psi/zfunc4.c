@@ -31,6 +31,7 @@
 #include "gsparam.h"	    /* these are needed to check device parameters */
 #include "zfunc.h"
 #include "zcolor.h"
+#include "gxdevsop.h"
 
 /*
  * FunctionType 4 functions are not defined in the PostScript language.  We
@@ -195,7 +196,7 @@ put_op(byte **p, byte op) {
  * known to be a procedure.
  */
 static int
-check_psc_function(i_ctx_t *i_ctx_p, const ref *pref, int depth, byte *ops, int *psize)
+check_psc_function(i_ctx_t *i_ctx_p, const ref *pref, int depth, byte *ops, int *psize, bool AllowRepeat)
 {
     int code;
     uint i, j;
@@ -331,7 +332,7 @@ check_psc_function(i_ctx_t *i_ctx_p, const ref *pref, int depth, byte *ops, int 
             break;
         case t_name:
             if (!r_has_attr(&elt, a_executable))
-                return_error(e_rangecheck);
+                return_error(gs_error_rangecheck);
             name_string_ref(imemory, &elt, &elt);
             if (!bytes_compare(elt.value.bytes, r_size(&elt),
                                (const byte *)"true", 4)) {
@@ -347,11 +348,11 @@ check_psc_function(i_ctx_t *i_ctx_p, const ref *pref, int depth, byte *ops, int 
             }
             /* Check if the name is a valid operator in systemdict */
             if (dict_find(systemdict, &elt, &delp) <= 0)
-                return_error(e_undefined);
+                return_error(gs_error_undefined);
             if (r_btype(delp) != t_operator)
-                return_error(e_typecheck);
+                return_error(gs_error_typecheck);
             if (!r_has_attr(delp, a_executable))
-                return_error(e_rangecheck);
+                return_error(gs_error_rangecheck);
             elt = *delp;
             /* Fall into the operator case */
         case t_operator: {
@@ -363,40 +364,23 @@ check_psc_function(i_ctx_t *i_ctx_p, const ref *pref, int depth, byte *ops, int 
                     ++*psize;
                     goto next;
                 }
-            return_error(e_rangecheck);
+            return_error(gs_error_rangecheck);
         }
         default: {
             if (!r_is_proc(&elt))
-                return_error(e_typecheck);
+                return_error(gs_error_typecheck);
             if (depth == MAX_PSC_FUNCTION_NESTING)
-                return_error(e_limitcheck);
+                return_error(gs_error_limitcheck);
             if ((code = array_get(imemory, pref, ++i, &elt2)) < 0)
                 return code;
             *psize += 3;
-            code = check_psc_function(i_ctx_p, &elt, depth + 1, ops, psize);
+            code = check_psc_function(i_ctx_p, &elt, depth + 1, ops, psize, AllowRepeat);
             if (code < 0)
                 return code;
             /* Check for { proc } repeat | {proc} if | {proc1} {proc2} ifelse */
             if (resolves_to_oper(i_ctx_p, &elt2, zrepeat)) {
-                gs_c_param_list list;
-                int AllowRepeat = 1;
-
-                /* Check if the device allows the use of repeat in functions */
-                /* We can't handle 'repeat' with pdfwrite since it emits FunctionType 4 */
-                gs_c_param_list_write(&list, i_ctx_p->pgs->device->memory);
-                code = gs_getdeviceparams(i_ctx_p->pgs->device, (gs_param_list *)&list);
-                if (code < 0)
-                    return code;
-                gs_c_param_list_read(&list);
-                code = param_read_bool((gs_param_list *)&list,
-                    "AllowPSRepeatFunctions",
-                    &AllowRepeat);
-                if (code < 0)
-                    return code;
-                gs_c_param_list_release(&list);
-
                 if (!AllowRepeat)
-                    return_error(e_rangecheck);
+                    return_error(gs_error_rangecheck);
                 if (ops) {
                     *p = PtCr_repeat;
                     psc_fixup(p, ops + *psize);
@@ -410,7 +394,7 @@ check_psc_function(i_ctx_t *i_ctx_p, const ref *pref, int depth, byte *ops, int 
                     psc_fixup(p, ops + *psize);
                 }
             } else if (!r_is_proc(&elt2))
-                return_error(e_rangecheck);
+                return_error(gs_error_rangecheck);
             else if ((code = array_get(imemory, pref, ++i, &elt3)) < 0)
                 return code;
             else if (resolves_to_oper(i_ctx_p, &elt3, zifelse)) {
@@ -421,13 +405,13 @@ check_psc_function(i_ctx_t *i_ctx_p, const ref *pref, int depth, byte *ops, int 
                     *p = PtCr_else;
                 }
                 *psize += 3;
-                code = check_psc_function(i_ctx_p, &elt2, depth + 1, ops, psize);
+                code = check_psc_function(i_ctx_p, &elt2, depth + 1, ops, psize, AllowRepeat);
                 if (code < 0)
                     return code;
                 if (ops)
                     psc_fixup(p, ops + *psize);
             } else
-                return_error(e_rangecheck);
+                return_error(gs_error_rangecheck);
             }	 /* end 'default' */
         }
     next:
@@ -450,29 +434,56 @@ gs_build_function_4(i_ctx_t *i_ctx_p, const ref *op, const gs_function_params_t 
     int code;
     byte *ops;
     int size;
+    int AllowRepeat = 1; /* Default to permitting Repeat, devices which can't handle it implement the spec_op */
 
     *(gs_function_params_t *)&params = *mnDR;
     params.ops.data = 0;	/* in case of failure */
     params.ops.size = 0;	/* ditto */
     if (dict_find_string(op, "Function", &proc) <= 0) {
-        code = gs_note_error(e_rangecheck);
+        code = gs_note_error(gs_error_rangecheck);
         goto fail;
     }
     if (!r_is_proc(proc)) {
-        code = gs_note_error(e_typecheck);
+        code = gs_note_error(gs_error_typecheck);
         goto fail;
     }
     size = 0;
-    code = check_psc_function(i_ctx_p, proc, 0, NULL, &size);
+
+    /* Check if the device allows the use of repeat in functions */
+    /* We can't handle 'repeat' with pdfwrite since it emits FunctionType 4 */
+    {
+        char data[] = {"AllowPSRepeatFunctions"};
+        dev_param_req_t request;
+        gs_c_param_list list;
+
+        gs_c_param_list_write(&list, i_ctx_p->pgs->device->memory);
+        /* Stuff the data into a structure for passing to the spec_op */
+        request.Param = data;
+        request.list = &list;
+        code = dev_proc(i_ctx_p->pgs->device, dev_spec_op)(i_ctx_p->pgs->device, gxdso_get_dev_param, &request, sizeof(dev_param_req_t));
+        if (code < 0 && code != gs_error_undefined) {
+            gs_c_param_list_release(&list);
+            return code;
+        }
+        gs_c_param_list_read(&list);
+        code = param_read_bool((gs_param_list *)&list,
+            "AllowPSRepeatFunctions",
+            &AllowRepeat);
+        gs_c_param_list_release(&list);
+        if (code < 0)
+            return code;
+    }
+
+    code = check_psc_function(i_ctx_p, proc, 0, NULL, &size, AllowRepeat);
     if (code < 0)
         goto fail;
     ops = gs_alloc_string(mem, size + 1, "gs_build_function_4(ops)");
     if (ops == 0) {
-        code = gs_note_error(e_VMerror);
+        code = gs_note_error(gs_error_VMerror);
         goto fail;
     }
     size = 0;
-    check_psc_function(i_ctx_p, proc, 0, ops, &size); /* can't fail */
+    check_psc_function(i_ctx_p, proc, 0, ops, &size, AllowRepeat); /* can't fail */
     ops[size] = PtCr_return;
     params.ops.data = ops;
     params.ops.size = size + 1;
@@ -482,7 +493,7 @@ gs_build_function_4(i_ctx_t *i_ctx_p, const ref *op, const gs_function_params_t 
     /* free_params will free the ops string */
 fail:
     gs_function_PtCr_free_params(&params, mem);
-    return (code < 0 ? code : gs_note_error(e_rangecheck));
+    return (code < 0 ? code : gs_note_error(gs_error_rangecheck));
 }
 
 int make_type4_function(i_ctx_t * i_ctx_p, ref *arr, ref *pproc, gs_function_t **func)
@@ -493,12 +504,13 @@ int make_type4_function(i_ctx_t * i_ctx_p, ref *arr, ref *pproc, gs_function_t *
     float *ptr;
     ref alternatespace, *palternatespace = &alternatespace;
     PS_colour_space_t *space, *altspace;
+    int AllowRepeat = 1; /* Default to permitting Repeat, devices which can't handle it implement the spec_op */
 
     code = get_space_object(i_ctx_p, arr, &space);
     if (code < 0)
         return code;
     if (!space->alternateproc)
-        return e_typecheck;
+        return gs_error_typecheck;
     code = space->alternateproc(i_ctx_p, arr, &palternatespace, &CIESubst);
     if (code < 0)
         return code;
@@ -511,7 +523,7 @@ int make_type4_function(i_ctx_t * i_ctx_p, ref *arr, ref *pproc, gs_function_t *
         return code;
     ptr = (float *)gs_alloc_byte_array(imemory, num_components * 2, sizeof(float), "make_type4_function(Domain)");
     if (!ptr)
-        return e_VMerror;
+        return gs_error_VMerror;
     code = space->domain(i_ctx_p, arr, ptr);
     if (code < 0) {
         gs_free_const_object(imemory, ptr, "make_type4_function(Domain)");
@@ -528,7 +540,7 @@ int make_type4_function(i_ctx_t * i_ctx_p, ref *arr, ref *pproc, gs_function_t *
     ptr = (float *)gs_alloc_byte_array(imemory, num_components * 2, sizeof(float), "make_type4_function(Range)");
     if (!ptr) {
         gs_free_const_object(imemory, params.Domain, "make_type4_function(Domain)");
-        return e_VMerror;
+        return gs_error_VMerror;
     }
     code = altspace->range(i_ctx_p, &alternatespace, ptr);
     if (code < 0) {
@@ -542,14 +554,40 @@ int make_type4_function(i_ctx_t * i_ctx_p, ref *arr, ref *pproc, gs_function_t *
     params.ops.data = 0;	/* in case of failure, see gs_function_PtCr_free_params */
     params.ops.size = 0;	/* ditto */
     size = 0;
-    code = check_psc_function(i_ctx_p, (const ref *)pproc, 0, NULL, &size);
+
+    /* Check if the device allows the use of repeat in functions */
+    /* We can't handle 'repeat' with pdfwrite since it emits FunctionType 4 */
+    {
+        char data[] = {"AllowPSRepeatFunctions"};
+        dev_param_req_t request;
+        gs_c_param_list list;
+
+        gs_c_param_list_write(&list, i_ctx_p->pgs->device->memory);
+        /* Stuff the data into a structure for passing to the spec_op */
+        request.Param = data;
+        request.list = &list;
+        code = dev_proc(i_ctx_p->pgs->device, dev_spec_op)(i_ctx_p->pgs->device, gxdso_get_dev_param, &request, sizeof(dev_param_req_t));
+        if (code < 0 && code != gs_error_undefined) {
+            gs_c_param_list_release(&list);
+            return code;
+        }
+        gs_c_param_list_read(&list);
+        code = param_read_bool((gs_param_list *)&list,
+            "AllowPSRepeatFunctions",
+            &AllowRepeat);
+        gs_c_param_list_release(&list);
+        if (code < 0)
+            return code;
+    }
+
+    code = check_psc_function(i_ctx_p, (const ref *)pproc, 0, NULL, &size, AllowRepeat);
     if (code < 0) {
         gs_function_PtCr_free_params(&params, imemory);
         return code;
     }
     ops = gs_alloc_string(imemory, size + 1, "make_type4_function(ops)");
     size = 0;
-    check_psc_function(i_ctx_p, (const ref *)pproc, 0, ops, &size); /* can't fail */
+    check_psc_function(i_ctx_p, (const ref *)pproc, 0, ops, &size, AllowRepeat); /* can't fail */
     ops[size] = PtCr_return;
     params.ops.data = ops;
     params.ops.size = size + 1;

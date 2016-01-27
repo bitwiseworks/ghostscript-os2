@@ -1454,6 +1454,22 @@ U16(const byte *p)
 }
 
 static int
+same_maxp_values(gs_font_type42 *font0, gs_font_type42 *font1)
+{
+    gs_type42_data *d0 = &font0->data, *d1 = &font1->data;
+
+    if (d0->maxPoints < d1->maxPoints)
+        return 0;
+    if (d0->maxContours < d1->maxContours)
+        return 0;
+    if (d0->maxCPoints < d1->maxCPoints)
+        return 0;
+    if (d0->maxCContours < d1->maxCContours)
+        return 0;
+    return 1;
+}
+
+static int
 same_type42_hinting(gs_font_type42 *font0, gs_font_type42 *font1)
 {
     gs_type42_data *d0 = &font0->data, *d1 = &font1->data;
@@ -2143,13 +2159,54 @@ gs_copy_font(gs_font *font, const gs_matrix *orig_matrix, gs_memory_t *mem, gs_f
     return code;
 }
 
+/* We only need this because the ddescndant(s) share the parent
+ * CIDFont glyph space, so we can't free that if we are a descendant.
+ */
+static int gs_free_copied_descendant_font(gs_font *font)
+{
+    gs_copied_font_data_t *cfdata = font->client_data;
+    gs_memory_t *mem = font->memory;
+
+    if (cfdata) {
+        uncopy_string(mem, &cfdata->info.FullName,
+                      "gs_free_copied_font(FullName)");
+        uncopy_string(mem, &cfdata->info.FamilyName,
+                      "gs_free_copied_font(FamilyName)");
+        uncopy_string(mem, &cfdata->info.Notice,
+                      "gs_free_copied_font(Notice)");
+        uncopy_string(mem, &cfdata->info.Copyright,
+                      "gs_free_copied_font(Copyright)");
+        if (cfdata->Encoding)
+            gs_free_object(mem, cfdata->Encoding, "gs_free_copied_font(Encoding)");
+        gs_free_object(mem, cfdata->names, "gs_free_copied_font(names)");
+        gs_free_object(mem, cfdata->data, "gs_free_copied_font(data)");
+        gs_free_object(mem, cfdata, "gs_free_copied_font(wrapper data)");
+    }
+    gs_free_object(mem, font, "gs_free_copied_font(copied font)");
+    return 0;
+}
+
 int gs_free_copied_font(gs_font *font)
 {
     gs_copied_font_data_t *cfdata = font->client_data;
     gs_memory_t *mem = font->memory;
-    int i;
+    int i, code;
     gs_copied_glyph_t *pcg = 0;
 
+    /* For CID fonts, we must also free the descendants, which we copied
+     * at the time we copied the actual CIDFont itself
+     */
+    if (font->FontType == ft_CID_encrypted) {
+        gs_font_cid0 *copied0 = (gs_font_cid0 *)font;
+
+        for (i = 0; i < copied0->cidata.FDArray_size; ++i) {
+            code = gs_free_copied_descendant_font((gs_font *)copied0->cidata.FDArray[i]);
+            if (code < 0)
+                return code;
+        }
+        gs_free_object(mem, copied0->cidata.FDArray, "free copied CIDFont FDArray");
+        copied0->cidata.FDArray = 0;
+    }
     /* free copied glyph data */
     for (i=0;i < cfdata->glyphs_size;i++) {
         pcg = &cfdata->glyphs[i];
@@ -2313,7 +2370,8 @@ gs_copy_font_complete(gs_font *font, gs_font *copied)
                   index != 0);
             ) {
             if (font->FontType == ft_TrueType &&
-                    glyph >= GS_MIN_CID_GLYPH && glyph < GS_MIN_GLYPH_INDEX)
+                    ((glyph >= GS_MIN_CID_GLYPH && glyph < GS_MIN_GLYPH_INDEX) || glyph == GS_NO_GLYPH ||
+                    (space == GLYPH_SPACE_INDEX && glyph < GS_MIN_GLYPH_INDEX)))
                 return_error(gs_error_invalidfont); /* bug 688370. */
             code = gs_copy_glyph(font, glyph, copied);
         }
@@ -2395,6 +2453,9 @@ gs_copied_can_copy_glyphs(const gs_font *cfont, const gs_font *ofont,
             case ft_TrueType:
                 code = same_type42_hinting((gs_font_type42 *)cfont,
                                         (gs_font_type42 *)ofont);
+                if (code > 0)
+                    code = same_maxp_values((gs_font_type42 *)cfont,
+                                        (gs_font_type42 *)ofont);
                 break;
             case ft_CID_encrypted:
                 if (!gs_is_CIDSystemInfo_compatible(
@@ -2411,6 +2472,9 @@ gs_copied_can_copy_glyphs(const gs_font *cfont, const gs_font *ofont,
                     return 0;
                 code = same_cid2_hinting((const gs_font_cid2 *)cfont,
                                          (const gs_font_cid2 *)ofont);
+                if (code > 0)
+                    code = same_maxp_values((gs_font_type42 *)cfont,
+                                        (gs_font_type42 *)ofont);
                 break;
             default:
                 return_error(gs_error_unregistered); /* Must not happen. */

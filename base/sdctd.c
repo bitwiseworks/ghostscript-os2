@@ -137,6 +137,33 @@ compact:
     return o - i;
 }
 
+static void
+update_jpeg_header_height(JOCTET *d, size_t len, int height)
+{
+    int marker_len;
+
+    for (d += 2; len > 9 && d[0] == 0xFF; d += marker_len)
+    {
+        int declared_height;
+
+        marker_len = 2 + (d[2] << 8) + d[3];
+        if (marker_len > len)
+            break;
+        len -= marker_len;
+
+        /* We can only safely rewrite non-differential SOF markers */
+        if (d[1] < 0xC0 || (0xC3 < d[1] && d[1] < 0xC9) || 0xCB < d[1])
+            continue;
+
+        declared_height = (d[5]<<8) | d[6];
+        if (declared_height == 0 || declared_height > height)
+        {
+            d[5] = height>>8;
+            d[6] = height;
+        }
+    }
+}
+
 /* Process a buffer */
 static int
 s_DCTD_process(stream_state * st, stream_cursor_read * pr,
@@ -181,6 +208,8 @@ s_DCTD_process(stream_state * st, stream_cursor_read * pr,
             ss->phase = 1;
             /* falls through */
         case 1:		/* reading header markers */
+            if (ss->data.common->Height != 0)
+                update_jpeg_header_height(pr->ptr + 1, src->bytes_in_buffer, ss->data.common->Height);
             if ((code = gs_jpeg_read_header(ss, TRUE)) < 0)
                 return ERRC;
             pr->ptr =
@@ -259,9 +288,20 @@ s_DCTD_process(stream_state * st, stream_cursor_read * pr,
                        tomove);
                 pw->ptr += tomove;
                 jddp->bytes_in_scanline -= tomove;
-                if (jddp->bytes_in_scanline != 0)
+                /* calculate room after the copy,
+                 * PXL typically provides room 1 exactly 1 scan, so avail == 0
+                 * PDF/PS provide enough room, so avail >= 0
+                 * XPS provides room ro complete image, and expects complet image copied
+                 * PCL,PXL,PDF,PS copy 1 scan at a time.
+                 */
+                avail -= tomove;
+                if ((jddp->bytes_in_scanline != 0) || /* no room for complete scan */
+                    ((jddp->bytes_in_scanline == 0) && (tomove > 0) && /* 1 scancopy completed */
+                     (avail < tomove) && /* still room for 1 more scan */
+                     (jddp->dinfo.output_height > jddp->dinfo.output_scanline))) /* more scans to do */
                     return 1;	/* need more room */
             }
+            /* while not done with image, decode 1 scan, otherwise fall into phase 4 */
             while (jddp->dinfo.output_height > jddp->dinfo.output_scanline) {
                 int read;
                 byte *samples;
@@ -325,25 +365,8 @@ s_DCTD_process(stream_state * st, stream_cursor_read * pr,
     return ERRC;
 }
 
-/* Release the stream */
-static void
-s_DCTD_release(stream_state * st)
-{
-    stream_DCT_state *const ss = (stream_DCT_state *) st;
-
-    gs_jpeg_destroy(ss);
-    if (ss->data.decompress->scanline_buffer != NULL)
-        gs_free_object(gs_memory_stable(ss->data.common->memory),
-                       ss->data.decompress->scanline_buffer,
-                       "s_DCTD_release(scanline_buffer)");
-    gs_free_object(ss->data.common->memory, ss->data.decompress,
-                   "s_DCTD_release");
-    /* Switch the template pointer back in case we still need it. */
-    st->templat = &s_DCTD_template;
-}
-
 /* Stream template */
 const stream_template s_DCTD_template =
-{&st_DCT_state, s_DCTD_init, s_DCTD_process, 2000, 4000, s_DCTD_release,
+{&st_DCT_state, s_DCTD_init, s_DCTD_process, 2000, 4000, NULL,
  s_DCTD_set_defaults
 };

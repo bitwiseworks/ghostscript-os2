@@ -38,6 +38,7 @@ static const gs_param_item_t jsd_param_items[] =
 {
     dctp("Picky", gs_param_type_int, jpeg_stream_data, Picky),
     dctp("Relax", gs_param_type_int, jpeg_stream_data, Relax),
+    dctp("Height", gs_param_type_int, jpeg_stream_data, Height),
     gs_param_item_end
 };
 
@@ -86,7 +87,7 @@ static const byte inverse_natural_order[DCTSIZE2] =
 
 static int
 quant_param_string(gs_param_string * pstr, int count, const UINT16 * pvals,
-                   floatp QFactor, gs_memory_t * mem)
+                   double QFactor, gs_memory_t * mem)
 {
     byte *data;
     int code = 0;
@@ -96,7 +97,7 @@ quant_param_string(gs_param_string * pstr, int count, const UINT16 * pvals,
     if (data == 0)
         return_error(gs_error_VMerror);
     for (i = 0; i < count; ++i) {
-        floatp val = pvals[jpeg_inverse_order(i)] / QFactor;
+        double val = pvals[jpeg_inverse_order(i)] / QFactor;
 
         data[i] =
             (val < 1 ? (code = 1) : val > 255 ? (code = 255) : (byte) val);
@@ -109,7 +110,7 @@ quant_param_string(gs_param_string * pstr, int count, const UINT16 * pvals,
 
 static int
 quant_param_array(gs_param_float_array * pfa, int count, const UINT16 * pvals,
-                  floatp QFactor, gs_memory_t * mem)
+                  double QFactor, gs_memory_t * mem)
 {
     float *data;
     int i;
@@ -140,7 +141,7 @@ s_DCT_get_quantization_tables(gs_param_list * plist,
     JQUANT_TBL **table_ptrs;
     JQUANT_TBL **default_table_ptrs;
     gs_param_array quant_tables;
-    floatp QFactor = pdct->QFactor;
+    double QFactor = pdct->QFactor;
     int i;
     int code;
 
@@ -370,7 +371,7 @@ s_DCT_byte_params(gs_param_list * plist, gs_param_name key, int start,
 /* Get N quantization values from an array or a string. */
 static int
 quant_params(gs_param_list * plist, gs_param_name key, int count,
-             UINT16 * pvals, floatp QFactor)
+             UINT16 * pvals, double QFactor)
 {
     int i;
     gs_param_string bytes;

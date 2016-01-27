@@ -32,6 +32,8 @@
 #include "gdevpdts.h"
 #include "gdevpdtt.h"
 
+#include "gximage.h"
+#include "gxcpath.h"
 /* ---------------- Non-CMap-based composite font ---------------- */
 
 /*
@@ -138,8 +140,12 @@ process_composite_text(gs_text_enum_t *pte, void *vbuf, uint bsize)
             gs_matrix_multiply(&prev_font->FontMatrix, psmat, &fmat);
             out.index = 0; /* Note : we don't reset out.xy_index here. */
             code = pdf_process_string_aux(&out, &str, NULL, &fmat, &text_state);
-            if (code < 0)
+            if (code < 0) {
+                if (code == gs_error_undefined && new_font && new_font->FontType == ft_encrypted2)
+                /* Caused by trying to make a CFF font resource for ps2write, which doesn't support CFF, abort now! */
+                    return gs_error_invalidfont;
                 return code;
+            }
             curr.xy_index = out.xy_index; /* pdf_encode_process_string advanced it. */
             if (out.index < str.size) {
                 gs_glyph glyph;
@@ -234,7 +240,7 @@ static const char *const standard_cmap_names[] = {
     /* The following were added in PDF 1.2. */
 
     "GB-EUC-H", "GB-EUC-V",
-    "GBpc-EUC-H"
+    "GBpc-EUC-H",
 
     "B5pc-H", "B5pc-V",
     "ETen-B5-H", "ETen-B5-V",
@@ -358,6 +364,35 @@ attach_cmap_resource(gx_device_pdf *pdev, pdf_font_resource_t *pdfont,
     return 0;
 }
 
+static int estimate_fontbbox(pdf_text_enum_t *pte, gs_font_base *font,
+                          const gs_matrix *pfmat,
+                          gs_rect *text_bbox)
+{
+    gs_matrix m;
+    gs_point p0, p1, p2, p3;
+
+    if (font->FontBBox.p.x == font->FontBBox.q.x ||
+        font->FontBBox.p.y == font->FontBBox.q.y)
+        return_error(gs_error_undefined);
+    if (pfmat == 0)
+        pfmat = &font->FontMatrix;
+    m = ctm_only(pte->pis);
+    m.tx = fixed2float(pte->origin.x);
+    m.ty = fixed2float(pte->origin.y);
+    gs_matrix_multiply(pfmat, &m, &m);
+
+    gs_point_transform(font->FontBBox.p.x, font->FontBBox.p.y, &m, &p0);
+    gs_point_transform(font->FontBBox.p.x, font->FontBBox.q.y, &m, &p1);
+    gs_point_transform(font->FontBBox.q.x, font->FontBBox.p.y, &m, &p2);
+    gs_point_transform(font->FontBBox.q.x, font->FontBBox.q.y, &m, &p3);
+    text_bbox->p.x = min(min(p0.x, p1.x), min(p1.x, p2.x));
+    text_bbox->p.y = min(min(p0.y, p1.y), min(p1.y, p2.y));
+    text_bbox->q.x = max(max(p0.x, p1.x), max(p1.x, p2.x));
+    text_bbox->q.y = max(max(p0.y, p1.y), max(p1.y, p2.y));
+
+    return 0;
+}
+
 /* Record widths and CID => GID mappings. */
 static int
 scan_cmap_text(pdf_text_enum_t *pte, void *vbuf)
@@ -471,6 +506,13 @@ scan_cmap_text(pdf_text_enum_t *pte, void *vbuf)
             if (subfont->FontType == ft_user_defined &&
                 (break_index > start_index || !pdev->charproc_just_accumulated) &&
                 !(pdsubf->u.simple.s.type3.cached[cid >> 3] & (0x80 >> (cid & 7)))) {
+                if (subfont0 && subfont0->FontType != ft_user_defined)
+                    /* This is hacky. By pretending to be in a type 3 font doing a charpath we force
+                     * text handling to fall right back to bitmap glyphs. This is because we can't handle
+                     * CIDFonts with mixed type 1/3 descendants. Ugly but it produces correct output for
+                     * what is after all a dumb setup.
+                     */
+                    pdev->type3charpath = 1;
                 pte->current_font = subfont;
                 return gs_error_undefined;
             }
@@ -516,20 +558,32 @@ scan_cmap_text(pdf_text_enum_t *pte, void *vbuf)
                     if (code < 0)
                         return code;
                     if (pdf_is_CID_font(subfont)) {
-                        if (subfont->procs.decode_glyph((gs_font *)subfont, glyph, -1) != GS_NO_CHAR) {
+                        /* Some Pscript5 output has non-identity mappings between character code and CID
+                         * and the GlyphNames2Unicode dictionary uses character codes, not glyph names. So
+                         * if we detect ths condition we cheat and claim not to be a CIDFont, so that the
+                         * decode_glyph procedure can use the character code to look up the GlyphNames2Unicode
+                         * dictionary. See bugs #696021, #688768 and #687954 for examples of the various ways
+                         * this code can be exercised.
+                         */
+                        if (chr == glyph - GS_MIN_CID_GLYPH)
+                            code = subfont->procs.decode_glyph((gs_font *)subfont, glyph, -1);
+                        else
+                            code = subfont->procs.decode_glyph((gs_font *)subfont, glyph, chr);
+                        if (code != GS_NO_CHAR)
                             /* Since PScript5.dll creates GlyphNames2Unicode with character codes
                                instead CIDs, and with the WinCharSetFFFF-H2 CMap
                                character codes appears different than CIDs (Bug 687954),
                                pass the character code intead the CID. */
                             code = pdf_add_ToUnicode(pdev, subfont, pdfont,
                                 chr + GS_MIN_CID_GLYPH, chr, NULL);
-                        } else {
+                        else {
                             /* If we interpret a PDF document, ToUnicode
                                CMap may be attached to the Type 0 font. */
                             code = pdf_add_ToUnicode(pdev, pte->orig_font, pdfont,
                                 chr + GS_MIN_CID_GLYPH, chr, NULL);
                         }
-                    } else
+                    }
+                    else
                         code = pdf_add_ToUnicode(pdev, subfont, pdfont, glyph, cid, NULL);
                     if (code < 0)
                         return code;
@@ -740,6 +794,35 @@ scan_cmap_text(pdf_text_enum_t *pte, void *vbuf)
             }
             pte->index = break_index;
             pte->xy_index = break_xy_index;
+            if (pdev->Eps2Write) {
+                gs_rect text_bbox;
+                gx_device_clip cdev;
+                gx_drawing_color devc;
+                fixed x0, y0, bx2, by2;
+
+                text_bbox.q.x = text_bbox.p.y = text_bbox.q.y = 0;
+                estimate_fontbbox(pte, (gs_font_base *)font, NULL, &text_bbox);
+                text_bbox.p.x = fixed2float(pte->origin.x);
+                text_bbox.q.x = text_bbox.p.x + wxy.x;
+
+                x0 = float2fixed(text_bbox.p.x);
+                y0 = float2fixed(text_bbox.p.y);
+                bx2 = float2fixed(text_bbox.q.x) - x0;
+                by2 = float2fixed(text_bbox.q.y) - y0;
+
+                pdev->AccumulatingBBox++;
+                gx_make_clip_device_on_stack(&cdev, pte->pcpath, (gx_device *)pdev);
+                set_nonclient_dev_color(&devc, gx_device_black((gx_device *)pdev));  /* any non-white color will do */
+                gx_default_fill_triangle((gx_device *) pdev, x0, y0,
+                                         float2fixed(text_bbox.p.x) - x0,
+                                         float2fixed(text_bbox.q.y) - y0,
+                                         bx2, by2, &devc, lop_default);
+                gx_default_fill_triangle((gx_device *) & cdev, x0, y0,
+                                         float2fixed(text_bbox.q.x) - x0,
+                                         float2fixed(text_bbox.p.y) - y0,
+                                         bx2, by2, &devc, lop_default);
+                pdev->AccumulatingBBox--;
+            }
             code = pdf_shift_text_currentpoint(pte, &wxy);
             if (code < 0)
                 return code;
@@ -763,6 +846,7 @@ process_cmap_text(gs_text_enum_t *penum, void *vbuf, uint bsize)
 {
     int code;
     pdf_text_enum_t *pte = (pdf_text_enum_t *)penum;
+    byte *save;
 
     if (pte->text.operation &
         (TEXT_FROM_ANY - (TEXT_FROM_STRING | TEXT_FROM_BYTES))
@@ -772,7 +856,24 @@ process_cmap_text(gs_text_enum_t *penum, void *vbuf, uint bsize)
         /* Not implemented.  (PostScript doesn't allow TEXT_INTERVENE.) */
         return_error(gs_error_rangecheck);
     }
+    /* scan_cmap_text has the unfortunate side effect of meddling with the
+     * text data in the enumerator. In general that's OK but in the case where
+     * the string is (eg) in a bound procedure, and we run that procedure more
+     * than once, the string is corrupted on the first use and then produces
+     * incorrect output for the subsequent use(s).
+     * The routine is, sadly, extremely convoluted so instead of trying to fix
+     * it so that it doesn't corrupt the string (which looks likely to be impossible
+     * without copying the string at some point) I've chosen to take a copy of the
+     * string here, and restore it after the call to scan_cmap_text.
+     * See bug #695322 and test file Bug691680.ps
+     */
+    save = (byte *)pte->text.data.bytes;
+    pte->text.data.bytes = gs_alloc_string(pte->memory, pte->text.size, "pdf_text_process");
+    memcpy((byte *)pte->text.data.bytes, save, pte->text.size);
     code = scan_cmap_text(pte, vbuf);
+    gs_free_string(pte->memory, (byte *)pte->text.data.bytes,  pte->text.size, "pdf_text_process");
+    pte->text.data.bytes = save;
+
     if (code == TEXT_PROCESS_CDEVPROC)
         pte->cdevproc_callout = true;
     else

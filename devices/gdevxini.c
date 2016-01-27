@@ -308,6 +308,7 @@ gdev_x_open(gx_device_X * xdev)
 
     if (!xdev->ghostview) {
         XWMHints wm_hints;
+        XClassHint class_hint;
         XSetWindowAttributes xswa;
         gx_device *dev = (gx_device *) xdev;
 
@@ -362,6 +363,19 @@ gdev_x_open(gx_device_X * xdev)
             xdev->MediaSize[1] =
                 (float)xdev->height / xdev->y_pixels_per_inch * 72;
         }
+
+        /*
+         * If the margins' resolution values are not initialized
+         * default to the device resolution, most devices initialize
+         * this at compile time because they don't "detect" the
+         * resolution as we do here.
+         */
+        if (xdev->MarginsHWResolution[0] == FAKE_RES ||
+            xdev->MarginsHWResolution[1] == FAKE_RES) {
+            xdev->MarginsHWResolution[0] = xdev->x_pixels_per_inch;
+            xdev->MarginsHWResolution[1] = xdev->y_pixels_per_inch;
+        }
+
         sizehints.x = 0;
         sizehints.y = 0;
         sizehints.width = xdev->width;
@@ -437,6 +451,9 @@ gdev_x_open(gx_device_X * xdev)
             wm_hints.flags = InputHint;
             wm_hints.input = False;
             XSetWMHints(xdev->dpy, xdev->win, &wm_hints);	/* avoid input focus */
+            class_hint.res_name = "ghostscript";
+            class_hint.res_class = "Ghostscript";
+            XSetClassHint(xdev->dpy, xdev->win, &class_hint);
         }
     }
     /***
@@ -555,7 +572,7 @@ x_set_buffer(gx_device_X * xdev)
      * buffer is independent of save/restore.
      */
     gs_memory_t *mem = gs_memory_stable(xdev->memory);
-    bool buffered = xdev->MaxBitmap > 0;
+    bool buffered = xdev->space_params.MaxBitmap > 0;
     const gx_device_procs *procs;
 
  setup:
@@ -599,7 +616,7 @@ x_set_buffer(gx_device_X * xdev)
             ulong space;
 
             if (gdev_mem_data_size(mdev, xdev->width, xdev->height, &space) < 0 ||
-                space > xdev->MaxBitmap) {
+                space > xdev->space_params.MaxBitmap) {
                 buffered = false;
                 goto setup;
             }
@@ -777,7 +794,6 @@ gdev_x_get_params(gx_device * dev, gs_param_list * plist)
     if (code < 0 ||
         (code = param_write_long(plist, "WindowID", &id)) < 0 ||
         (code = param_write_bool(plist, ".IsPageDevice", &xdev->IsPageDevice)) < 0 ||
-        (code = param_write_long(plist, "MaxBitmap", &xdev->MaxBitmap)) < 0 ||
         (code = param_write_int(plist, "MaxTempPixmap", &xdev->MaxTempPixmap)) < 0 ||
         (code = param_write_int(plist, "MaxTempImage", &xdev->MaxTempImage)) < 0
         )
@@ -797,6 +813,7 @@ gdev_x_put_params(gx_device * dev, gs_param_list * plist)
      * is_open, width, height, HWResolution, IsPageDevice, Max*.
      */
     gx_device_X values;
+    int orig_MaxBitmap = xdev->space_params.MaxBitmap;
 
     long pwin = (long)xdev->pwin;
     bool save_is_page = xdev->IsPageDevice;
@@ -809,7 +826,6 @@ gdev_x_put_params(gx_device * dev, gs_param_list * plist)
 
     ecode = param_put_long(plist, "WindowID", &pwin, ecode);
     ecode = param_put_bool(plist, ".IsPageDevice", &values.IsPageDevice, ecode);
-    ecode = param_put_long(plist, "MaxBitmap", &values.MaxBitmap, ecode);
     ecode = param_put_int(plist, "MaxTempPixmap", &values.MaxTempPixmap, ecode);
     ecode = param_put_int(plist, "MaxTempImage", &values.MaxTempImage, ecode);
 
@@ -909,9 +925,7 @@ gdev_x_put_params(gx_device * dev, gs_param_list * plist)
     xdev->MaxTempPixmap = values.MaxTempPixmap;
     xdev->MaxTempImage = values.MaxTempImage;
     
-    if (clear_window || xdev->MaxBitmap != values.MaxBitmap) {
-        /****** DO MORE FOR RESETTING MaxBitmap ******/
-        xdev->MaxBitmap = values.MaxBitmap;
+    if (clear_window || xdev->space_params.MaxBitmap != orig_MaxBitmap) {
         if (xdev->is_open)
             gdev_x_clear_window(xdev);
     }
@@ -932,6 +946,9 @@ gdev_x_close(gx_device_X *xdev)
     gdev_x_free_colors(xdev);
     if (xdev->cmap != DefaultColormapOfScreen(xdev->scr))
         XFreeColormap(xdev->dpy, xdev->cmap);
+    if (xdev->gc)
+        XFreeGC(xdev->dpy, xdev->gc);
+
     XCloseDisplay(xdev->dpy);
     return 0;
 }

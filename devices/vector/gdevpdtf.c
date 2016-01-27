@@ -419,79 +419,107 @@ font_resource_alloc(gx_device_pdf *pdev, pdf_font_resource_t **ppfres,
 
 int font_resource_free(gx_device_pdf *pdev, pdf_font_resource_t *pdfont)
 {
-        if(pdfont->BaseFont.size
-           && (pdfont->base_font == NULL || !pdfont->base_font->is_standard)) {
+    if(pdfont->BaseFont.size
+       && (pdfont->base_font == NULL || !pdfont->base_font->is_standard)) {
 
-            gs_free_string(pdev->pdf_memory, pdfont->BaseFont.data, pdfont->BaseFont.size, "Free BaseFont string");
-            pdfont->BaseFont.data = (byte *)0L;
-            pdfont->BaseFont.size = 0;
+        gs_free_string(pdev->pdf_memory, pdfont->BaseFont.data, pdfont->BaseFont.size, "Free BaseFont string");
+        pdfont->BaseFont.data = (byte *)0L;
+        pdfont->BaseFont.size = 0;
+    }
+    if(pdfont->Widths) {
+        gs_free_object(pdev->pdf_memory, pdfont->Widths, "Free Widths array");
+        pdfont->Widths = 0;
+    }
+    if(pdfont->used) {
+        gs_free_object(pdev->pdf_memory, pdfont->used, "Free used array");
+        pdfont->used = 0;
+    }
+    if(pdfont->res_ToUnicode) {
+        /* ToUnicode resources are tracked amd released separately */
+        pdfont->res_ToUnicode = 0;
+    }
+    if(pdfont->cmap_ToUnicode) {
+        gs_cmap_ToUnicode_free(pdev->pdf_memory, pdfont->cmap_ToUnicode);
+        pdfont->cmap_ToUnicode = 0;
+    }
+    switch(pdfont->FontType) {
+        case ft_composite:
+            break;
+        case ft_PCL_user_defined:
+        case ft_MicroType:
+        case ft_GL2_stick_user_defined:
+        case ft_user_defined:
+        case ft_GL2_531:
+            if(pdfont->u.simple.Encoding) {
+                gs_free_object(pdev->pdf_memory, pdfont->u.simple.Encoding, "Free simple Encoding");
+                pdfont->u.simple.Encoding = 0;
+            }
+            if(pdfont->u.simple.v) {
+                gs_free_object(pdev->pdf_memory, pdfont->u.simple.v, "Free simple v");
+                pdfont->u.simple.v = 0;
+            }
+            if (pdfont->u.simple.s.type3.char_procs) {
+                pdf_free_charproc_ownership(pdev, (pdf_resource_t *)pdfont->u.simple.s.type3.char_procs);
+                pdfont->u.simple.s.type3.char_procs = 0;
+            }
+            break;
+        case ft_CID_encrypted:
+        case ft_CID_TrueType:
+            if(pdfont->u.cidfont.used2) {
+                gs_free_object(pdev->pdf_memory, pdfont->u.cidfont.used2, "Free CIDFont used2");
+                pdfont->u.cidfont.used2 = 0;
+            }
+            if(pdfont->u.cidfont.CIDToGIDMap) {
+                gs_free_object(pdev->pdf_memory, pdfont->u.cidfont.CIDToGIDMap, "Free CIDToGID map");
+                pdfont->u.cidfont.CIDToGIDMap = 0;
+            }
+            break;
+        default:
+            if(pdfont->u.simple.Encoding) {
+                gs_free_object(pdev->pdf_memory, pdfont->u.simple.Encoding, "Free simple Encoding");
+                pdfont->u.simple.Encoding = 0;
+            }
+            if(pdfont->u.simple.v) {
+                gs_free_object(pdev->pdf_memory, pdfont->u.simple.v, "Free simple v");
+                pdfont->u.simple.v = 0;
+            }
+            break;
+    }
+    if (pdfont->object) {
+        gs_free_object(pdev->pdf_memory, pdfont->object, "Free font resource object");
+        pdfont->object = 0;
+    }
+    /* We free FontDescriptor resources separately */
+    if(pdfont->FontDescriptor)
+        pdfont->FontDescriptor = NULL;
+    else {
+        if (pdfont->base_font) {
+            /* Normally we free the 'base font' when we free the Font Descriptor,
+             * but if we have no font descriptor (we are not embedding the font),
+             * we won't free the copies of the font, or any other associated memory,
+             * so do it now.
+             */
+            pdf_base_font_t *pbfont = pdfont->base_font;
+            gs_font *copied = (gs_font *)pbfont->copied, *complete = (gs_font *)pbfont->complete;
+
+            if (copied)
+                gs_free_copied_font(copied);
+            if (complete && copied != complete) {
+                gs_free_copied_font(complete);
+                pbfont->complete = 0;
+            }
+            pbfont->copied = 0;
+            if (pbfont && pbfont->font_name.size) {
+                gs_free_string(pdev->pdf_memory, pbfont->font_name.data, pbfont->font_name.size, "Free BaseFont FontName string");
+                pbfont->font_name.data = (byte *)0L;
+                pbfont->font_name.size = 0;
+            }
+            if (pbfont) {
+                gs_free_object(pdev->pdf_memory, pbfont, "Free base font from FontDescriptor)");
+                pdfont->base_font = 0;
+            }
         }
-        if(pdfont->Widths) {
-            gs_free_object(pdev->pdf_memory, pdfont->Widths, "Free Widths array");
-            pdfont->Widths = 0;
-        }
-        if(pdfont->used) {
-            gs_free_object(pdev->pdf_memory, pdfont->used, "Free used array");
-            pdfont->used = 0;
-        }
-        if(pdfont->res_ToUnicode) {
-            /* ToUnicode resources are tracked amd released separately */
-            pdfont->res_ToUnicode = 0;
-        }
-        if(pdfont->cmap_ToUnicode) {
-            gs_cmap_ToUnicode_free(pdev->pdf_memory, pdfont->cmap_ToUnicode);
-            pdfont->cmap_ToUnicode = 0;
-        }
-        switch(pdfont->FontType) {
-            case ft_composite:
-                break;
-            case ft_PCL_user_defined:
-            case ft_MicroType:
-            case ft_GL2_stick_user_defined:
-            case ft_user_defined:
-            case ft_GL2_531:
-                if(pdfont->u.simple.Encoding) {
-                    gs_free_object(pdev->pdf_memory, pdfont->u.simple.Encoding, "Free simple Encoding");
-                    pdfont->u.simple.Encoding = 0;
-                }
-                if(pdfont->u.simple.v) {
-                    gs_free_object(pdev->pdf_memory, pdfont->u.simple.v, "Free simple v");
-                    pdfont->u.simple.v = 0;
-                }
-                if (pdfont->u.simple.s.type3.char_procs) {
-                    pdf_free_charproc_ownership(pdev, (pdf_resource_t *)pdfont->u.simple.s.type3.char_procs);
-                    pdfont->u.simple.s.type3.char_procs = 0;
-                }
-                break;
-            case ft_CID_encrypted:
-            case ft_CID_TrueType:
-                if(pdfont->u.cidfont.used2) {
-                    gs_free_object(pdev->pdf_memory, pdfont->u.cidfont.used2, "Free CIDFont used2");
-                    pdfont->u.cidfont.used2 = 0;
-                }
-                if(pdfont->u.cidfont.CIDToGIDMap) {
-                    gs_free_object(pdev->pdf_memory, pdfont->u.cidfont.CIDToGIDMap, "Free CIDToGID map");
-                    pdfont->u.cidfont.CIDToGIDMap = 0;
-                }
-                break;
-            default:
-                if(pdfont->u.simple.Encoding) {
-                    gs_free_object(pdev->pdf_memory, pdfont->u.simple.Encoding, "Free simple Encoding");
-                    pdfont->u.simple.Encoding = 0;
-                }
-                if(pdfont->u.simple.v) {
-                    gs_free_object(pdev->pdf_memory, pdfont->u.simple.v, "Free simple v");
-                    pdfont->u.simple.v = 0;
-                }
-                break;
-        }
-        if (pdfont->object) {
-            gs_free_object(pdev->pdf_memory, pdfont->object, "Free font resource object");
-            pdfont->object = 0;
-        }
-        /* We free FontDescriptor resources separately */
-        if(pdfont->FontDescriptor)
-            pdfont->FontDescriptor = NULL;
+    }
     return 0;
 }
 
@@ -834,7 +862,7 @@ pdf_compute_BaseFont(gx_device_pdf *pdev, pdf_font_resource_t *pdfont, bool fini
 {
     pdf_font_resource_t *pdsubf = pdfont;
     gs_string fname;
-    uint size, extra = 0;
+    uint size;
     byte *data;
 
     if (pdfont->FontType == ft_composite) {
@@ -845,8 +873,6 @@ pdf_compute_BaseFont(gx_device_pdf *pdev, pdf_font_resource_t *pdfont, bool fini
         if (code < 0)
             return code;
         fname = pdsubf->BaseFont;
-        if (pdsubf->FontType == ft_CID_encrypted || pdsubf->FontType == ft_CID_TrueType)
-            extra = 1 + pdfont->u.type0.CMapName.size;
     }
     else if (pdfont->FontDescriptor == 0) {
         /* Type 3 font, or has its BaseFont computed in some other way. */
@@ -854,18 +880,16 @@ pdf_compute_BaseFont(gx_device_pdf *pdev, pdf_font_resource_t *pdfont, bool fini
     } else
         fname = *pdf_font_descriptor_base_name(pdsubf->FontDescriptor);
     size = fname.size;
-    data = gs_alloc_string(pdev->pdf_memory, size + extra,
+    data = gs_alloc_string(pdev->pdf_memory, size,
                            "pdf_compute_BaseFont");
     if (data == 0)
         return_error(gs_error_VMerror);
     memcpy(data, fname.data, size);
     switch (pdfont->FontType) {
     case ft_composite:
-        if (extra) {
-            data[size] = '-';
-            memcpy(data + size + 1, pdfont->u.type0.CMapName.data, extra - 1);
-            size += extra;
-        }
+        /* Previously we copied the name of the original CMap onto the font name
+         * but this doesn't make any sense.
+         */
         break;
     case ft_encrypted:
     case ft_encrypted2:

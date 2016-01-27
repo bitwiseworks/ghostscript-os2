@@ -127,7 +127,7 @@ typedef struct pdf14_ctx_s pdf14_ctx;
 
 struct pdf14_buf_s {
     pdf14_buf *saved;
-
+    byte *backdrop;  /* This is needed for proper non-isolated knockout support */
     bool isolated;
     bool knockout;
     byte alpha;
@@ -284,5 +284,10 @@ int pdf14_disable_device(gx_device * dev);
 
 /* Needed so that we can set the monitoring in the target device */
 int gs_pdf14_device_color_mon_set(gx_device *pdev, bool monitoring);
+
+/* When playing back the clist, we need to know if the buffer device is compatible */
+/* with the pdf14 compositor that was used when writing the clist. Colorspace and  */
+/* depth are critical since these must match when reading back colors.             */
+bool pdf14_ok_to_optimize(gx_device *bdev);
 
 #endif /* gdevp14_INCLUDED */

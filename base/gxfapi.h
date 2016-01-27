@@ -150,6 +150,7 @@ struct gs_fapi_font_s
     bool is_outline_font;
     bool is_mtx_skipped;        /* Ugly. Only UFST needs. */
     bool is_vertical;
+    bool metrics_only;  /* can save the expense of loading entire glyph */
     gs_fapi_ttf_cmap_request ttf_cmap_req[GS_FAPI_NUM_TTF_CMAP_REQ]; /* Lets client request a specific cmap to be set. Also, a couple of fallbacks */
     void *client_ctx_p;
     void *client_font_data;
@@ -304,6 +305,7 @@ struct gs_fapi_server_s
     gs_fapi_font ff;
     int max_bitmap;
     bool use_outline;
+    uint grid_fit;
     gs_matrix initial_FontMatrix;       /* Font Matrix at the time the font is defined */
     /* Used to use the stored 'OrigFont' entry but */
     /* this did not change f a font was defined    */
@@ -314,7 +316,7 @@ struct gs_fapi_server_s
     gs_fapi_retcode(*ensure_open) (gs_fapi_server *server, const char *param, int param_size);
     gs_fapi_retcode(*get_scaled_font) (gs_fapi_server *server, gs_fapi_font *ff, const gs_fapi_font_scale *scale, const char *xlatmap, gs_fapi_descendant_code dc);
     gs_fapi_retcode(*get_decodingID) (gs_fapi_server *server, gs_fapi_font *ff, const char **decodingID);
-    gs_fapi_retcode(*get_font_bbox) (gs_fapi_server *server, gs_fapi_font *ff, int BBox[4]);
+    gs_fapi_retcode(*get_font_bbox) (gs_fapi_server *server, gs_fapi_font *ff, int BBox[4], int unitsPerEm[2]);
     gs_fapi_retcode(*get_font_proportional_feature) (gs_fapi_server *server, gs_fapi_font *ff, bool *bProportional);
     gs_fapi_retcode(*can_retrieve_char_by_name) (gs_fapi_server *server, gs_fapi_font *ff, gs_fapi_char_ref *c, int *result);
     gs_fapi_retcode(*can_replace_metrics) (gs_fapi_server *server, gs_fapi_font *ff, gs_fapi_char_ref *c, int *result);

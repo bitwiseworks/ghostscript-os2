@@ -28,6 +28,9 @@
 #include "gdevvec.h"
 #include "strimpl.h"
 #include "srlx.h"
+#include "jpeglib_.h"
+#include "sdct.h"
+#include "sjpeg.h"
 #include "gdevpxat.h"
 #include "gdevpxen.h"
 #include "gdevpxop.h"
@@ -35,6 +38,7 @@
 #include "gxlum.h"
 #include "gdevpcl.h" /* for gdev_pcl_mode3compress() */
 #include "gsicc_manage.h"
+#include "gsicc_cache.h"
 #include <stdlib.h> /* abs() */
 
 /* ---------------- Device definition ---------------- */
@@ -99,12 +103,13 @@ typedef struct gx_device_pclxl_s {
     } chars;
     bool font_set;
     int state_rotated; /* 0, 1, 2, -1, mutiple of 90 deg */
-    int CompressMode; /* std PXL enum: None=0, RLE=1, DeltaRow=3; JPEG=2 not used */
+    int CompressMode; /* std PXL enum: None=0, RLE=1, JPEG=2, DeltaRow=3 */
     bool scaled;
-    floatp x_scale; /* chosen so that max(x) is scaled to 0x7FFF, to give max distinction between x values */
-    floatp y_scale;
+    double x_scale; /* chosen so that max(x) is scaled to 0x7FFF, to give max distinction between x values */
+    double y_scale;
     bool pen_null;
     bool brush_null;
+    bool iccTransform;
 } gx_device_pclxl;
 
 gs_public_st_suffix_add0_final(st_device_pclxl, gx_device_pclxl,
@@ -323,7 +328,11 @@ pclxl_set_color(gx_device_pclxl * xdev, const gx_drawing_color * pdc,
 static bool
 pclxl_can_handle_color_space(const gs_color_space * pcs)
 {
-    gs_color_space_index index = gs_color_space_get_index(pcs);
+    gs_color_space_index index;
+    /* an image with no colorspace info arrived; cannot handle */
+    if (!pcs)
+        return false;
+    index = gs_color_space_get_index(pcs);
 
     if (index == gs_color_space_index_Indexed) {
         if (pcs->params.indexed.use_proc)
@@ -342,6 +351,42 @@ pclxl_can_handle_color_space(const gs_color_space * pcs)
              index == gs_color_space_index_ICC);
 }
 
+/* Test whether we can icclink-transform an image. */
+static bool
+pclxl_can_icctransform(const gs_image_t * pim)
+{
+    const gs_color_space *pcs = pim->ColorSpace;
+    int bits_per_pixel;
+    /* an image with no colorspace info arrived; cannot transform */
+    if (!pcs)
+        return false;
+    bits_per_pixel =
+	(pim->ImageMask ? 1 :
+	 pim->BitsPerComponent * gs_color_space_num_components(pcs));
+
+    if ((gs_color_space_get_index(pcs) == gs_color_space_index_ICC)
+	&& (bits_per_pixel == 24))
+	return true;
+
+    return false;
+}
+
+/*
+ * Avoid PXL high level images if a transfer function has been set.
+ * Allow the graphics library to render to a lower level
+ * representation with the function applied to the colors.
+ */
+
+static bool
+pclxl_nontrivial_transfer(const gs_imager_state * pis)
+{
+    gx_transfer_map *red = pis->set_transfer.red;
+    gx_transfer_map *green = pis->set_transfer.green;
+    gx_transfer_map *blue = pis->set_transfer.blue;
+
+    return (red || green || blue);
+    
+}
 /* Set brush, pen, and mode for painting a path. */
 static void
 pclxl_set_paints(gx_device_pclxl * xdev, gx_path_type_t type)
@@ -382,7 +427,7 @@ pclxl_set_page_origin(stream *s, int x, int y)
 }
 
 static void
-pclxl_set_page_scale(gx_device_pclxl * xdev, floatp x_scale, floatp y_scale)
+pclxl_set_page_scale(gx_device_pclxl * xdev, double x_scale, double y_scale)
 {
     stream *s = pclxl_stream(xdev);
     if (xdev->scaled) {
@@ -413,19 +458,19 @@ static int
 pclxl_set_cursor(gx_device_pclxl * xdev, int x, int y)
 {
     stream *s = pclxl_stream(xdev);
-    floatp x_scale = 1;
-    floatp y_scale = 1;
+    double x_scale = 1;
+    double y_scale = 1;
     /* Points must be one of ubyte/uint16/sint16;
        Here we play with PageScale (one of ubyte/uint16/real32_xy) to go higher.
        This gives us 32768 x 3.4e38 in UnitsPerMeasure.
        If we ever need to go higher, we play with UnitsPerMeasure. */
     if (abs(x) > 0x7FFF) {
-        x_scale = ((floatp) abs(x))/0x7FFF;
+        x_scale = ((double) abs(x))/0x7FFF;
         x = (x > 0 ? 0x7FFF : -0x7FFF);
         xdev->scaled = true;
     }
     if (abs(y) > 0x7FFF) {
-        y_scale = ((floatp) abs(y))/0x7FFF;
+        y_scale = ((double) abs(y))/0x7FFF;
         y = (y > 0 ? 0x7FFF : -0x7FFF);
         xdev->scaled = true;
     }
@@ -458,8 +503,8 @@ pclxl_flush_points(gx_device_pclxl * xdev)
         pxeDataType_t data_type;
         int i, di;
         byte diffs[NUM_POINTS * 2];
-        floatp x_scale = 1;
-        floatp y_scale = 1;
+        double x_scale = 1;
+        double y_scale = 1;
         int temp_origin_x = 0, temp_origin_y = 0;
         int count_smalls = 0;
 
@@ -485,8 +530,8 @@ pclxl_flush_points(gx_device_pclxl * xdev)
                     pclxl_set_page_origin(s, temp_origin_x, temp_origin_y);
                 }
                 for (i = 0; i < count; ++i) {
-                    x_scale = max(((floatp) abs(xdev->points.data[i].x - temp_origin_x))/0x7FFF , x_scale);
-                    y_scale = max(((floatp) abs(xdev->points.data[i].y - temp_origin_y))/0x7FFF , y_scale);
+                    x_scale = max(((double) abs(xdev->points.data[i].x - temp_origin_x))/0x7FFF , x_scale);
+                    y_scale = max(((double) abs(xdev->points.data[i].y - temp_origin_y))/0x7FFF , y_scale);
                 }
                 for (i = 0; i < count; ++i) {
                     xdev->points.data[i].x = (int)((xdev->points.data[i].x - temp_origin_x)/x_scale + 0.5);
@@ -715,6 +760,121 @@ pclxl_write_image_data_RLE(gx_device_pclxl * xdev, const byte * base, int data_b
         px_put_bytes(s, (const byte *)"\000\000\000\000", -(int)width_bytes & 3);
     }
 }
+
+static void
+pclxl_write_image_data_JPEG(gx_device_pclxl * xdev, const byte * base,
+			    int data_bit, uint raster, uint width_bits, int y,
+			    int height)
+{
+    stream *s = pclxl_stream(xdev);
+    uint width_bytes = (width_bits + 7) >> 3;
+    int i;
+    int count;
+    int code;
+
+    /* cannot handle data_bit not multiple of 8, but we don't invoke this routine that way */
+    int offset = data_bit >> 3;
+    const byte *data = base + offset;
+    jpeg_compress_data *jcdp =
+	gs_alloc_struct_immovable(xdev->v_memory, jpeg_compress_data,
+				  &st_jpeg_compress_data,
+				  "pclxl_write_image_data_JPEG(jpeg_compress_data)");
+    stream_DCT_state state;
+    stream_cursor_read r;
+    stream_cursor_write w;
+    /* Approx. The worse case is ~ header + width_bytes * height.
+       Apparently minimal SOI/DHT/DQT/SOS/EOI is 341 bytes. TO CHECK. */
+    int buffersize = 341 + width_bytes * height;
+
+    byte *buf = gs_alloc_bytes(xdev->v_memory, buffersize,
+			       "pclxl_write_image_data_JPEG(buf)");
+    /* RLE can write uncompressed without extra-allocation */
+    if ((buf == 0) || (jcdp == 0)) {
+	goto failed_so_use_rle_instead;
+    }
+    /* Create the DCT encoder state. */
+    jcdp->templat = s_DCTE_template;
+    s_init_state((stream_state *) & state, &jcdp->templat, 0);
+    if (state.templat->set_defaults) {
+	state.memory = xdev->v_memory;
+	(*state.templat->set_defaults) ((stream_state *) & state);
+	state.memory = NULL;
+    }
+    state.ColorTransform = (xdev->color_info.num_components == 3 ? 1 : 0);
+    state.data.compress = jcdp;
+    state.icc_profile = NULL;
+    /* state.memory needs set for creation..... */
+    state.memory = jcdp->memory = state.jpeg_memory = xdev->v_memory;
+    if ((code = gs_jpeg_create_compress(&state)) < 0)
+        goto cleanup_and_use_rle;
+    /* .... and NULL after, so we don't try to free the stack based "state" */
+    state.memory = NULL;
+    /* image-specific info */
+    jcdp->cinfo.image_width = width_bytes / xdev->color_info.num_components;
+    jcdp->cinfo.image_height = height;
+    switch (xdev->color_info.num_components) {
+	case 3:
+	    jcdp->cinfo.input_components = 3;
+	    jcdp->cinfo.in_color_space = JCS_RGB;
+	    break;
+	case 1:
+	    jcdp->cinfo.input_components = 1;
+	    jcdp->cinfo.in_color_space = JCS_GRAYSCALE;
+	    break;
+        default:
+            goto cleanup_and_use_rle;
+            break;
+    }
+    /* Set compression parameters. */
+    if ((code = gs_jpeg_set_defaults(&state)) < 0)
+	goto cleanup_and_use_rle;
+
+    if (state.templat->init)
+	(*state.templat->init) ((stream_state *)&state);
+    state.scan_line_size = jcdp->cinfo.input_components *
+	jcdp->cinfo.image_width;
+    jcdp->templat.min_in_size =
+	max(s_DCTE_template.min_in_size, state.scan_line_size);
+    jcdp->templat.min_out_size =
+	max(s_DCTE_template.min_out_size, state.Markers.size);
+
+    w.ptr = buf - 1;
+    w.limit = w.ptr + buffersize;
+    for (i = 0; i < height; ++i) {
+	r.ptr = data + i * raster - 1;
+        r.limit = r.ptr + width_bytes;
+	if (((code = (*state.templat->process)
+              ((stream_state *) & state, &r, &w, false)) != 0 && code != EOFC) || r.ptr != r.limit)
+            goto cleanup_and_use_rle;
+    }
+    count = w.ptr + 1 - buf;
+    px_put_usa(s, y, pxaStartLine);
+    px_put_usa(s, height, pxaBlockHeight);
+    px_put_ub(s, eJPEGCompression);
+    px_put_ac(s, pxaCompressMode, pxtReadImage);
+    px_put_data_length(s, count);
+    px_put_bytes(s, buf, count);
+
+    gs_free_object(xdev->v_memory, buf,
+		   "pclxl_write_image_data_JPEG(buf)");
+    if (jcdp)
+        gs_jpeg_destroy(&state); /* frees *jcdp */
+    return;
+
+  cleanup_and_use_rle:
+    /* cleans up - something went wrong after allocation */
+    gs_free_object(xdev->v_memory, buf,
+		   "pclxl_write_image_data_JPEG(buf)");
+    if (jcdp)
+        gs_jpeg_destroy(&state); /* frees *jcdp */
+    /* fall through to redo in RLE */
+  failed_so_use_rle_instead:
+    /* the RLE routine can write without new allocation - use as fallback. */
+    pclxl_write_image_data_RLE(xdev, data, data_bit, raster, width_bits, y,
+			       height);
+    return;
+}
+
 /* DeltaRow compression (also called "mode 3"):
    drawn heavily from gdevcljc.c:cljc_print_page(),
    This is simplier since PCL XL does not allow
@@ -769,24 +929,38 @@ pclxl_write_image_data_DeltaRow(gx_device_pclxl * xdev, const byte * base, int d
     return;
 }
 
+/* calling from copy_mono/copy_color/fill_mask should never do lossy compression */
 static void
-pclxl_write_image_data(gx_device_pclxl * xdev, const byte * data, int data_bit,
-                       uint raster, uint width_bits, int y, int height)
+pclxl_write_image_data(gx_device_pclxl * xdev, const byte * data,
+		       int data_bit, uint raster, uint width_bits, int y,
+		       int height, bool allow_lossy)
 {
-    /* If we only have 1 line, it does not make sense to do DeltaRow */
+    /* If we only have 1 line, it does not make sense to do JPEG/DeltaRow */
     if (height < 2) {
-        pclxl_write_image_data_RLE(xdev, data, data_bit, raster, width_bits, y, height);
-        return;
+	pclxl_write_image_data_RLE(xdev, data, data_bit, raster, width_bits,
+				   y, height);
+	return;
     }
 
-    switch(xdev->CompressMode){
-    case eDeltaRowCompression:
-        pclxl_write_image_data_DeltaRow(xdev, data, data_bit, raster, width_bits, y, height);
-        break;
-    case eRLECompression:
-    default:
-        pclxl_write_image_data_RLE(xdev, data, data_bit, raster, width_bits, y, height);
-        break;
+    switch (xdev->CompressMode) {
+	case eDeltaRowCompression:
+	    pclxl_write_image_data_DeltaRow(xdev, data, data_bit, raster,
+					    width_bits, y, height);
+	    break;
+	case eJPEGCompression:
+	    /* JPEG should not be used for mask or other data */
+	    if (allow_lossy)
+		pclxl_write_image_data_JPEG(xdev, data, data_bit, raster,
+					    width_bits, y, height);
+	    else
+		pclxl_write_image_data_RLE(xdev, data, data_bit, raster,
+					   width_bits, y, height);
+	    break;
+	case eRLECompression:
+	default:
+	    pclxl_write_image_data_RLE(xdev, data, data_bit, raster,
+				       width_bits, y, height);
+	    break;
     }
 }
 
@@ -1044,7 +1218,7 @@ pclxl_beginpage(gx_device_vector * vdev)
 }
 
 static int
-pclxl_setlinewidth(gx_device_vector * vdev, floatp width)
+pclxl_setlinewidth(gx_device_vector * vdev, double width)
 {
     stream *s = gdev_vector_stream(vdev);
 
@@ -1082,7 +1256,7 @@ pclxl_setlinejoin(gx_device_vector * vdev, gs_line_join join)
 }
 
 static int
-pclxl_setmiterlimit(gx_device_vector * vdev, floatp limit)
+pclxl_setmiterlimit(gx_device_vector * vdev, double limit)
 {
     stream *s = gdev_vector_stream(vdev);
     /*
@@ -1098,7 +1272,7 @@ pclxl_setmiterlimit(gx_device_vector * vdev, floatp limit)
 
 static int
 pclxl_setdash(gx_device_vector * vdev, const float *pattern, uint count,
-              floatp offset)
+              double offset)
 {
     stream *s = gdev_vector_stream(vdev);
 
@@ -1220,7 +1394,7 @@ pclxl_beginpath(gx_device_vector * vdev, gx_path_type_t type)
 }
 
 static int
-pclxl_moveto(gx_device_vector * vdev, floatp x0, floatp y0, floatp x, floatp y,
+pclxl_moveto(gx_device_vector * vdev, double x0, double y0, double x, double y,
              gx_path_type_t type)
 {
     gx_device_pclxl *const xdev = (gx_device_pclxl *)vdev;
@@ -1234,7 +1408,7 @@ pclxl_moveto(gx_device_vector * vdev, floatp x0, floatp y0, floatp x, floatp y,
 }
 
 static int
-pclxl_lineto(gx_device_vector * vdev, floatp x0, floatp y0, floatp x, floatp y,
+pclxl_lineto(gx_device_vector * vdev, double x0, double y0, double x, double y,
              gx_path_type_t type)
 {
     gx_device_pclxl *const xdev = (gx_device_pclxl *)vdev;
@@ -1260,8 +1434,8 @@ pclxl_lineto(gx_device_vector * vdev, floatp x0, floatp y0, floatp x, floatp y,
 }
 
 static int
-pclxl_curveto(gx_device_vector * vdev, floatp x0, floatp y0,
-           floatp x1, floatp y1, floatp x2, floatp y2, floatp x3, floatp y3,
+pclxl_curveto(gx_device_vector * vdev, double x0, double y0,
+           double x1, double y1, double x2, double y2, double x3, double y3,
               gx_path_type_t type)
 {
     gx_device_pclxl *const xdev = (gx_device_pclxl *)vdev;
@@ -1291,8 +1465,8 @@ pclxl_curveto(gx_device_vector * vdev, floatp x0, floatp y0,
 }
 
 static int
-pclxl_closepath(gx_device_vector * vdev, floatp x, floatp y,
-                floatp x_start, floatp y_start, gx_path_type_t type)
+pclxl_closepath(gx_device_vector * vdev, double x, double y,
+                double x_start, double y_start, gx_path_type_t type)
 {
     gx_device_pclxl *const xdev = (gx_device_pclxl *)vdev;
     stream *s = gdev_vector_stream(vdev);
@@ -1378,8 +1552,8 @@ static const gx_device_vector_procs pclxl_vector_procs = {
 static int
 pclxl_open_device(gx_device * dev)
 {
-    gx_device_vector *const vdev = (gx_device_vector *)dev;
-    gx_device_pclxl *const xdev = (gx_device_pclxl *)dev;
+    gx_device_vector *vdev = (gx_device_vector *)dev;
+    gx_device_pclxl *xdev = (gx_device_pclxl *)dev;
     int code;
 
     vdev->v_memory = dev->memory;	/****** WRONG ******/
@@ -1388,6 +1562,11 @@ pclxl_open_device(gx_device * dev)
                                          VECTOR_OPEN_FILE_SEQUENTIAL);
     if (code < 0)
         return code;
+
+    while (dev->child)
+        dev = dev->child;
+    vdev = (gx_device_vector *)dev;
+    xdev = (gx_device_pclxl *)dev;
 
     pclxl_page_init(xdev);
     px_write_file_header(vdev->strm, dev);
@@ -1400,6 +1579,7 @@ pclxl_open_device(gx_device * dev)
     xdev->MediaPosition = eAutoSelect;
     xdev->MediaType_old[0] = '\0';
     xdev->MediaType[0] = '\0';
+    /* xdev->iccTransform = false; */ /* set true/false here to ignore command line */
     return 0;
 }
 
@@ -1590,7 +1770,7 @@ pclxl_copy_mono(gx_device * dev, const byte * data, int data_x, int raster,
         PX_PUT_LIT(s, mi_);
     }
     pclxl_write_begin_image(xdev, w, h, w, h);
-    pclxl_write_image_data(xdev, data, data_x, raster, w, 0, h);
+    pclxl_write_image_data(xdev, data, data_x, raster, w, 0, h, false);
     pclxl_write_end_image(xdev);
     return 0;
 }
@@ -1652,7 +1832,7 @@ pclxl_copy_color(gx_device * dev,
     }
     pclxl_write_begin_image(xdev, w, h, w, h);
     pclxl_write_image_data(xdev, base, source_bit, raster,
-                           w * dev->color_info.depth, 0, h);
+                           w * dev->color_info.depth, 0, h, false);
     pclxl_write_end_image(xdev);
     return 0;
 }
@@ -1719,7 +1899,7 @@ pclxl_fill_mask(gx_device * dev,
         PX_PUT_LIT(s, mi_);
     }
     pclxl_write_begin_image(xdev, w, h, w, h);
-    pclxl_write_image_data(xdev, data, data_x, raster, w, 0, h);
+    pclxl_write_image_data(xdev, data, data_x, raster, w, 0, h, false);
     pclxl_write_end_image(xdev);
     return 0;
 }
@@ -1760,6 +1940,7 @@ typedef struct pclxl_image_enum_s {
         uint raster;
     } rows;
     bool flipped;
+  gsicc_link_t *icclink;
 } pclxl_image_enum_t;
 gs_private_st_suffix_add1(st_pclxl_image_enum, pclxl_image_enum_t,
                           "pclxl_image_enum_t", pclxl_image_enum_enum_ptrs,
@@ -1798,17 +1979,26 @@ pclxl_begin_image(gx_device * dev,
      */
     gs_matrix_invert(&pim->ImageMatrix, &mat);
     gs_matrix_multiply(&mat, &ctm_only(pis), &mat);
-    /* We can handle rotations of 90 degs + scaling + reflections.
-     * These have one of the diagonals being zeros
-     * (and the other diagonals having non-zeros).
+
+    if (pclxl_nontrivial_transfer(pis))
+        goto use_default;
+
+    /* 
+     * NOTE: this predicate should be fixed to be readable and easily
+     * debugged.  Each condition should be separate.  See the large
+     * similar conditional in clist_begin_typed_image which has
+     * already been reworked.  We can handle rotations of 90 degs +
+     * scaling + reflections.  * These have one of the diagonals being
+     * zeros * (and the other diagonals having non-zeros).
      */
     if ((!((mat.xx * mat.yy != 0) && (mat.xy == 0) && (mat.yx == 0)) &&
          !((mat.xx == 0) && (mat.yy == 0) && (mat.xy * mat.yx != 0))) ||
         (pim->ImageMask ?
          (!gx_dc_is_pure(pdcolor) || pim->CombineWithColor) :
-         (!pclxl_can_handle_color_space(pim->ColorSpace) ||
-          (bits_per_pixel != 1 && bits_per_pixel != 4 &&
-           bits_per_pixel != 8 && bits_per_pixel !=24))) ||
+         ((!pclxl_can_handle_color_space(pcs) ||
+           (bits_per_pixel != 1 && bits_per_pixel != 4 &&
+            bits_per_pixel != 8 && bits_per_pixel !=24))
+          && !(pclxl_can_icctransform(pim) && xdev->iccTransform) )) ||
         format != gs_image_format_chunky || pim->Interpolate ||
         prect
         )
@@ -1914,6 +2104,17 @@ pclxl_begin_image(gx_device * dev,
     pie->rows.num_rows = num_rows;
     pie->rows.first_y = 0;
     pie->rows.raster = row_raster;
+    if (!pim->ImageMask && !pclxl_can_handle_color_space(pcs)
+	&& pclxl_can_icctransform(pim) && pcs->cmm_icc_profile_data) {
+	gsicc_rendering_param_t rendering_params;
+
+	rendering_params.black_point_comp = pis->blackptcomp;
+	rendering_params.graphics_type_tag = GS_IMAGE_TAG;
+	rendering_params.rendering_intent = pis->renderingintent;
+	pie->icclink = gsicc_get_link(pis, dev, pcs, NULL /*des */ ,
+				      &rendering_params, pis->memory);
+    } else
+	pie->icclink = NULL;
     *pinfo = (gx_image_enum_common_t *) pie;
     {
         gs_logical_operation_t lop = pis->log_op;
@@ -2055,11 +2256,12 @@ pclxl_image_write_rows(pclxl_image_enum_t *pie)
         px_put_ub(s, eBit_values[8]);
         PX_PUT_LIT(s, ci_);
         if (xdev->color_info.depth==8) {
+          rows_raster/=3;
+          if (!pie->icclink) {
           byte *in=pie->rows.data + offset_lastflippedstrip;
           byte *out=pie->rows.data + offset_lastflippedstrip;
           int i;
           int j;
-          rows_raster/=3;
           for (j=0;  j<h;  j++) {
             for (i=0;  i<rows_raster;  i++) {
               *out = (byte)( ((*(in+0) * (ulong) lum_red_weight) +
@@ -2069,6 +2271,7 @@ pclxl_image_write_rows(pclxl_image_enum_t *pie)
               in+=3;
               out++;
             }
+          }
           }
         }
     } else {
@@ -2080,8 +2283,10 @@ pclxl_image_write_rows(pclxl_image_enum_t *pie)
         PX_PUT_LIT(s, ii_);
     }
     pclxl_write_begin_image(xdev, pie->width, h, dw, dh);
+    /* 8-bit gray image may compress with jpeg, but we
+       cannot tell if it is 8-bit gray or 8-bit indexed */
     pclxl_write_image_data(xdev, pie->rows.data + offset_lastflippedstrip, 0, rows_raster,
-                           rows_raster << 3, 0, h);
+                           rows_raster << 3, 0, h, (pie->bits_per_pixel==24 ? true : false));
     pclxl_write_end_image(xdev);
     return 0;
 }
@@ -2110,10 +2315,32 @@ pclxl_image_plane_data(gx_image_enum_common_t * info,
                 return code;
             pie->rows.first_y = pie->y;
         }
+        if (!pie->icclink)
         memcpy(pie->rows.data +
                  pie->rows.raster * (pie->flipped ? (pie->rows.num_rows - (pie->y - pie->rows.first_y) -1) :(pie->y - pie->rows.first_y)),
                planes[0].data + planes[0].raster * i + (data_bit >> 3),
                pie->rows.raster);
+        else {
+          gsicc_bufferdesc_t input_buff_desc;
+          gsicc_bufferdesc_t output_buff_desc;
+          int pixels_per_row = pie->rows.raster / 3 ;
+          int out_raster_stride = pixels_per_row * info->dev->color_info.num_components;
+          gsicc_init_buffer(&input_buff_desc, 3 /*num_chan*/, 1 /*bytes_per_chan*/,
+                            false/*has_alpha*/, false/*alpha_first*/, false /*is_planar*/,
+                            0 /*plane_stride*/, pie->rows.raster /*row_stride*/,
+                            1/*num_rows*/, pixels_per_row /*pixels_per_row*/);
+          gsicc_init_buffer(&output_buff_desc, info->dev->color_info.num_components, 1,
+                            false, false, false,
+                            0, out_raster_stride,
+                            1, pixels_per_row);
+          gscms_transform_color_buffer(info->dev, pie->icclink,
+                                       &input_buff_desc,
+                                       &output_buff_desc,
+                                       (void *)(planes[0].data + planes[0].raster * i + (data_bit >> 3)), /*src*/
+                                       pie->rows.data +
+                                       out_raster_stride * (pie->flipped ? (pie->rows.num_rows - (pie->y - pie->rows.first_y) -1) : (pie->y - pie->rows.first_y)) /*des*/
+                                       );
+        }
     }
     *rows_used = height;
     return pie->y >= pie->height;
@@ -2204,6 +2431,9 @@ pclxl_get_params(gx_device     *dev,	/* I - Device info */
 
   if ((code = param_write_int(plist, "CompressMode",
                               &(xdev->CompressMode))) < 0)
+    return (code);
+
+  if ((code = param_write_bool(plist, "iccTransform", &(xdev->iccTransform))) < 0)
     return (code);
 
   return (0);
@@ -2311,6 +2541,7 @@ pclxl_put_params(gx_device     *dev,	/* I - Device info */
   }
   booloption(Tumble, "Tumble")
   intoption(CompressMode, "CompressMode", int)
+  booloption(iccTransform, "iccTransform")
 
  /*
   * Then process standard page device parameters...

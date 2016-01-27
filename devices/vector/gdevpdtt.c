@@ -277,6 +277,7 @@ pdf_text_set_cache(gs_text_enum_t *pte, const double *pw,
             gs_matrix_multiply((gs_matrix *)&pdev->charproc_ctm, (gs_matrix *)&penum->pis->ctm, &m);
             gs_matrix_fixed_from_matrix(&penum->pis->ctm, &m);
             penum->charproc_accum = false;
+            pdev->accumulating_charproc = false;
         }
     }
     if (pdev->PS_accumulator && penum->pte_default) {
@@ -408,6 +409,9 @@ pdf_prepare_text_drawing(gx_device_pdf *const pdev, gs_text_enum_t *pte)
     gs_font *font = pte->current_font;
 
     if (!(text->operation & TEXT_DO_NONE) || pis->text_rendering_mode == 3) {
+        code = pdf_check_soft_mask(pdev, pte->pis);
+        if (code < 0)
+            return code;
         new_clip = pdf_must_put_clip_path(pdev, pcpath);
         if (new_clip)
             code = pdf_unclip(pdev);
@@ -510,7 +514,14 @@ gdev_pdf_text_begin(gx_device * dev, gs_imager_state * pis,
     gx_path *path = path0;
     pdf_text_enum_t *penum;
     int code, user_defined = 0;
-
+    
+    /* should we "flatten" the font to "normal" marking operations */
+    if (pdev->FlattenFonts) {
+        font->dir->ccache.upper = 0;
+        return gx_default_text_begin(dev, pis, text, font, path, pdcolor,
+                                         pcpath, mem, ppte);
+    }
+    
     /* Track the dominant text rotation. */
     {
         gs_matrix tmat;
@@ -559,6 +570,7 @@ gdev_pdf_text_begin(gx_device * dev, gs_imager_state * pis,
         penum->rc.free = rc_free_text_enum;
         penum->pte_default = 0;
         penum->charproc_accum = false;
+        pdev->accumulating_charproc = false;
         penum->cdevproc_callout = false;
         penum->returned.total_width.x = penum->returned.total_width.y = 0;
         penum->cgp = NULL;
@@ -617,6 +629,7 @@ gdev_pdf_text_begin(gx_device * dev, gs_imager_state * pis,
     penum->rc.free = rc_free_text_enum;
     penum->pte_default = 0;
     penum->charproc_accum = false;
+    pdev->accumulating_charproc = false;
     penum->cdevproc_callout = false;
     penum->returned.total_width.x = penum->returned.total_width.y = 0;
     penum->cgp = NULL;
@@ -658,28 +671,7 @@ private_st_pdf_font_cache_elem();
 static ulong
 pdf_font_cache_elem_id(gs_font *font)
 {
-#ifdef DEPRECATED_906
-    /*
-     *        For compatibility with Ghostscript rasterizer's
-     *        cache logic we use UniqueID to identify fonts.
-     *  Note that with buggy documents, which don't
-     *        undefine UniqueID redefining a font,
-     *        Ghostscript PS interpreter can occasionaly
-     *        replace cache elements on insufficient cache size,
-     *        taking glyphs from random fonts with random metrics,
-     *        therefore the compatibility isn't complete.
-     */
-    /*
-     *        This branch is incompatible with pdf_notify_remove_font.
-     */
-    if (font->FontType == ft_composite || font->PaintType != 0 ||
-        !uid_is_valid(&(((gs_font_base *)font)->UID)))
-        return font->id;
-    else
-        return ((gs_font_base *)font)->UID.id;
-#else
     return font->id;
-#endif
 }
 
 pdf_font_cache_elem_t **
@@ -696,9 +688,8 @@ pdf_locate_font_cache_elem(gx_device_pdf *pdev, gs_font *font)
 }
 
 static void
-pdf_remove_font_cache_elem(pdf_font_cache_elem_t *e0)
+pdf_remove_font_cache_elem(gx_device_pdf *pdev, pdf_font_cache_elem_t *e0)
 {
-    gx_device_pdf *pdev = e0->pdev;
     pdf_font_cache_elem_t **e = &pdev->font_cache;
 
     for (; *e != 0; e = &(*e)->next)
@@ -719,7 +710,6 @@ pdf_remove_font_cache_elem(pdf_font_cache_elem_t *e0)
             e0->next = 0;
             e0->glyph_usage = 0;
             e0->real_widths = 0;
-            e0->pdev = 0;
             gs_free_object(pdev->pdf_memory, e0,
                                 "pdf_remove_font_cache_elem");
             return;
@@ -804,7 +794,7 @@ pdf_free_font_cache(gx_device_pdf *pdev)
 
     while (e != NULL) {
         next = e->next;
-        pdf_remove_font_cache_elem(e);
+        pdf_remove_font_cache_elem(pdev, e);
         e = next;
     }
     pdev->font_cache = NULL;
@@ -883,7 +873,6 @@ pdf_attach_font_resource(gx_device_pdf *pdev, gs_font *font,
         e->num_chars = 0;
         e->glyph_usage = NULL;
         e->real_widths = NULL;
-        e->pdev = pdev;
         e->next = pdev->font_cache;
         pdev->font_cache = e;
         return 0;
@@ -1504,8 +1493,25 @@ pdf_make_font_resource(gx_device_pdf *pdev, gs_font *font,
             }
         }
     }
+    if ((code = pdf_font_descriptor_alloc(pdev, &pfd,
+                                          (gs_font_base *)base_font,
+                                          embed == FONT_EMBED_YES)) < 0 ||
+        (code = font_alloc(pdev, &pdfont, base_font->id, pfd)) < 0
+        )
+        return code;
+
+    pdf_do_subset_font(pdev, pfd->base_font, -1);
     if (font->FontType == ft_encrypted || font->FontType == ft_encrypted2
-        || (font->FontType == ft_TrueType && pdev->ForOPDFRead)) {
+        || (font->FontType == ft_TrueType && pdev->ForOPDFRead)
+        || (font->FontType == ft_TrueType && ((const gs_font_base *)base_font)->nearest_encoding_index != ENCODING_INDEX_UNKNOWN && pfd->base_font->do_subset == DO_SUBSET_NO)) {
+        /* Yet more crazy heuristics. If we embed a TrueType font and don't subset it, then
+         * we preserve the CMAP subtable(s) rather than generatng new ones. The problem is
+         * that if we ake the font symbolic, Acrobat uses the 1,0 CMAP, whereas if we don't
+         * It uses the 3,1 CMAP (and the Encoding). If these two are not compatible, then
+         * the result will be different. So, if we are not subsetting the font, and the original
+         * font wasn't symbolic (it has an Encoding) then we will create a new Encoding, and
+         * in pdf_write_font_descriptor we wil take back off the symbolic flag.
+         */
         /* Removed the addition of Encodings to TrueType fonts as we always write
          * these with the Symbolic flag set. The comment below explains why we
          * previously wrote these, but as the comment notes this was incorrect.
@@ -1528,13 +1534,6 @@ pdf_make_font_resource(gx_device_pdf *pdev, gs_font *font,
         BaseEncoding = pdf_refine_encoding_index(pdev,
             ((const gs_font_base *)base_font)->nearest_encoding_index, false);
     }
-    if ((code = pdf_font_descriptor_alloc(pdev, &pfd,
-                                          (gs_font_base *)base_font,
-                                          embed == FONT_EMBED_YES)) < 0 ||
-        (code = font_alloc(pdev, &pdfont, base_font->id, pfd)) < 0
-        )
-        return code;
-
     if (!pdf_is_CID_font(font)) {
         pdfont->u.simple.BaseEncoding = BaseEncoding;
         pdfont->mark_glyph = font->dir->ccache.mark_glyph;
@@ -1965,7 +1964,7 @@ pdf_obtain_font_resource_encoded(gx_device_pdf *pdev, gs_font *font,
                         &cgp->s[cgp->unused_offset].glyph, cgp->num_unused_chars,
                         sizeof(pdf_char_glyph_pair_t), true);
             if (code < 0)
-                return code;
+                code = 1;
         } else
             code = 1;
         if (code == 0) {
@@ -2478,8 +2477,6 @@ pdf_set_text_process_state(gx_device_pdf *pdev,
             return code;
 
         pis->line_params.half_width = save_width;
-        if (code < 0)
-            return code;
     }
 
     /* Now set all the other parameters. */
@@ -2575,6 +2572,7 @@ pdf_glyph_widths(pdf_font_resource_t *pdfont, int wmode, gs_glyph glyph,
     pwidths->real_width.v.x = pwidths->real_width.v.y = 0;
     pwidths->real_width.w = pwidths->real_width.xy.x = pwidths->real_width.xy.y = 0;
     pwidths->replaced_v = false;
+    pwidths->ignore_wmode = false;
     if (glyph == GS_NO_GLYPH)
         return get_missing_width(cfont, wmode, &scale_c, pwidths);
     code = cfont->procs.glyph_info((gs_font *)cfont, glyph, NULL,
@@ -2663,13 +2661,8 @@ pdf_glyph_widths(pdf_font_resource_t *pdfont, int wmode, gs_glyph glyph,
         }
     }
     pwidths->Width.v = v;
-#ifdef DEPRECATED_906
-    if (code > 0)
-        pwidths->Width.xy.x = pwidths->Width.xy.y = pwidths->Width.w = 0;
-#else /* Skip only if not paralel to the axis. */
     if (code > 0 && !pdf_is_CID_font(ofont))
         pwidths->Width.xy.x = pwidths->Width.xy.y = pwidths->Width.w = 0;
-#endif
     if (cdevproc_result == NULL) {
         info.members = 0;
         code = ofont->procs.glyph_info(ofont, glyph, NULL,
@@ -2700,8 +2693,11 @@ pdf_glyph_widths(pdf_font_resource_t *pdfont, int wmode, gs_glyph glyph,
     else if (code < 0)
         return code;
     else {
-        if ((info.members & (GLYPH_INFO_VVECTOR0 | GLYPH_INFO_VVECTOR1)) != 0)
+        if ((info.members & (GLYPH_INFO_VVECTOR0 | GLYPH_INFO_VVECTOR1)) != 0) {
             pwidths->replaced_v = true;
+            if ((info.members & GLYPH_INFO_VVECTOR1) == 0 && wmode == 1)
+                pwidths->ignore_wmode = true;
+        }
         else
             info.v.x = info.v.y = 0;
         code = store_glyph_width(&pwidths->real_width, wmode, &scale_o, &info);
@@ -2874,6 +2870,11 @@ static int install_PS_charproc_accumulator(gx_device_pdf *pdev, gs_text_enum_t *
         pdev->font3 = (pdf_resource_t *)pdfont;
         pdev->substream_Resources = pdfont->u.simple.s.type3.Resources;
         penum->charproc_accum = true;
+        pdev->accumulating_charproc = true;
+        pdev->charproc_BBox.p.x = 10000;
+        pdev->charproc_BBox.p.y = 10000;
+        pdev->charproc_BBox.q.x = 0;
+        pdev->charproc_BBox.q.y = 0;
         return TEXT_PROCESS_RENDER;
     }
     return 0;
@@ -2933,6 +2934,7 @@ static int install_charproc_accumulator(gx_device_pdf *pdev, gs_text_enum_t *pte
         pdev->font3 = (pdf_resource_t *)pdfont;
         pdev->substream_Resources = pdfont->u.simple.s.type3.Resources;
         penum->charproc_accum = true;
+        pdev->accumulating_charproc = true;
         return TEXT_PROCESS_RENDER;
     }
     return 0;
@@ -2945,6 +2947,8 @@ static int complete_charproc(gx_device_pdf *pdev, gs_text_enum_t *pte,
     gs_const_string gnstr;
     int code;
 
+    if (pte_default->returned.current_glyph == GS_NO_GLYPH)
+        return gs_error_undefined;
     code = pdf_choose_output_glyph_hame(pdev, penum, &gnstr, pte_default->returned.current_glyph);
     if (code < 0) {
         return code;
@@ -2987,6 +2991,7 @@ static int complete_charproc(gx_device_pdf *pdev, gs_text_enum_t *pte,
                 pte_default->returned.current_glyph, penum->output_char_code, &gnstr);
     if (code < 0)
         return code;
+    pdev->accumulating_charproc = false;
     penum->charproc_accum = false;
     code = gx_default_text_restore_state(pte_default);
     if (code < 0)
@@ -3192,7 +3197,6 @@ pdf_text_process(gs_text_enum_t *pte)
                  */
                 gs_show_enum psenum = *(gs_show_enum *)pte_default;
                 gs_state *pgs = (gs_state *)penum->pis;
-                gs_text_enum_procs_t const *save_procs = pte_default->procs;
                 gs_text_enum_procs_t special_procs = *pte_default->procs;
                 void (*save_proc)(gx_device *, gs_matrix *) = pdev->procs.get_initial_matrix;
                 extern_st(st_gs_show_enum);
@@ -3250,8 +3254,10 @@ pdf_text_process(gs_text_enum_t *pte)
                     pte->text.data.chars[pte->index];
 
                 code = install_charproc_accumulator(pdev, pte, pte_default, penum);
-                if (code < 0)
+                if (code < 0) {
+                    pgs->font->FontMatrix = savem;
                     return code;
+                }
 
                 /* We can't capture more than one glyph at a time, so amek this one
                  * otherwise the gs_text_process would try to render all the glyphs
@@ -3283,6 +3289,11 @@ pdf_text_process(gs_text_enum_t *pte)
                 if (code < 0)
                     return code;
 
+                /* complete_charproc will release the text enumerator 'pte_default', we assume
+                 * that we are holding the only reference to it. Note that complete_charproc
+                 * also sets penum->pte_default to 0, so that we don't re-entre this  section of
+                 * code but process the text normally, now that we have captured the glyph description.
+                 */
                 code = complete_charproc(pdev, pte, pte_default, penum, false);
                 if (penum->current_font->FontType == ft_PCL_user_defined)
                 {
@@ -3361,7 +3372,6 @@ pdf_text_process(gs_text_enum_t *pte)
 
                     pdfont->u.simple.s.type3.cached[cdata[pte->index] >> 3] |= 0x80 >> (cdata[pte->index] & 7);
                 }
-                pte_default->procs = save_procs;
                 size = pte->text.size - pte->index;
                 if (code < 0)
                     return code;

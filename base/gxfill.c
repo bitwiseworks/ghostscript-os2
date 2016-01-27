@@ -112,7 +112,7 @@ x_order(const active_line *lp1, const active_line *lp2)
     bool s1;
 
     INCR(order);
-    if (lp1->x_current < lp2->x_current)
+    if (!lp1 || !lp2 || lp1->x_current < lp2->x_current)
         return -1;
     else if (lp1->x_current > lp2->x_current)
         return 1;
@@ -252,6 +252,14 @@ init_line_list(line_list *ll, gs_memory_t * mem)
     ll->local_margin_alloc_count = 0;
     ll->margin_set0.sect = ll->local_section0;
     ll->margin_set1.sect = ll->local_section1;
+
+    ll->x_head.prev = NULL;
+    /* Bug 695234: Initialise the following to pacify valgrind */
+    ll->x_head.start.x = 0;
+    ll->x_head.start.y = 0;
+    ll->x_head.end.x = 0;
+    ll->x_head.end.y = 0;
+
     /* Do not initialize ll->bbox_left, ll->bbox_width - they were set in advance. */
     INCR(fill);
 }
@@ -667,7 +675,11 @@ gx_default_fill_path(gx_device * pdev, const gs_imager_state * pis,
             }
         } else
             vd_disable;
+#endif
+
         code = gx_general_fill_path(pdev, pis, ppath, params, pdevc, pcpath);
+
+#ifndef GS_THREADSAFE
         if (got_dc)
             vd_release_dc;
         vd_restore;
@@ -999,8 +1011,9 @@ scan_contour(line_list *ll, contour_cursor *q)
 #ifdef FILL_ZERO_WIDTH
                     (fo->adjust_below | fo->adjust_above) != 0) {
 #else
+                    (fo->adjust_below + fo->adjust_above >= (fixed_1 - fixed_epsilon) ||
                     fixed2int_pixround(p.pseg->pt.y - fo->adjust_below) <
-                    fixed2int_pixround(p.pseg->pt.y + fo->adjust_above)) {
+                    fixed2int_pixround(p.pseg->pt.y + fo->adjust_above))) {
 #endif
                 /* Add it here to avoid double processing in process_h_segments. */
                 code = add_y_line(p.prev, p.pseg, DIR_HORIZONTAL, ll);
@@ -1269,7 +1282,8 @@ insert_x_new(active_line * alp, line_list *ll)
     alp->prev = prev;
     if (next != 0)
         next->prev = alp;
-    prev->next = alp;
+    if (prev)
+        prev->next = alp;
 }
 
 /* Insert a newly active line in the h list. */
@@ -1613,7 +1627,9 @@ resort_x_line(active_line * alp)
     /* next might be null, if alp was in the correct spot already. */
     if (next)
         next->prev = alp;
-    prev->next = alp;
+    /* prev can be null if the path reaches (beyond) the extent of our coordinate space */
+    if (prev)
+        prev->next = alp;
 }
 
 /* Move active lines by Y. */

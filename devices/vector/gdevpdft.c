@@ -111,8 +111,8 @@ pdf_make_group_dict(gx_device_pdf * pdev, const gs_pdf14trans_params_t * pparams
     if (gstate != NULL && pparams->group_color != UNKNOWN) {
         const gs_color_space *cs = gs_currentcolorspace_inline(gstate);
 
-        code = pdf_color_space_named(pdev, &cs_value, NULL, cs,
-                &pdf_color_space_names, false, NULL, 0);
+        code = pdf_color_space_named(pdev, pis, &cs_value, NULL, cs,
+                &pdf_color_space_names, false, NULL, 0, false);
         if (code < 0)
             return code;
         code = cos_dict_put_c_key(group_dict, "/CS", &cs_value);
@@ -183,6 +183,7 @@ pdf_begin_transparency_group(gs_imager_state * pis, gx_device_pdf * pdev,
     code = pdf_open_page(pdev, PDF_IN_STREAM);
     if (code < 0)
         return code;
+    code = pdf_check_soft_mask(pdev, pis);
     if (pdf_must_put_clip_path(pdev, gstate->clip_path)) {
         code = pdf_put_clip_path(pdev, gstate->clip_path);
         if (code < 0)
@@ -197,6 +198,7 @@ pdf_begin_transparency_group(gs_imager_state * pis, gx_device_pdf * pdev,
         pdev->image_with_SMask |= 1 << ++pdev->FormDepth;
     } else {
         pdf_resource_t *pres, *pres_gstate = NULL;
+        cos_dict_t *pcd = NULL, *pcd_Resources = NULL;
 
         code = pdf_prepare_drawing(pdev, pis, &pres_gstate);
         if (code < 0)
@@ -209,7 +211,18 @@ pdf_begin_transparency_group(gs_imager_state * pis, gx_device_pdf * pdev,
         if (code < 0)
             return code;
         pdev->FormDepth++;
-        return pdf_make_form_dict(pdev, pparams, pis, group_dict, (cos_dict_t *)pres->object);
+        code = pdf_make_form_dict(pdev, pparams, pis, group_dict, (cos_dict_t *)pres->object);
+        if (code < 0)
+            return code;
+
+        /* Create a Resources dictionary and add it to the form dictionary */
+        pcd = cos_stream_dict((cos_stream_t *)pres->object);
+        pcd_Resources = cos_dict_alloc(pdev, "pdf_group(Resources)");
+        if (pcd == NULL || pcd_Resources == NULL)
+            return_error(gs_error_VMerror);
+        code = cos_dict_put_c_key_object(pcd, "/Resources", COS_OBJECT(pcd_Resources));
+        pdev->substream_Resources = pcd_Resources;
+        return code;
     }
     return 0;
 }
@@ -248,7 +261,8 @@ pdf_end_transparency_group(gs_imager_state * pis, gx_device_pdf * pdev)
         sputc(pdev->strm,'/');
         sputs(pdev->strm, (const byte *)pres->rname, strlen(pres->rname), &ignore);
         sputs(pdev->strm, (const byte *)" Do\n", 4, &ignore);
-        return 0;
+        code = pdf_add_resource(pdev, pdev->substream_Resources, "/XObject", pres);
+        return code;
     }
 }
 
@@ -256,6 +270,34 @@ static int
 pdf_begin_transparency_mask(gs_imager_state * pis, gx_device_pdf * pdev,
                                 const gs_pdf14trans_params_t * pparams)
 {
+    if (pparams->subtype == TRANSPARENCY_MASK_None) {
+        int code, id = pis->soft_mask_id;
+        pdf_resource_t *pres = 0L;
+
+        /* reset the soft mask ID. Apparently this is only used by pdfwrite, if we don't
+         * reset it, then the pdf_prepare_drawing code doesn't know that the SMask has
+         * changed, and so doesn't write out the GState
+         */
+        pis->soft_mask_id = 0;
+        code = pdf_prepare_drawing(pdev, pis, &pres);
+        if (code == gs_error_interrupt) {
+            /* Not in an appropriate context, ignore it but restore
+             * the old soft_mask_id. Not sure this is correct, but it works for now.
+             */
+            pis->soft_mask_id = id;
+            /* ignore return code, we don't care about this graphics state as we aren't
+             * emitting it anyway
+             */
+            pdf_end_gstate(pdev, pres);
+            return 0;
+        }
+        if (code < 0)
+            return code;
+        code = pdf_end_gstate(pdev, pres);
+        if (code < 0)
+            return code;
+        return 0;
+    }
     if (pparams->mask_is_image) {
         /* HACK :
             The control comes here when
@@ -363,6 +405,8 @@ gdev_pdf_create_compositor(gx_device *dev,
             case PDF14_PUSH_DEVICE:
                 return 0;
             case PDF14_POP_DEVICE:
+                return 0;
+            case PDF14_ABORT_DEVICE:
                 return 0;
             case PDF14_BEGIN_TRANS_GROUP:
                 return pdf_begin_transparency_group(pis, pdev, params);

@@ -30,20 +30,38 @@
 #include "strmio.h"
 
 #include "gstiffio.h"
+#include "gdevkrnlsclass.h" /* 'standard' built in subclasses, currently First/Last Page and obejct filter */
 
 int
 tiff_open(gx_device *pdev)
 {
-    gx_device_printer * const ppdev = (gx_device_printer *)pdev;
+    gx_device_printer *ppdev = (gx_device_printer *)pdev;
     int code;
+    bool update_procs = false;
 
     /* Use our own warning and error message handlers in libtiff */
     tiff_set_handlers();
+
+    code = install_internal_subclass_devices((gx_device **)&pdev, &update_procs);
+    if (code < 0)
+        return code;
+    /* If we've been subclassed, find the terminal device */
+    while(pdev->child)
+        pdev = pdev->child;
+    ppdev = (gx_device_printer *)pdev;
 
     ppdev->file = NULL;
     code = gdev_prn_allocate_memory(pdev, NULL, 0, 0);
     if (code < 0)
         return code;
+    if (update_procs) {
+        if (pdev->ObjectHandlerPushed) {
+            gx_copy_device_procs(&pdev->parent->procs, &pdev->procs, (gx_device_procs *)&gs_obj_filter_device.procs);
+            pdev = pdev->parent;
+        }
+        if (pdev->PageHandlerPushed)
+            gx_copy_device_procs(&pdev->parent->procs, &pdev->procs, (gx_device_procs *)&gs_flp_device.procs);
+    }
     if (ppdev->OpenOutputFile)
         code = gdev_prn_open_printer_seekable(pdev, 1, true);
     return code;
@@ -339,12 +357,13 @@ int tiff_set_fields_for_printer(gx_device_printer *pdev,
 
     /* Set the ICC profile.  Test to avoid issues with separations and also
        if the color space is set to LAB, we do that as an enumerated type. Do
-       NOT set the profile if the bit depth is less than 8. */
+       NOT set the profile if the bit depth is less than 8 or if fast color
+       was used. */
     if (pdev->color_info.depth >= 8) {
         if (pdev->icc_struct != NULL && pdev->icc_struct->device_profile[0] != NULL) {
             cmm_profile_t *icc_profile = pdev->icc_struct->device_profile[0];
             if (icc_profile->num_comps == pdev->color_info.num_components &&
-                icc_profile->data_cs != gsCIELAB) {
+                icc_profile->data_cs != gsCIELAB && !(pdev->icc_struct->usefastcolor)) {
                 TIFFSetField(tif, TIFFTAG_ICCPROFILE, icc_profile->buffer_size, 
                              icc_profile->buffer);
             }
@@ -515,7 +534,7 @@ int tiff_compression_allowed(uint16 compression, byte depth)
                           compression == COMPRESSION_CCITTFAX4 ||
                           compression == COMPRESSION_LZW ||
                           compression == COMPRESSION_PACKBITS))
-         || (depth == 8 && (compression == COMPRESSION_NONE ||
+           || ((depth == 8 || depth == 16) && (compression == COMPRESSION_NONE ||
                           compression == COMPRESSION_LZW ||
                           compression == COMPRESSION_PACKBITS)));
 

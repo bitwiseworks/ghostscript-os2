@@ -20,17 +20,6 @@
 #include "gdevppla.h"
 #include "gxdevsop.h"
 
-static int
-prn_planar_dev_spec_op(gx_device *pdev, int dev_spec_op,
-                       void *data, int size)
-{
-    gx_device_printer *dev = (gx_device_printer *)pdev;
-
-    if (dev_spec_op == gxdso_is_native_planar)
-        return dev->color_info.depth / dev->color_info.num_components;
-    return gx_default_dev_spec_op(pdev, dev_spec_op, data, size);
-}
-
 /* Set the buf_procs in a printer device to planar mode. */
 int
 gdev_prn_set_procs_planar(gx_device *dev)
@@ -42,7 +31,7 @@ gdev_prn_set_procs_planar(gx_device *dev)
     pdev->printer_procs.buf_procs.size_buf_device =
         gdev_prn_size_buf_planar;
     if (dev_proc(pdev, dev_spec_op) == gx_default_dev_spec_op)
-        set_dev_proc(pdev, dev_spec_op, prn_planar_dev_spec_op);
+        set_dev_proc(pdev, dev_spec_op, gdev_prn_dev_spec_op);
     return 0;
 }
 
@@ -50,8 +39,10 @@ gdev_prn_set_procs_planar(gx_device *dev)
 int
 gdev_prn_open_planar(gx_device *dev, bool upb)
 {
-    if (upb)
+    if (upb) {
         gdev_prn_set_procs_planar(dev);
+        dev->is_planar = 1;
+    }
     return gdev_prn_open(dev);
 }
 
@@ -138,12 +129,15 @@ gdev_prn_size_buf_planar(gx_device_buf_space_t *space, gx_device *target,
         return gx_default_size_buf_device(space, target, render_plane,
                                           height, for_band);
     mdev.color_info = target->color_info;
+    mdev.pad = target->pad;
+    mdev.log2_align_mod = target->log2_align_mod;
+    mdev.is_planar = target->is_planar;
     code = gdev_prn_set_planar(&mdev, target);
     if (code < 0)
         return code;
     if (gdev_mem_bits_size(&mdev, target->width, height, &(space->bits)) < 0)
         return_error(gs_error_VMerror);
     space->line_ptrs = gdev_mem_line_ptrs_size(&mdev, target->width, height);
-    space->raster = bitmap_raster(target->width * mdev.planes[0].depth);
+    space->raster = bitmap_raster_pad_align(target->width * mdev.planes[0].depth, mdev.pad, mdev.log2_align_mod);
     return 0;
 }

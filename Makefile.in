@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2012 Artifex Software, Inc.
+# Copyright (C) 2001-2015 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -36,6 +36,28 @@ PSLIBDIR=@srcdir@/lib
 PSRESDIR=@srcdir@/Resource
 PSGENDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
 PSOBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+
+PCL5SRCDIR=@srcdir@/pcl/pcl
+PCL5GENDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+PCL5OBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+
+PXLSRCDIR=@srcdir@/pcl/pxl
+PXLGENDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+PXLOBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+
+PLSRCDIR=@srcdir@/pcl/pl
+PLGENDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+PLOBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+
+XPSSRCDIR=@srcdir@/xps
+XPSGENDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+XPSOBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+
+GPDLSRCDIR=@srcdir@/gpdl
+GPDLGENDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+GPDLOBJDIR=./$(BUILDDIRPREFIX)@OBJDIR_BSDMAKE_WORKAROUND@
+
+
 CONTRIBDIR=@srcdir@/contrib
 
 # Do not edit the next group of lines.
@@ -142,14 +164,21 @@ GENOPT=
 # -DHAVE_SSE2
 #       use sse2 intrinsics
 
-CAPOPT= @HAVE_MKSTEMP@ @HAVE_FILE64@ @HAVE_FSEEKO@ @HAVE_MKSTEMP64@ @HAVE_FONTCONFIG@ @HAVE_LIBIDN@ @HAVE_SETLOCALE@ @HAVE_SSE2@ @HAVE_DBUS@ @HAVE_BSWAP32@ @HAVE_BYTESWAP_H@ @HAVE_STRERROR@
+CAPOPT= @HAVE_MKSTEMP@ @HAVE_FILE64@ @HAVE_FSEEKO@ @HAVE_MKSTEMP64@ @HAVE_FONTCONFIG@ @HAVE_LIBIDN@ @HAVE_SETLOCALE@ @HAVE_SSE2@ @HAVE_DBUS@ @HAVE_BSWAP32@ @HAVE_BYTESWAP_H@ @HAVE_STRERROR@ @HAVE_PREAD_PWRITE@ @RECURSIVE_MUTEXATTR@
 
 # Define the name of the executable file.
 
-GS=@GS@@EXEEXT@
+GS=@GS@
 GS_SO_BASE=@GS@
+
+PCL=@PCL@
+XPS=@XPS@
+GPDL=@GPDL@
+
 XE=@EXEEXT@
 XEAUX=@EXEEXT@
+
+PCL_XPS_TARGETS=@PCL_TARGET@ @XPS_TARGET@ @GPDL_TARGET@
 
 # Define the directories for debugging and profiling binaries, relative to
 # the standard binaries.
@@ -169,9 +198,11 @@ FT_CFLAGS=@FT_CFLAGS@
 FT_LIBS=@FT_LIBS@
 FT_CONFIG_SYSTEM_ZLIB=@FT_SYS_ZLIB@
 
-# Define whether to compile in UFST. Note that freetype will/must be disabled.
+# Define whether to compile in UFST.
 # FAPI/UFST depends on UFST_BRIDGE being undefined - hence the construct below.
 # (i.e. use "UFST_BRIDGE=1" or *not to define UFST_BRIDGE to anything*)
+# As UFST is not used for fonts embedded in input files, we should still have
+# Freetype enabled, above.
 @INSERT_UFST_BRIDGE_EQUAL_ONE@
 UFST_ROOT=@UFST_ROOT@
 UFST_LIB_EXT=@UFST_LIB_EXT@
@@ -267,14 +298,25 @@ JPX_CFLAGS=@JPX_AUTOCONF_CFLAGS@
 
 # options for lcms color management library
 SHARE_LCMS=@SHARELCMS@
-LCMSSRCDIR=@LCMSDIR@
 LCMS2SRCDIR=@LCMS2DIR@
-LCMS_CFLAGS=@LCMS_ENDIAN@
-LCMS2_CFLAGS=@LCMS2_ENDIAN@ @SQRTF_SUBST@
+LCMS2_CFLAGS=-DSHARE_LCMS=$(SHARE_LCMS) @LCMS2_ENDIAN@ @SQRTF_SUBST@  @LCMS2_PTR_ALIGNMENT@
 
 # Which CMS are we using?
 # Options are currently lcms or lcms2
 WHICH_CMS=@WHICHLCMS@
+
+
+EXPATSRCDIR=@SRCDIR@/expat
+EXPAT_CFLAGS=-DHAVE_MEMMOVE
+EXPATGENDIR=$(GLGENDIR)
+EXPATOBJDIR=$(GLOBJDIR)
+EXPATINCDIR = $(EXPATSRCDIR)$(D)lib
+SHARE_EXPAT=0
+
+JPEGXR_SRCDIR=@SRCDIR@/jpegxr
+SHARE_JPEGXR=0
+JPEGXR_GENDIR=$(GLGENDIR)
+JPEGXR_OBJDIR=$(GLOBJDIR)
 
 # Define the directory where the ijs source is stored,
 # and the process forking method to use for the server.
@@ -286,7 +328,6 @@ IJSSRCDIR=@IJSDIR@
 IJSEXECTYPE=unix
 
 # Define install location for 'cups' device/filter support
-CUPSCFLAGS=@CUPSCFLAGS@
 CUPSLIBS=@CUPSLIBS@
 CUPSLIBDIRS=@CUPSLIBDIRS@
 CUPSSERVERBIN=@CUPSSERVERBIN@
@@ -305,8 +346,7 @@ LCUPSI_NAME=cupsimage
 LCUPSISRCDIR=@CUPS_DIR@
 CUPS_CC=$(CC)
 
-
-TRIOSRCDIR=@srcdir@/trio
+CUPSCFLAGS=@CUPSCFLAGS@ -DSHARE_LCUPS=$(SHARE_LCUPS) -DSHARE_LCUPSI=$(SHARE_LCUPSI)
 
 # Define how to build the library archives.  (These are not used in any
 # standard configuration.)
@@ -361,7 +401,7 @@ FONTCONFIG_LIBS=@FONTCONFIG_LIBS@
 DBUS_CFLAGS=@DBUS_CFLAGS@
 DBUS_LIBS=@DBUS_LIBS@
 
-# defines from autoconf; note that we don't use these at present.
+# defines from autoconf; note that we don't use all of these at present.
 ACDEFS=@DEFS@
 
 CFLAGS=$(CFLAGS_STANDARD) $(GCFLAGS) $(AC_CFLAGS) $(XCFLAGS)
@@ -456,11 +496,30 @@ SO_LIB_VERSION_SEPARATOR=@SO_LIB_VERSION_SEPARATOR@
 
 # Choose the language feature(s) to include.  See gs.mak for details.
 
-FEATURE_DEVS=$(PSD)psl3.dev $(PSD)pdf.dev $(PSD)dpsnext.dev $(PSD)ttfont.dev $(PSD)epsf.dev $(GLD)pipe.dev $(GLD)gsnogc.dev $(GLD)htxlib.dev @JBIG2DEVS@ @JPXDEVS@ @UTF8DEVS@
+# if it's included, $(PSD)gs_pdfwr.dev should always be one of the last in the list
+PSI_FEATURE_DEVS=$(PSD)psl3.dev $(PSD)pdf.dev $(PSD)dpsnext.dev $(PSD)epsf.dev $(PSD)ttfont.dev \
+                 @UTF8DEVS@ $(PSD)fapi_ps.dev $(PSD)jpx.dev $(PSD)rasterop.dev $(PSD)jbig2.dev $(PSD)gs_pdfwr.dev
+
+
+PCL_FEATURE_DEVS=$(PLOBJDIR)/pl.dev $(PLOBJDIR)/pjl.dev $(PXLOBJDIR)/pxl.dev $(PCL5OBJDIR)/pcl5c.dev \
+             $(PCL5OBJDIR)/hpgl2c.dev
+
+XPS_FEATURE_DEVS=$(XPSOBJDIR)/pl.dev $(XPSOBJDIR)/xps.dev
+
+FEATURE_DEVS=$(GLD)pipe.dev $(GLD)gsnogc.dev $(GLD)htxlib.dev $(GLD)psl3lib.dev $(GLD)psl2lib.dev \
+             $(GLD)dps2lib.dev $(GLD)path1lib.dev $(GLD)patlib.dev $(GLD)psl2cs.dev $(GLD)rld.dev $(GLD)gxfapiu$(UFST_BRIDGE).dev\
+             $(GLD)ttflib.dev  $(GLD)cielib.dev $(GLD)pipe.dev $(GLD)htxlib.dev $(GLD)sdctd.dev $(GLD)libpng.dev\
+	     $(GLD)seprlib.dev $(GLD)translib.dev $(GLD)cidlib.dev $(GLD)psf0lib.dev $(GLD)psf1lib.dev\
+             $(GLD)psf2lib.dev $(GLD)lzwd.dev $(GLD)sicclib.dev \
+             $(GLD)sjbig2.dev $(GLD)sjpx.dev $(GLD)ramfs.dev
+
+
+
+
 #FEATURE_DEVS=$(PSD)psl3.dev $(PSD)pdf.dev
 #FEATURE_DEVS=$(PSD)psl3.dev $(PSD)pdf.dev $(PSD)dpsnext.dev $(PSD)ttfont.dev $(PSD)rasterop.dev $(GLD)pipe.dev
 # The following is strictly for testing.
-FEATURE_DEVS_ALL=$(PSD)psl3.dev $(PSD)pdf.dev $(PSD)dpsnext.dev $(PSD)ttfont.dev $(PSD)rasterop.dev $(PSD)double.dev $(PSD)trapping.dev $(PSD)stocht.dev $(GLD)pipe.dev $(GLD)gsnogc.dev $(GLD)htxlib.dev @JBIG2DEVS@ @JPXDEVS@ @UTF8DEVS@
+FEATURE_DEVS_ALL=$(PSD)psl3.dev $(PSD)pdf.dev $(PSD)dpsnext.dev $(PSD)ttfont.dev $(PSD)rasterop.dev $(PSD)double.dev $(PSD)trapping.dev $(PSD)stocht.dev $(GLD)pipe.dev $(GLD)gsnogc.dev $(GLD)htxlib.dev @JBIG2DEVS@ @JPXDEVS@ @UTF8DEVS@ $(GLD)ramfs.dev
 #FEATURE_DEVS=$(FEATURE_DEVS_ALL)
 
 # The list of resources to be included in the %rom% file system.
@@ -517,14 +576,14 @@ DISPLAY_DEV=$(DD)bbox.dev
 #DEVICE_DEVS13=$(DD)pngmono.dev $(DD)pnggray.dev $(DD)png16.dev $(DD)png256.dev $(DD)png16m.dev
 #DEVICE_DEVS13=@PNGDEVS@
 #DEVICE_DEVS14=$(DD)jpeg.dev $(DD)jpeggray.dev
-#DEVICE_DEVS15=$(DD)pdfwrite.dev $(DD)ps2write.dev $(DD)epswrite.dev $(DD)txtwrite.dev $(DD)pxlmono.dev $(DD)pxlcolor.dev
+#DEVICE_DEVS15=$(DD)pdfwrite.dev $(DD)ps2write.dev $(DD)eps2write.dev $(DD)txtwrite.dev $(DD)pxlmono.dev $(DD)pxlcolor.dev
 #DEVICE_DEVS16=$(DD)bbox.dev
 
 #DEVICE_DEVS17=
 #DEVICE_DEVS18=
 #DEVICE_DEVS19=
 #DEVICE_DEVS20=$(DD)cljet5.dev $(DD)cljet5c.dev
-#DEVICE_DEVS21=$(DD)spotcmyk.dev $(DD)devicen.dev $(DD)xcf.dev $(DD)psdcmyk.dev $(DD)psdrgb.dev
+#DEVICE_DEVS21=$(DD)spotcmyk.dev $(DD)devicen.dev $(DD)xcf.dev $(DD)psdcmyk.dev $(DD)psdrgb.dev $(DD)psdcmykog.dev $(DD)fpng.dev
 DEVICE_DEVS=$(DISPLAY_DEV) @X11_DEVS@
 DEVICE_DEVS1=@F_DEVS@
 DEVICE_DEVS2=@P_DEVS@
@@ -533,7 +592,7 @@ DEVICE_DEVS4=@IJS_DEVS@
 DEVICE_DEVS5=@OMNIDEVS@
 DEVICE_DEVS6=@PNG_DEVS@
 DEVICE_DEVS7=@JBIG2_DEVS@
-DEVICE_DEVS8=@SVG_DEVS@
+DEVICE_DEVS8=
 DEVICE_DEVS9=@XPS_DEVS@
 DEVICE_DEVS10=
 DEVICE_DEVS11=
@@ -559,6 +618,10 @@ GS_SHARED_OBJS=@DYNAMIC_DEVS@
 
 MAKEFILE=Makefile
 TOP_MAKEFILES=$(MAKEFILE) $(GLSRCDIR)/unixhead.mak
+
+# for use in unix-dll.mak and unix-end.mak
+# if you rename the Makefile, you *must* also set this to the new name
+SUB_MAKE_OPTION=@SUB_MAKE_OPTION@
 
 # Define the auxiliary program dependency. We don't use this.
 
@@ -592,11 +655,23 @@ MAKEDIRSTOP=
 INSTALL_CONTRIB=@INSTALL_CONTRIB@
 include $(GLSRCDIR)/unixhead.mak
 include $(GLSRCDIR)/gs.mak
-include $(GLSRCDIR)/trio.mak
-# psromfs.mak must precede lib.mak
+# *romfs.mak must precede lib.mak
+include @PLROMFS_MAK@   # plromfs.mak
+include @XPSROMFS_MAK@ # xpsromfs.mak
+
 include $(PSSRCDIR)/psromfs.mak
 include $(GLSRCDIR)/lib.mak
 include $(PSSRCDIR)/int.mak
+
+include @PL_MAK@ # pl.mak
+include @PCL_MAK@ # pcl.mak
+include @PCL_TOP_MAK@ # pcl_top.mak
+include @PXL_MAK@ # pxl.mak
+
+include @XPS_MAK@ # xps.mak
+
+include @GPDL_MAK@ # gpdl.mak
+
 include $(GLSRCDIR)/freetype.mak
 include @FAPIUFST_MAK@
 include $(GLSRCDIR)/jpeg.mak
@@ -608,6 +683,10 @@ include $(GLSRCDIR)/jbig2.mak
 include $(GLSRCDIR)/ldf_jb2.mak
 include $(GLSRCDIR)/lwf_jp2.mak
 include $(GLSRCDIR)/openjpeg.mak
+
+include $(GLSRCDIR)/jpegxr.mak
+include $(GLSRCDIR)/expat.mak
+
 include $(GLSRCDIR)/$(WHICH_CMS).mak
 include $(GLSRCDIR)/ijs.mak
 @LCUPSINCLUDE@

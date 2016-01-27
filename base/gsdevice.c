@@ -56,10 +56,43 @@ gx_device_finalize(const gs_memory_t *cmem, void *vptr)
     }
     if (dev->finalize)
         dev->finalize(dev);
+
+    /* Deal with subclassed devices. Ordinarily these should not be a problem, we
+     * will never see them, but if ths is a end of job restore we can end up
+     * with the 'child' device(s) being freed before their parents. We need to make
+     * sure we don't leave any dangling pointers in that case.
+     */
+    if (dev->child)
+        dev->child->parent = dev->parent;
+    if (dev->parent)
+        dev->parent->child = dev->child;
+
     discard(gs_closedevice(dev));
     if (dev->stype_is_dynamic)
         gs_free_const_object(dev->memory->non_gc_memory, dev->stype,
                              "gx_device_finalize");
+
+#ifdef DEBUG
+    /* Slightly ugly hack: because the garbage collector makes no promises
+     * about the order objects can be garbage collected, it is possible for
+     * a forwarding device to remain in existence (awaiting garbage collection
+     * itself) after it's target marked as free memory by the garbage collector.
+     * In such a case, the normal reference counting is fine (since the garbage
+     * collector leaves the object contents alone until is has completed its
+     * sweep), but the reference counting debugging attempts to access the
+     * memory header to output type information - and the header has been
+     * overwritten by the garbage collector, causing a crash.
+     * Setting the rc memory to NULL here should be safe, since the memory
+     * is now in the hands of the garbage collector, and means we can check in
+     * debugging code to ensure we don't try to use values that not longer exist
+     * in the memmory header.
+     * In the non-gc case, finalize is the very last thing to happen before the
+     * memory is actually freed, so the rc.memory pointer is moot.
+     * See rc_object_type_name()
+     */
+    if (gs_debug_c('^'))
+        dev->rc.memory = NULL;
+#endif
 }
 
 /* "Free" a device locally allocated on the stack, by finalizing it. */
@@ -70,6 +103,17 @@ gx_device_free_local(gx_device *dev)
 }
 
 /* GC procedures */
+static
+ENUM_PTRS_WITH(device_enum_ptrs, gx_device *dev) return 0;
+case 0:ENUM_RETURN(gx_device_enum_ptr(dev->parent));
+case 1:ENUM_RETURN(gx_device_enum_ptr(dev->child));
+ENUM_PTRS_END
+static RELOC_PTRS_WITH(device_reloc_ptrs, gx_device *dev)
+{
+    dev->parent = gx_device_reloc_ptr(dev->parent, gcst);
+    dev->child = gx_device_reloc_ptr(dev->child, gcst);
+}
+RELOC_PTRS_END
 static
 ENUM_PTRS_WITH(device_forward_enum_ptrs, gx_device_forward *fdev) return 0;
 case 0: ENUM_RETURN(gx_device_enum_ptr(fdev->target));
@@ -244,7 +288,7 @@ gs_getdevice(int index)
 
 /* Get the default device from the known device list */
 const gx_device *
-gs_getdefaultdevice(void)
+gs_getdefaultlibdevice(gs_memory_t *mem)
 {
     const gx_device *const *list;
     int count = gs_lib_device_list(&list, NULL);
@@ -252,8 +296,15 @@ gs_getdefaultdevice(void)
     int i;
 
     /* Search the compiled in device list for a known device name */
-    name = gs_dev_defaults;
-    fin = name + strlen(name);
+    /* In the case the lib ctx hasn't been initialised */
+    if (mem && mem->gs_lib_ctx && mem->gs_lib_ctx->default_device_list) {
+        name = mem->gs_lib_ctx->default_device_list;
+        fin = name + strlen(name);
+    }
+    else {
+        name = gs_dev_defaults;
+        fin = name + strlen(name);
+    }
 
     /* iterate through each name in the string */
     while (name < fin) {
@@ -277,6 +328,12 @@ gs_getdefaultdevice(void)
 
     /* Fall back to the first device in the list. */
     return gs_getdevice(0);
+}
+
+const gx_device *
+gs_getdefaultdevice(void)
+{
+    return gs_getdefaultlibdevice(NULL);
 }
 
 /* Fill in the GC structure descriptor for a device. */
@@ -563,6 +620,9 @@ gx_device_init_on_stack(gx_device * dev, const gx_device * proto,
     memcpy(dev, proto, proto->params_size);
     dev->memory = mem;
     dev->retained = 0;
+    dev->pad = proto->pad;
+    dev->log2_align_mod = proto->log2_align_mod;
+    dev->is_planar = proto->is_planar;
     rc_init(dev, NULL, 0);
 }
 
@@ -671,14 +731,64 @@ gx_set_device_only(gs_state * pgs, gx_device * dev)
     rc_assign(pgs->device, dev, "gx_set_device_only");
 }
 
-/* Compute the size of one scan line for a device, */
-/* with or without padding to a word boundary. */
+/* Compute the size of one scan line for a device. */
+/* If pad = 0 return the line width in bytes. If pad = 1,
+ * return the actual raster value (the number of bytes to offset from
+ * a byte on one scanline to the same byte on the scanline below.) */
 uint
 gx_device_raster(const gx_device * dev, bool pad)
 {
     ulong bits = (ulong) dev->width * dev->color_info.depth;
+    ulong raster;
+    int l2align;
 
-    return (pad ? bitmap_raster(bits) : (uint) ((bits + 7) >> 3));
+    if (dev->is_planar)
+        bits /= dev->color_info.num_components;
+
+    raster = (uint)((bits + 7) >> 3);
+    if (!pad)
+        return raster;
+    if (dev->pad > 0)
+        raster += dev->pad;
+    l2align = dev->log2_align_mod;
+    if (l2align < log2_align_bitmap_mod)
+        l2align = log2_align_bitmap_mod;
+    return (uint)(((bits + (8 << l2align) - 1) >> (l2align + 3)) << l2align);
+}
+
+uint
+gx_device_raster_chunky(const gx_device * dev, bool pad)
+{
+    ulong bits = (ulong) dev->width * dev->color_info.depth;
+    ulong raster;
+    int l2align;
+
+    raster = (uint)((bits + 7) >> 3);
+    if (!pad)
+        return raster;
+    if (dev->pad > 0)
+        raster += dev->pad;
+    l2align = dev->log2_align_mod;
+    if (l2align < log2_align_bitmap_mod)
+        l2align = log2_align_bitmap_mod;
+    return (uint)(((bits + (8 << l2align) - 1) >> (l2align + 3)) << l2align);
+}
+uint
+gx_device_raster_plane(const gx_device * dev, const gx_render_plane_t *render_plane)
+{
+    ulong bpc = (render_plane && render_plane->index >= 0 ?
+        render_plane->depth : dev->color_info.depth/(dev->is_planar ? dev->color_info.num_components : 1));
+    ulong bits = (ulong) dev->width * bpc;
+    ulong raster;
+    int l2align;
+
+    raster = (uint)((bits + 7) >> 3);
+    if (dev->pad > 0)
+        raster += dev->pad;
+    l2align = dev->log2_align_mod;
+    if (l2align < log2_align_bitmap_mod)
+        l2align = log2_align_bitmap_mod;
+    return (uint)(((bits + (8 << l2align) - 1) >> (l2align + 3)) << l2align);
 }
 
 /* Adjust the resolution for devices that only have a fixed set of */
@@ -722,8 +832,8 @@ static void
 gx_device_set_hwsize_from_media(gx_device *dev)
 {
     int rot = (dev->LeadingEdge & 1);
-    floatp rot_media_x = rot ? dev->MediaSize[1] : dev->MediaSize[0];
-    floatp rot_media_y = rot ? dev->MediaSize[0] : dev->MediaSize[1];
+    double rot_media_x = rot ? dev->MediaSize[1] : dev->MediaSize[0];
+    double rot_media_y = rot ? dev->MediaSize[0] : dev->MediaSize[1];
 
     dev->width = (int)(rot_media_x * dev->HWResolution[0] / 72.0 + 0.5);
     dev->height = (int)(rot_media_y * dev->HWResolution[1] / 72.0 + 0.5);
@@ -733,8 +843,8 @@ static void
 gx_device_set_media_from_hwsize(gx_device *dev)
 {
     int rot = (dev->LeadingEdge & 1);
-    floatp x = dev->width * 72.0 / dev->HWResolution[0];
-    floatp y = dev->height * 72.0 / dev->HWResolution[1];
+    double x = dev->width * 72.0 / dev->HWResolution[0];
+    double y = dev->height * 72.0 / dev->HWResolution[1];
 
     if (rot) {
         dev->MediaSize[1] = x;
@@ -756,7 +866,7 @@ gx_device_set_width_height(gx_device * dev, int width, int height)
 
 /* Set the resolution, updating width and height to remain consistent. */
 void
-gx_device_set_resolution(gx_device * dev, floatp x_dpi, floatp y_dpi)
+gx_device_set_resolution(gx_device * dev, double x_dpi, double y_dpi)
 {
     dev->HWResolution[0] = x_dpi;
     dev->HWResolution[1] = y_dpi;
@@ -765,7 +875,7 @@ gx_device_set_resolution(gx_device * dev, floatp x_dpi, floatp y_dpi)
 
 /* Set the MediaSize, updating width and height to remain consistent. */
 void
-gx_device_set_media_size(gx_device * dev, floatp media_width, floatp media_height)
+gx_device_set_media_size(gx_device * dev, double media_width, double media_height)
 {
     dev->MediaSize[0] = media_width;
     dev->MediaSize[1] = media_height;
@@ -1001,6 +1111,57 @@ gx_outputfile_is_separate_pages(const char *fname, gs_memory_t *memory)
     return (code >= 0 && fmt != 0);
 }
 
+/* Delete the current output file for a device (file must be closed first) */
+int gx_device_delete_output_file(const gx_device * dev, const char *fname)
+{
+    gs_parsed_file_name_t parsed;
+    const char *fmt;
+    char *pfname = (char *)gs_alloc_bytes(dev->memory, gp_file_name_sizeof, "gx_device_delete_output_file(pfname)");
+    int code;
+
+    if (pfname == NULL) {
+        code = gs_note_error(gs_error_VMerror);
+	goto done;
+    }
+    
+    code = gx_parse_output_file_name(&parsed, &fmt, fname, strlen(fname),
+                                         dev->memory);
+    if (code < 0) {
+        goto done;
+    }
+
+    if (parsed.iodev && !strcmp(parsed.iodev->dname, "%stdout%"))
+        goto done;
+
+    if (fmt) {						/* filename includes "%nnd" */
+        long count1 = dev->PageCount + 1;
+
+        while (*fmt != 'l' && *fmt != '%')
+            --fmt;
+        if (*fmt == 'l')
+            gs_sprintf(pfname, parsed.fname, count1);
+        else
+            gs_sprintf(pfname, parsed.fname, (int)count1);
+    } else if (parsed.len && strchr(parsed.fname, '%'))	/* filename with "%%" but no "%nnd" */
+        gs_sprintf(pfname, parsed.fname);
+    else
+        pfname[0] = 0; /* 0 to use "fname", not "pfname" */
+    if (pfname[0]) {
+        parsed.fname = pfname;
+        parsed.len = strlen(parsed.fname);
+    }
+    if (parsed.iodev)
+        code = parsed.iodev->procs.delete_file((gx_io_device *)(&parsed.iodev), (const char *)parsed.fname);
+    else
+        code = gs_note_error(gs_error_invalidfileaccess);
+
+done:
+    if (pfname != NULL)
+        gs_free_object(dev->memory, pfname, "gx_device_delete_output_file(pfname)");
+
+    return(code);
+}
+
 /* Open the output file for a device. */
 int
 gx_device_open_output_file(const gx_device * dev, char *fname,
@@ -1008,18 +1169,33 @@ gx_device_open_output_file(const gx_device * dev, char *fname,
 {
     gs_parsed_file_name_t parsed;
     const char *fmt;
-    char pfname[gp_file_name_sizeof];
-    int code = gx_parse_output_file_name(&parsed, &fmt, fname, strlen(fname),
-                                         dev->memory);
+    char *pfname = (char *)gs_alloc_bytes(dev->memory, gp_file_name_sizeof, "gx_device_open_output_file(pfname)");
+    int code;
+    
+    if (pfname == NULL) {
+        code = gs_note_error(gs_error_VMerror);
+	goto done;
+     }
 
-    if (code < 0)
-        return code;
+    if (strlen(fname) == 0) {
+        code = gs_note_error(gs_error_undefinedfilename);
+        emprintf1(dev->memory, "Device '%s' requires an output file but no file was specified.\n", dev->dname);
+        goto done;
+    }
+    code = gx_parse_output_file_name(&parsed, &fmt, fname, strlen(fname), dev->memory);
+    if (code < 0) {
+        goto done;
+    }
+
     if (parsed.iodev && !strcmp(parsed.iodev->dname, "%stdout%")) {
-        if (parsed.fname)
-            return_error(gs_error_undefinedfilename);
+        if (parsed.fname) {
+            code = gs_note_error(gs_error_undefinedfilename);
+	    goto done;
+	}
         *pfile = dev->memory->gs_lib_ctx->fstdout;
         /* Force stdout to binary. */
-        return gp_setmode_binary(*pfile, true);
+        code = gp_setmode_binary(*pfile, true);
+	goto done;
     } else if (parsed.iodev && !strcmp(parsed.iodev->dname, "%pipe%")) {
         positionable = false;
     }
@@ -1043,8 +1219,10 @@ gx_device_open_output_file(const gx_device * dev, char *fname,
     if (positionable || (parsed.iodev && parsed.iodev != iodev_default(dev->memory))) {
         char fmode[4];
 
-        if (!parsed.fname)
-            return_error(gs_error_undefinedfilename);
+        if (!parsed.fname) {
+            code = gs_note_error(gs_error_undefinedfilename);
+	    goto done;
+	}
         strcpy(fmode, gp_fmode_wb);
         if (positionable)
             strcat(fmode, "+");
@@ -1054,15 +1232,21 @@ gx_device_open_output_file(const gx_device * dev, char *fname,
             emprintf1(dev->memory,
                       "**** Could not open the file %s .\n",
                       parsed.fname);
-        return code;
     }
-    *pfile = gp_open_printer(dev->memory, (pfname[0] ? pfname : fname), binary);
-    if (*pfile)
-        return 0;
-    emprintf1(dev->memory,
-              "**** Could not open the file %s .\n",
-              (pfname[0] ? pfname : fname));
-    return_error(gs_error_invalidfileaccess);
+    else {
+        *pfile = gp_open_printer(dev->memory, (pfname[0] ? pfname : fname), binary);
+        if (!(*pfile)) {
+            emprintf1(dev->memory, "**** Could not open the file '%s'.\n", (pfname[0] ? pfname : fname));
+
+            code = gs_note_error(gs_error_invalidfileaccess);
+        }
+    }
+
+done:
+    if (pfname != NULL)
+        gs_free_object(dev->memory, pfname, "gx_device_open_output_file(pfname)");
+
+    return(code);
 }
 
 /* Close the output file for a device. */

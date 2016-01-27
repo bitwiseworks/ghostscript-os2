@@ -516,8 +516,7 @@ convert between double and single precision.
 <li>Don't declare parameters as being of type <code>float</code>,
 <code>short</code>, or <code>char</code>.  If you do this and forget
 to include the prototype at a call site, ANSI compilers will generate
-incompatible calling sequences.  Use <code>floatp</code> (a synonym for
-<code>double</code>, mnemonic for "float parameter") instead of
+incompatible calling sequences.  Use <code>double</code> instead of
 <code>float</code>, and use <code>int</code> or <code>uint</code>
 instead of <code>short</code> or <code>char</code>.
 
@@ -617,13 +616,6 @@ In addition, the use of <code>byte *</code> indicates a
 Ghostscript-style string, with explicit length given separately, as
 opposed to a null terminated C-style string, which is <code>char
 *</code>.
-
-<dt><code>floatp</code>
-
-<dd>This is a synonym for <code>double</code>.  It should be used for,
-and only for, procedure parameters that would otherwise be
-<code>float</code>.  (As noted above, procedure parameters should not be
-declared as <code>float</code>.)
 
 <dt><code>bits8, bits16, bits32</code>
 
@@ -1578,7 +1570,7 @@ or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
 San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
 
 <p>
-<small>Ghostscript version 9.10, 30 August 2013
+<small>Ghostscript version 9.18, 5 October 2015
 
 <!-- [3.0 end visible trailer] ============================================= -->
 

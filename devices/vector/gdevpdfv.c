@@ -62,7 +62,7 @@ extern const gx_device_color_type_t gx_dc_pattern2;
 
 /* Write a matrix parameter. */
 static int
-cos_dict_put_matrix(cos_dict_t *pscd, const char *key, const gs_matrix *pmat)
+cos_dict_put_matrix(gx_device_pdf *pdev, cos_dict_t *pscd, const char *key, const gs_matrix *pmat)
 {
     float matrix[6];
 
@@ -72,7 +72,7 @@ cos_dict_put_matrix(cos_dict_t *pscd, const char *key, const gs_matrix *pmat)
     matrix[3] = pmat->yy;
     matrix[4] = pmat->tx;
     matrix[5] = pmat->ty;
-    return cos_dict_put_c_key_floats(pscd, key, matrix, 6);
+    return cos_dict_put_c_key_floats(pdev, pscd, key, matrix, 6);
 }
 
 /* ---------------- PatternType 1 colors ---------------- */
@@ -191,7 +191,7 @@ pdf_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
         (code = cos_dict_put_c_key_object(pcd, "/Resources",
                                           COS_OBJECT(pcd_Resources))) < 0 ||
         (code = cos_dict_put_c_strings(pcd, "/BBox", "[0 0 1 1]")) < 0 ||
-        (code = cos_dict_put_matrix(pcd, "/Matrix", &smat)) < 0 ||
+        (code = cos_dict_put_matrix(pdev, pcd, "/Matrix", &smat)) < 0 ||
         (code = cos_dict_put_c_key_real(pcd, "/XStep", step.x / btile->rep_width)) < 0 ||
         (code = cos_dict_put_c_key_real(pcd, "/YStep", step.y / btile->rep_height)) < 0
         ) {
@@ -202,7 +202,7 @@ pdf_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
         char buf[MAX_REF_CHARS + 6 + 1]; /* +6 for /R# Do\n */
 
         gs_sprintf(buf, "/R%ld Do\n", pcs_image->id);
-        cos_stream_add_bytes(pcos, (const byte *)buf, strlen(buf));
+        cos_stream_add_bytes(pdev, pcos, (const byte *)buf, strlen(buf));
     }
 
     return 0;
@@ -270,9 +270,9 @@ pdf_store_pattern1_params(gx_device_pdf *pdev, pdf_resource_t *pres,
     if (code >= 0)
         code = cos_dict_put_c_key_int(pcd, "/TilingType", t->TilingType);
     if (code >= 0)
-        code = cos_dict_put_c_key_floats(pcd, "/BBox", bbox, 4);
+        code = cos_dict_put_c_key_floats(pdev, pcd, "/BBox", bbox, 4);
     if (code >= 0)
-        code = cos_dict_put_matrix(pcd, "/Matrix", &smat);
+        code = cos_dict_put_matrix(pdev, pcd, "/Matrix", &smat);
     if (code >= 0)
         code = cos_dict_put_c_key_real(pcd, "/XStep", t->XStep);
     if (code >= 0)
@@ -325,19 +325,19 @@ int
 pdf_put_uncolored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
                           const gs_color_space *pcs,
                           const psdf_set_color_commands_t *ppscc,
-                          bool have_pattern_streams, pdf_resource_t **ppres)
+                          const gs_imager_state * pis, pdf_resource_t **ppres)
 {
     const gx_color_tile *m_tile = pdc->mask.m_tile;
     gx_drawing_color dc_pure;
 
-    if (!have_pattern_streams && m_tile == 0) {
+    if (!pis->have_pattern_streams && m_tile == 0) {
         /*
          * If m_tile == 0, this uncolored Pattern is all 1's,
          * equivalent to a pure color.
          */
         *ppres = 0;
         set_nonclient_dev_color(&dc_pure, gx_dc_pure_color(pdc));
-        return psdf_set_color((gx_device_vector *)pdev, &dc_pure, ppscc);
+        return psdf_set_color((gx_device_vector *)pdev, &dc_pure, ppscc, pdev->UseOldColor);
     } else {
         cos_value_t v;
         stream *s = pdev->strm;
@@ -347,14 +347,14 @@ pdf_put_uncolored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
 
         if (!tile_size_ok(pdev, NULL, m_tile))
             return_error(gs_error_limitcheck);
-        if (!have_pattern_streams) {
+        if (!pis->have_pattern_streams) {
             if ((code = pdf_cs_Pattern_uncolored(pdev, &v)) < 0 ||
                 (code = pdf_put_pattern_mask(pdev, m_tile, &pcs_image)) < 0 ||
                 (code = pdf_pattern(pdev, pdc, NULL, m_tile, pcs_image, ppres)) < 0
                 )
                 return code;
         } else {
-            code = pdf_cs_Pattern_uncolored_hl(pdev, pcs, &v);
+            code = pdf_cs_Pattern_uncolored_hl(pdev, pcs, &v, pis);
             if (code < 0)
                 return code;
             *ppres = pdf_find_resource_by_gs_id(pdev, resourcePattern, pdc->mask.id);
@@ -373,10 +373,10 @@ pdf_put_uncolored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
         }
         cos_value_write(&v, pdev);
         pprints1(s, " %s ", ppscc->setcolorspace);
-        if (have_pattern_streams)
+        if (pis->have_pattern_streams)
             return 0;
         set_nonclient_dev_color(&dc_pure, gx_dc_pure_color(pdc));
-        return psdf_set_color((gx_device_vector *)pdev, &dc_pure, &no_scc);
+        return psdf_set_color((gx_device_vector *)pdev, &dc_pure, &no_scc, pdev->UseOldColor);
     }
 }
 
@@ -384,7 +384,7 @@ int
 pdf_put_colored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
                         const gs_color_space *pcs,
                         const psdf_set_color_commands_t *ppscc,
-                        bool have_pattern_streams, pdf_resource_t **ppres)
+                        const gs_imager_state * pis, pdf_resource_t **ppres)
 {
     const gx_color_tile *p_tile = pdc->colors.pattern.p_tile;
     gs_color_space *pcs_Device;
@@ -394,9 +394,14 @@ pdf_put_colored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
     gs_image1_t image;
     const gx_color_tile *m_tile = NULL;
     pdf_image_writer writer;
-    int w = p_tile->tbits.rep_width, h = p_tile->tbits.rep_height;
+    int w = 0, h = 0;
 
-    if (!have_pattern_streams) {
+    if (p_tile) {
+        w = p_tile->tbits.rep_width;
+        h = p_tile->tbits.rep_height;
+    }
+
+    if (!pis->have_pattern_streams) {
         /*
          * NOTE: We assume here that the color space of the cached Pattern
          * is the same as the native color space of the device.  This will
@@ -444,7 +449,7 @@ pdf_put_colored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
                     dcolor = *pdc;
                     dcolor.colors.pure = color;
                     return pdf_put_uncolored_pattern(pdev, &dcolor, pcs, ppscc,
-                                have_pattern_streams, ppres);
+                                pis, ppres);
                 }
             not_pure:
                 DO_NOTHING;		/* required by MSVC */
@@ -466,16 +471,19 @@ pdf_put_colored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
      * We don't have to worry about color space scaling: the color
      * space is always a Device space.
      */
-    code = pdf_color_space_named(pdev, &cs_value, NULL, pcs_Device,
-                           &pdf_color_space_names, true, NULL, 0);
+    code = pdf_color_space_named(pdev, NULL, &cs_value, NULL, pcs_Device,
+                           &pdf_color_space_names, true, NULL, 0, false);
     if (code < 0)
         return code;
-    if (!have_pattern_streams) {
+    if (!pis->have_pattern_streams) {
         cos_stream_t *pcs_mask = 0;
         cos_stream_t *pcs_image;
 
         gs_image_t_init_adjust(&image, pcs_Device, false);
         image.BitsPerComponent = 8;
+        if (!p_tile)
+            return_error(gs_error_unknownerror);
+
         pdf_set_pattern_image((gs_data_image_t *)&image, &p_tile->tbits);
         if (m_tile) {
             if ((code = pdf_put_pattern_mask(pdev, m_tile, &pcs_mask)) < 0)
@@ -523,7 +531,7 @@ pdf_put_colored_pattern(gx_device_pdf *pdev, const gx_drawing_color *pdc,
 
 /* Write parameters common to all Shadings. */
 static int
-pdf_put_shading_common(cos_dict_t *pscd, const gs_shading_t *psh,
+pdf_put_shading_common(gx_device_pdf *pdev, cos_dict_t *pscd, const gs_imager_state * pis, const gs_shading_t *psh,
                        bool shfill, const gs_range_t **ppranges)
 {
     gs_shading_type_t type = ShadingType(psh);
@@ -534,14 +542,14 @@ pdf_put_shading_common(cos_dict_t *pscd, const gs_shading_t *psh,
     if (code < 0 ||
         (psh->params.AntiAlias &&
          (code = cos_dict_put_c_strings(pscd, "/AntiAlias", "true")) < 0) ||
-        (code = pdf_color_space_named(pscd->pdev, &cs_value, ppranges, pcs,
-                                &pdf_color_space_names, false, NULL, 0)) < 0 ||
+        (code = pdf_color_space_named(pdev, pis, &cs_value, ppranges, pcs,
+                                &pdf_color_space_names, false, NULL, 0, false)) < 0 ||
         (code = cos_dict_put_c_key(pscd, "/ColorSpace", &cs_value)) < 0
         )
         return code;
     if (psh->params.Background && !shfill) {
         /****** SCALE Background ******/
-        code = cos_dict_put_c_key_floats(pscd, "/Background",
+        code = cos_dict_put_c_key_floats(pdev, pscd, "/Background",
                                    psh->params.Background->paint.values,
                                    gs_color_space_num_components(pcs));
         if (code < 0)
@@ -554,7 +562,7 @@ pdf_put_shading_common(cos_dict_t *pscd, const gs_shading_t *psh,
         bbox[1] = psh->params.BBox.p.y;
         bbox[2] = psh->params.BBox.q.x;
         bbox[3] = psh->params.BBox.q.y;
-        code = cos_dict_put_c_key_floats(pscd, "/BBox", bbox, 4);
+        code = cos_dict_put_c_key_floats(pdev, pscd, "/BBox", bbox, 4);
         if (code < 0)
             return code;
     }
@@ -563,7 +571,7 @@ pdf_put_shading_common(cos_dict_t *pscd, const gs_shading_t *psh,
 
 /* Write an optional Function parameter. */
 static int
-pdf_put_shading_Function(cos_dict_t *pscd, const gs_function_t *pfn,
+pdf_put_shading_Function(gx_device_pdf *pdev, cos_dict_t *pscd, const gs_function_t *pfn,
                          const gs_range_t *pranges)
 {
     int code = 0;
@@ -571,7 +579,7 @@ pdf_put_shading_Function(cos_dict_t *pscd, const gs_function_t *pfn,
     if (pfn != 0) {
         cos_value_t fn_value;
 
-        if ((code = pdf_function_scaled(pscd->pdev, pfn, pranges, &fn_value)) >= 0)
+        if ((code = pdf_function_scaled(pdev, pfn, pranges, &fn_value)) >= 0)
             code = cos_dict_put_c_key(pscd, "/Function", &fn_value);
     }
     return code;
@@ -579,18 +587,18 @@ pdf_put_shading_Function(cos_dict_t *pscd, const gs_function_t *pfn,
 
 /* Write a linear (Axial / Radial) Shading. */
 static int
-pdf_put_linear_shading(cos_dict_t *pscd, const float *Coords,
+pdf_put_linear_shading(gx_device_pdf *pdev, cos_dict_t *pscd, const float *Coords,
                        int num_coords, const float *Domain /*[2]*/,
                        const gs_function_t *Function,
                        const bool *Extend /*[2]*/,
                        const gs_range_t *pranges)
 {
-    int code = cos_dict_put_c_key_floats(pscd, "/Coords", Coords, num_coords);
+    int code = cos_dict_put_c_key_floats(pdev, pscd, "/Coords", Coords, num_coords);
 
     if (code < 0 ||
         ((Domain[0] != 0 || Domain[1] != 1) &&
-         (code = cos_dict_put_c_key_floats(pscd, "/Domain", Domain, 2)) < 0) ||
-        (code = pdf_put_shading_Function(pscd, Function, pranges)) < 0
+         (code = cos_dict_put_c_key_floats(pdev, pscd, "/Domain", Domain, 2)) < 0) ||
+        (code = pdf_put_shading_Function(pdev, pscd, Function, pranges)) < 0
         )
         return code;
     if (Extend[0] | Extend[1]) {
@@ -609,7 +617,7 @@ pdf_put_linear_shading(cos_dict_t *pscd, const float *Coords,
 /* Write a scalar (non-mesh) Shading. */
 /* (Single-use procedure for readability.) */
 static int
-pdf_put_scalar_shading(cos_dict_t *pscd, const gs_shading_t *psh,
+pdf_put_scalar_shading(gx_device_pdf *pdev, cos_dict_t *pscd, const gs_shading_t *psh,
                        const gs_range_t *pranges)
 {
     int code;
@@ -619,9 +627,9 @@ pdf_put_scalar_shading(cos_dict_t *pscd, const gs_shading_t *psh,
         const gs_shading_Fb_params_t *const params =
             (const gs_shading_Fb_params_t *)&psh->params;
 
-        if ((code = cos_dict_put_c_key_floats(pscd, "/Domain", params->Domain, 4)) < 0 ||
-            (code = pdf_put_shading_Function(pscd, params->Function, pranges)) < 0 ||
-            (code = cos_dict_put_matrix(pscd, "/Matrix", &params->Matrix)) < 0
+        if ((code = cos_dict_put_c_key_floats(pdev, pscd, "/Domain", params->Domain, 4)) < 0 ||
+            (code = pdf_put_shading_Function(pdev, pscd, params->Function, pranges)) < 0 ||
+            (code = cos_dict_put_matrix(pdev, pscd, "/Matrix", &params->Matrix)) < 0
             )
             return code;
         return 0;
@@ -630,7 +638,7 @@ pdf_put_scalar_shading(cos_dict_t *pscd, const gs_shading_t *psh,
         const gs_shading_A_params_t *const params =
             (const gs_shading_A_params_t *)&psh->params;
 
-        return pdf_put_linear_shading(pscd, params->Coords, 4,
+        return pdf_put_linear_shading(pdev, pscd, params->Coords, 4,
                                       params->Domain, params->Function,
                                       params->Extend, pranges);
     }
@@ -638,7 +646,7 @@ pdf_put_scalar_shading(cos_dict_t *pscd, const gs_shading_t *psh,
         const gs_shading_R_params_t *const params =
             (const gs_shading_R_params_t *)&psh->params;
 
-        return pdf_put_linear_shading(pscd, params->Coords, 6,
+        return pdf_put_linear_shading(pdev, pscd, params->Coords, 6,
                                       params->Domain, params->Function,
                                       params->Extend, pranges);
     }
@@ -649,7 +657,7 @@ pdf_put_scalar_shading(cos_dict_t *pscd, const gs_shading_t *psh,
 
 /* Add a floating point range to an array. */
 static int
-pdf_array_add_real2(cos_array_t *pca, floatp lower, floatp upper)
+pdf_array_add_real2(cos_array_t *pca, double lower, double upper)
 {
     int code = cos_array_add_real(pca, lower);
 
@@ -669,7 +677,7 @@ typedef struct pdf_mesh_data_params_s {
 
 /* Put a clamped value into a data stream.  num_bytes < sizeof(int). */
 static void
-put_clamped(byte *p, floatp v, int num_bytes)
+put_clamped(byte *p, double v, int num_bytes)
 {
     int limit = 1 << (num_bytes * 8);
     int i, shift;
@@ -684,7 +692,7 @@ put_clamped(byte *p, floatp v, int num_bytes)
         *p++ = (byte)(i >> shift);
 }
 static inline void
-put_clamped_coord(byte *p, floatp v, int num_bytes)
+put_clamped_coord(byte *p, double v, int num_bytes)
 {
     put_clamped(p, ENCODE_MESH_COORDINATE(v), num_bytes);
 }
@@ -693,7 +701,7 @@ put_clamped_coord(byte *p, floatp v, int num_bytes)
 /* BitsPerFlag = 8, BitsPerCoordinate = 24, BitsPerComponent = 16, */
 /* scaling is as defined below. */
 static int
-put_float_mesh_data(cos_stream_t *pscs, shade_coord_stream_t *cs,
+put_float_mesh_data(gx_device_pdf *pdev, cos_stream_t *pscs, shade_coord_stream_t *cs,
                     int flag, const pdf_mesh_data_params_t *pmdp)
 {
     int num_points = pmdp->num_points;
@@ -710,7 +718,7 @@ put_float_mesh_data(cos_stream_t *pscs, shade_coord_stream_t *cs,
         put_clamped_coord(b + 1 + i * 6, fixed2float(pts[i].x), 3);
         put_clamped_coord(b + 4 + i * 6, fixed2float(pts[i].y), 3);
     }
-    if ((code = cos_stream_add_bytes(pscs, b + (flag < 0),
+    if ((code = cos_stream_add_bytes(pdev, pscs, b + (flag < 0),
                                      (flag >= 0) + num_points * 6)) < 0)
         return code;
     for (i = 0; i < pmdp->num_components; ++i) {
@@ -742,7 +750,7 @@ put_float_mesh_data(cos_stream_t *pscs, shade_coord_stream_t *cs,
             v = ENCODE_MESH_COMPONENT(c, vmin, vmax);
         }
         put_clamped(b, v, 2);
-        if ((code = cos_stream_add_bytes(pscs, b, 2)) < 0)
+        if ((code = cos_stream_add_bytes(pdev, pscs, b, 2)) < 0)
             return code;
     }
     return 0;
@@ -750,7 +758,7 @@ put_float_mesh_data(cos_stream_t *pscs, shade_coord_stream_t *cs,
 
 /* Write a mesh Shading. */
 static int
-pdf_put_mesh_shading(cos_stream_t *pscs, const gs_shading_t *psh,
+pdf_put_mesh_shading(gx_device_pdf *pdev, cos_stream_t *pscs, const gs_shading_t *psh,
                      const gs_range_t *pranges)
 {
     cos_dict_t *const pscd = cos_stream_dict(pscs);
@@ -778,7 +786,7 @@ pdf_put_mesh_shading(cos_stream_t *pscs, const gs_shading_t *psh,
     /* Write parameters common to all mesh Shadings. */
     shade_next_init(&cs, pmp, NULL);
     if (from_array) {
-        cos_array_t *pca = cos_array_alloc(pscd->pdev, "pdf_put_mesh_shading");
+        cos_array_t *pca = cos_array_alloc(pdev, "pdf_put_mesh_shading");
         int i;
 
         if (pca == 0)
@@ -797,8 +805,13 @@ pdf_put_mesh_shading(cos_stream_t *pscs, const gs_shading_t *psh,
             for (i = 0; i < num_comp; ++i) {
                 double rmin, rmax;
 
-                if (pmp->Function || pranges || data_params.Domain == 0)
-                    rmin = 0.0, rmax = 1.0;
+                if (pmp->Function || pranges || data_params.Domain == 0) {
+                    if (pmp->Function && pmp->Function->params.Domain != 0) {
+                        rmin = pmp->Function->params.Domain[0], rmax = pmp->Function->params.Domain[1];
+                    } else {
+                        rmin = 0.0, rmax = 1.0;
+                    }
+                }
                 else
                     rmin = data_params.Domain[2 * i],
                         rmax = data_params.Domain[2 * i + 1];
@@ -821,16 +834,16 @@ pdf_put_mesh_shading(cos_stream_t *pscs, const gs_shading_t *psh,
             data_params.ranges = 0; /* don't scale function parameter */
     } else {
         /****** SCALE Decode ******/
-        code = cos_dict_put_c_key_floats(pscd, "/Decode", pmp->Decode,
+        code = cos_dict_put_c_key_floats(pdev, pscd, "/Decode", pmp->Decode,
                                          4 + num_comp * 2);
         if (code >= 0)
-            code = cos_stream_add_stream_contents(pscs, cs.s);
+            code = cos_stream_add_stream_contents(pdev, pscs, cs.s);
         bits_per_coordinate = pmp->BitsPerCoordinate;
         bits_per_component = pmp->BitsPerComponent;
         bits_per_flag = -1;
     }
     if (code < 0 ||
-        (code = pdf_put_shading_Function(pscd, pmp->Function, pranges)) < 0 ||
+        (code = pdf_put_shading_Function(pdev, pscd, pmp->Function, pranges)) < 0 ||
         (code = cos_dict_put_c_key_int(pscd, "/BitsPerCoordinate",
                                        bits_per_coordinate)) < 0 ||
         (code = cos_dict_put_c_key_int(pscd, "/BitsPerComponent",
@@ -847,7 +860,7 @@ pdf_put_mesh_shading(cos_stream_t *pscs, const gs_shading_t *psh,
         data_params.num_components = num_comp;
         if (from_array) {
             while ((flag = shade_next_flag(&cs, 0)) >= 0)
-                if ((code = put_float_mesh_data(pscs, &cs, flag,
+                if ((code = put_float_mesh_data(pdev, pscs, &cs, flag,
                                                 &data_params)) < 0)
                     return code;
             if (!seofp(cs.s))
@@ -865,7 +878,7 @@ pdf_put_mesh_shading(cos_stream_t *pscs, const gs_shading_t *psh,
         data_params.num_components = num_comp;
         if (from_array)
             while (!seofp(cs.s))
-                if ((code = put_float_mesh_data(pscs, &cs, -1,
+                if ((code = put_float_mesh_data(pdev, pscs, &cs, -1,
                                                 &data_params)) < 0)
                     return code;
         code = cos_dict_put_c_key_int(pscd, "/VerticesPerRow",
@@ -880,7 +893,7 @@ pdf_put_mesh_shading(cos_stream_t *pscs, const gs_shading_t *psh,
             while ((flag = shade_next_flag(&cs, 0)) >= 0) {
                 data_params.num_points = (flag == 0 ? 12 : 8);
                 data_params.num_components = num_comp * (flag == 0 ? 4 : 2);
-                if ((code = put_float_mesh_data(pscs, &cs, flag,
+                if ((code = put_float_mesh_data(pdev, pscs, &cs, flag,
                                                 &data_params)) < 0)
                     return code;
             }
@@ -899,7 +912,7 @@ pdf_put_mesh_shading(cos_stream_t *pscs, const gs_shading_t *psh,
             while ((flag = shade_next_flag(&cs, 0)) >= 0) {
                 data_params.num_points = (flag == 0 ? 16 : 12);
                 data_params.num_components = num_comp * (flag == 0 ? 4 : 2);
-                if ((code = put_float_mesh_data(pscs, &cs, flag,
+                if ((code = put_float_mesh_data(pdev, pscs, &cs, flag,
                                                 &data_params)) < 0)
                     return code;
             }
@@ -921,7 +934,7 @@ pdf_put_mesh_shading(cos_stream_t *pscs, const gs_shading_t *psh,
 
 /* Write a PatternType 2 (shading pattern) color. */
 int
-pdf_put_pattern2(gx_device_pdf *pdev, const gx_drawing_color *pdc,
+pdf_put_pattern2(gx_device_pdf *pdev, const gs_imager_state * pis, const gx_drawing_color *pdc,
                  const psdf_set_color_commands_t *ppscc,
                  pdf_resource_t **ppres)
 {
@@ -940,34 +953,41 @@ pdf_put_pattern2(gx_device_pdf *pdev, const gx_drawing_color *pdc,
 
     if (code < 0)
         return code;
-    code = pdf_alloc_resource(pdev, resourcePattern, gs_no_id, ppres, 0L);
+    code = pdf_alloc_resource(pdev, resourcePattern, gs_no_id, ppres, -1);
     if (code < 0)
         return code;
     pres = *ppres;
     cos_become(pres->object, cos_type_dict);
     pcd = (cos_dict_t *)pres->object;
-    code = pdf_alloc_resource(pdev, resourceShading, gs_no_id, &psres, 0L);
+    code = pdf_alloc_resource(pdev, resourceShading, gs_no_id, &psres, -1);
     if (code < 0)
         return code;
     psco = psres->object;
     if (ShadingType(psh) >= 4) {
         /* Shading has an associated data stream. */
         cos_become(psco, cos_type_stream);
-        code = pdf_put_shading_common(cos_stream_dict((cos_stream_t *)psco),
+        code = pdf_put_shading_common(pdev, cos_stream_dict((cos_stream_t *)psco), pis,
                                       psh, pinst->shfill, &pranges);
         if (code >= 0)
-            code1 = pdf_put_mesh_shading((cos_stream_t *)psco, psh, pranges);
+            code1 = pdf_put_mesh_shading(pdev, (cos_stream_t *)psco, psh, pranges);
         else
             /* We won't use this shading, we fall back because we couldn't write it */
             psres->where_used = 0;
     } else {
         cos_become(psco, cos_type_dict);
-        code = pdf_put_shading_common((cos_dict_t *)psco, psh, pinst->shfill, &pranges);
+        code = pdf_put_shading_common(pdev, (cos_dict_t *)psco, pis, psh, pinst->shfill, &pranges);
         if (code >= 0)
-            code = pdf_put_scalar_shading((cos_dict_t *)psco, psh, pranges);
+            code = pdf_put_scalar_shading(pdev, (cos_dict_t *)psco, psh, pranges);
         else
             /* We won't use this shading, we fall back because we couldn't write it */
             psres->where_used = 0;
+    }
+    if (psres->where_used) {
+        code = pdf_substitute_resource(pdev, &psres, resourceShading, NULL, false);
+        if (code < 0)
+            return code;
+        psco = psres->object;
+        psres->where_used |= pdev->used_mask;
     }
     /*
      * In PDF, the Matrix is the transformation from the pattern space to
@@ -990,10 +1010,16 @@ pdf_put_pattern2(gx_device_pdf *pdev, const gx_drawing_color *pdc,
     if (code < 0 ||
         (code = cos_dict_put_c_key_int(pcd, "/PatternType", 2)) < 0 ||
         (code = cos_dict_put_c_key_object(pcd, "/Shading", psco)) < 0 ||
-        (code = cos_dict_put_matrix(pcd, "/Matrix", &smat)) < 0
+        (code = cos_dict_put_matrix(pdev, pcd, "/Matrix", &smat)) < 0
         /****** ExtGState ******/
         )
         return code;
+    code = pdf_substitute_resource(pdev, &pres, resourcePattern, NULL, false);
+    if (code < 0)
+        return code;
+    pres->where_used |= pdev->used_mask;
+    *ppres = pres;
+
     cos_value_write(&v, pdev);
     pprints1(pdev->strm, " %s\n", ppscc->setcolorspace);
     return code1;
@@ -1008,6 +1034,6 @@ gdev_pdf_include_color_space(gx_device *dev, gs_color_space *cspace, const byte 
     gx_device_pdf * pdev = (gx_device_pdf *)dev;
     cos_value_t cs_value;
 
-    return pdf_color_space_named(pdev, &cs_value, NULL, cspace,
-                                &pdf_color_space_names, true, res_name, name_length);
+    return pdf_color_space_named(pdev, NULL, &cs_value, NULL, cspace,
+                                &pdf_color_space_names, true, res_name, name_length, false);
 }

@@ -87,7 +87,8 @@ gsdll_stdin_utf8(void *instance, char *buf, int len)
     int nret = 0;               /* number of bytes returned to caller */
     int i;
 
-    while (len) {
+    /* protect against caller passing invalid len */
+    while (len > 0) {
         while (len && nmore) {
             nmore--;
             *buf++ = 0x80 | ((thiswchar >> (6 * nmore)) & 0x3F), nret++;
@@ -144,7 +145,8 @@ gsdll_utf8write(FILE *stdwr, const char *str, int len, WCHAR *thiswchar, int *nm
 {
     UINT consolecp = 0;
 
-    while (len) {
+    /* protect against caller passing invalid len */
+    while (len > 0) {
         const char *str0;
 
         /* write ASCII chars without translation */
@@ -489,6 +491,22 @@ display_callback display = {
 
 /*********************************************************************/
 
+typedef BOOL (SetProcessDPIAwareFn)(void);
+
+static void
+avoid_windows_scale(void)
+{
+    /* Fetch the function address and only call it if it is there; this keeps
+     * compatability with Windows < 8.1 */
+    HMODULE hUser32 = LoadLibrary(TEXT("user32.dll"));
+    SetProcessDPIAwareFn *ptr;
+
+    ptr = (SetProcessDPIAwareFn *)GetProcAddress(hUser32, "SetProcessDPIAware");
+    if (ptr != NULL)
+        ptr();
+    FreeLibrary(hUser32);
+}
+
 #ifdef GS_NO_UTF8
 int main(int argc, char *argv[])
 #else
@@ -503,6 +521,9 @@ static int main_utf8(int argc, char *argv[])
     char buf[256];
     char dformat[64];
     char ddpi[64];
+
+    /* Mark us as being 'system dpi aware' to avoid horrid scaling */
+    avoid_windows_scale();
 
     if (!_isatty(fileno(stdin)))
         _setmode(fileno(stdin), _O_BINARY);
@@ -612,11 +633,11 @@ static int main_utf8(int argc, char *argv[])
             if (code == 0)
                 code = gsdll.run_string(instance, start_string, 0, &exit_code);
             code1 = gsdll.exit(instance);
-            if (code == 0 || (code == e_Quit && code1 != 0))
+            if (code == 0 || (code == gs_error_Quit && code1 != 0))
                 code = code1;
 #if defined(_MSC_VER) || defined(__BORLANDC__)
         } __except(exception_code() == EXCEPTION_STACK_OVERFLOW) {
-            code = e_Fatal;
+            code = gs_error_Fatal;
             fprintf(stderr, "*** C stack overflow. Quiting...\n");
         }
 #endif
@@ -645,10 +666,10 @@ static int main_utf8(int argc, char *argv[])
     exit_status = 0;
     switch (code) {
         case 0:
-        case e_Info:
-        case e_Quit:
+        case gs_error_Info:
+        case gs_error_Quit:
             break;
-        case e_Fatal:
+        case gs_error_Fatal:
             exit_status = 1;
             break;
         default:

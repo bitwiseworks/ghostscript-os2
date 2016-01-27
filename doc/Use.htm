@@ -93,6 +93,7 @@
 <li><a href="#Interaction_related_parameters">Interaction-related parameters</a>
 <li><a href="#Output_selection_parameters">Device and output selection parameters</a>
 <li><a href="#EPS_parameters">EPS parameters</a>
+<li><a href="#Deferred_Page_Rendering">Deferred Page Rendering</a>
 <li><a href="#ICC_color_parameters">ICC color parameters</a>
 <li><a href="#Other_parameters">Other parameters</a>
 </ul>
@@ -389,7 +390,7 @@ specifications. Some examples are:
 <p><b>
 Note, however that the one page per file feature may not supported by all devices.
 Also, since some devices write output files when opened, there may be an extra
-blank page written (pdfwrite, ps2write, epswrite, pxlmono, pxlcolor, ...).
+blank page written (pdfwrite, ps2write, eps2write, pxlmono, pxlcolor, ...).
 </b>
 
 <p>
@@ -584,21 +585,9 @@ Ghostscript is normally built to interpret both PostScript and PDF files, examin
 
 <p>Here are some command line options specific to PDF
 
-<dl>
-<dt><code>-dFirstPage=</code><em>pagenumber</em>
-<dd>Begins interpreting on the designated page of the document.
-Pages of all documents in PDF collections are numbered sequentionally.
-</dl>
-
-<dl>
-<dt><code>-dLastPage=</code><em>pagenumber</em>
-<dd>Stops interpreting after the designated page of the document.
-Pages of all documents in PDF collections are numbered sequentionally.
-</dl>
-
  <dl>
 <dt><code>-dPDFFitPage</code>
-<dd>Rather than selecting a PageSize given by the PDF MediaBox,
+<dd>Rather than selecting a PageSize given by the PDF MediaBox, BleedBox (see -dUseBleedBox),
 TrimBox (see -dUseTrimBox), ArtBox (see -dUseArtBox), or CropBox (see -dUseCropBox),
 the PDF file will be scaled to fit the current device page size
 (usually the default page size).
@@ -620,6 +609,16 @@ file's "screen" options.  If neither of these is specified, the output will
 use the screen options for any output device that doesn't have an
 <code>OutputFile</code> parameter, and the printer options for
 devices that do have this parameter.
+</dl>
+
+<dl>
+<dt><code>-dUseBleedBox</code>
+<dd>Sets the page size to the BleedBox rather than the MediaBox.
+defines the region to which the contents of the page should be
+clipped when output in a production environment. This may include
+any extra bleed area needed to accommodate the physical limitations
+of cutting, folding, and trimming equipment. The actual printed page
+may include printing marks that fall outside the bleed box.
 </dl>
 
 <dl>
@@ -699,6 +698,33 @@ using a user parameter <code>RenderTTNotdef</code>. The PDF interpreter sets thi
 user parameter to the value of <code>RENDERTTNOTDEF</code> in systemdict,
 when rendering PDF files. To restore rendering of /.notdef glyphs from TrueType fonts in PDF files, set this parameter to true.
 </dl>
+
+<dl>
+<dt><code>-dFirstPage=</code><em>pagenumber</em>
+<dd>Begins interpreting on the designated page of the document.
+Pages of all documents in PDF collections are numbered sequentionally.
+</dl>
+
+<dl>
+<dt><code>-dLastPage=</code><em>pagenumber</em>
+<dd>Stops interpreting after the designated page of the document.
+Pages of all documents in PDF collections are numbered sequentionally.
+</dl>
+
+<p>These command line options are no longer specific to PDF, but have some specific differences with PDF files
+
+<dl>
+<dt><code>-dFirstPage=</code><em>pagenumber</em>
+<dd>Begins interpreting on the designated page of the document.
+Pages of all documents in PDF collections are numbered sequentionally.
+</dl>
+
+<dl>
+<dt><code>-dLastPage=</code><em>pagenumber</em>
+<dd>Stops interpreting after the designated page of the document.
+Pages of all documents in PDF collections are numbered sequentionally.
+</dl>
+
 
 <h3><a name="PDF_problems"></a>Problems interpreting a PDF file</h3>
 
@@ -869,8 +895,8 @@ switches</a> in the command line, if any;
 environment variable, if any;
 
 <li>If built with COMPILE_INITS=1 (currently the default build) the files in the
-<code>%rom%Resource/Init/</code> and <code>%rom%lib/</code> file system built
-into the executable ;
+<code>%rom%Resource/</code> and <code>%rom%iccprofiles/</code> directories are
+built into the executable.
 
 <li>The directories specified by the <code>GS_LIB_DEFAULT</code> macro
 (if any) in the makefile when this executable was built.
@@ -1299,8 +1325,8 @@ specified using the command line parameter <code>-sCIDFSubstFont="TTF file name"
 the environment variable <code>CIDFSUBSTFONT</code>.
 
 <h4><a name="ExplicitCIDFontSubstitution"></a>Explicit CIDFont Substitution</h4>
-Substitution of CID font resources is controlled by the Ghostscript
-configuration file <code>lib/cidfmap</code>, which defines a CID font resource map.
+Substitution of CID font resources is controlled, by default, by the Ghostscript
+configuration file <code>Resource/Init/cidfmap</code>, which defines a CID font resource map.
 <p>
 The file forms a table of records, each of which should use one of three formats,
 explained below. Users may modify <code>Resource/Init/cidfmap</code> to configure
@@ -2361,6 +2387,8 @@ they are drawn some files that rely on joining separate filled polygons together
 an area may not render as expected with <tt>GraphicsAlphaBits</tt> at 2 or 4. If you encounter
 strange lines within solid areas, try rendering that file again with
 <tt>-dGraphicsAlphaBits=1</tt>.
+<p>Further note; because this feature relies upon rendering the input it is incompatible, and will generate
+an error on attempted use, with any of the vector output devices.
 </dl>
 
 <dl>
@@ -2471,6 +2499,16 @@ earlier, processing of DoPS was always enabled.
 </dl>
 
 <h4><a name="Page_parameters"></a>Page parameters</h4>
+
+<dl>
+<dt><code>-dFirstPage=</code><em>pagenumber</em>
+<dd>Begins processing on the designated page of the document.
+</dl>
+
+<dl>
+<dt><code>-dLastPage=</code><em>pagenumber</em>
+<dd>Stops processing after the designated page of the document.
+</dl>
 
 <dl>
 <dt><a name="FIXEDMEDIA"></a><code>-dFIXEDMEDIA</code>
@@ -2783,6 +2821,26 @@ input document and some do not, usually based on whether it makes sense
 for a particular output format. This switch instructs all devices to
 ignore a request to print multiple copies, giving more consistent
 behaviour.
+</dl>
+
+<h4><a name="Deferred_Page_Rendering"></a>Deferred Page Rendering</h4>
+<dl>
+<dd>Raster printers and image formats that can use the "command list" (clist)
+to store a representation of the page prior to rendering can use the
+<code>--saved-pages=</code><em>string</em> on the command line for
+deferred rendering of pages.
+<p>
+Pages that are <em>saved</em> instead of printed are retained until the
+list of saved pages is emptied by the <code>flush</code> command of the
+<code>saved-pages=</code> command string.
+<p>
+Pages can be printed in reverse or normal order, or selected pages,
+including all even or all odd, and multiple collated copies can be produced.
+Since pages are saved until the <code>flush</code> command, pages can be
+printed multiple times, in any order.
+<p>
+Refer to the <a href="SavedPages.htm">SavedPages</a> document for
+details.
 </dl>
 
 <h4><a name="EPS_parameters"></a>EPS parameters</h4>
@@ -3162,6 +3220,23 @@ for more information.
 
 <h4><a name="Other_parameters"></a>Other parameters</h4>
 
+<d1>
+<dt><code>-dFILTERIMAGE</code></dt>
+<dd>If set, ths will ignore all images in the input (in this context image means a bitmap), these will
+therefore not be rendered.</dd>
+</d1>
+
+<d1>
+<dt><code>-dFILTERTEXT</code></dt>
+<dd>If set, ths will ignore all text in the input (just because it looks like text doesn't mean it is, it might be an image), text will
+therefore not be rendered.</dd>
+</d1>
+
+<d1>
+<dt><code>-dFILTERVECTOR</code></dt>
+<dd>If set, ths will ignore anything whch is neither text nor an image..</dd>
+</d1>
+
 <dl>
 <dt><code>-dDELAYBIND</code>
 <dd>Causes <code>bind</code> to remember all its invocations, but not
@@ -3317,6 +3392,13 @@ For raster printers and image format (jpeg*, tiff*, png* ...) devices,
 performance can be 'tuned' by adjusting some of the parameters related
 to banding (clist) options (refer to: <a href="Language.htm#Banding_parameters">
 Banding Parameters</a>).
+<p>
+All devices may use a display list ("clist") and use banding when processing
+PDF 1.4 transparency. This prevents allocation of excessively large amounts of
+memory for the transparency buffer stack. The <code>-dMaxBitmap=</code> option
+is used to control when to use the display list, and the other banding parameters
+mentioned above control the band size.
+
 <p>In general, page buffer mode is faster than banded/clist mode (a full page
 buffer is used when <code>-dMaxBitmap=#</code> is large enough for the entire
 raster image) since there is no need to write, then interpret the clist data.
@@ -3622,8 +3704,6 @@ identifiable garbage values
 <dt><code>+</code><dd>use minimum-size stack blocks
 <dt><code>,</code><dd>don't use path-based banding
 <dt><code>`</code><dd>don't use high-level banded images
-<dt><code>.</code><dd>use small-memory table sizes even on large-memory
-machines
 <dt><code>?</code><dd>validate pointers before, during and after garbage
 collection, also before and after save and restore; also make other
 allocator validity checks
@@ -4279,7 +4359,7 @@ or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
 San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
 
 <p>
-<small>Ghostscript version 9.10, 30 August 2013
+<small>Ghostscript version 9.18, 5 October 2015
 
 <!-- [3.0 end visible trailer] ============================================= -->
 

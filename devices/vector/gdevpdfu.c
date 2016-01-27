@@ -168,7 +168,7 @@ copy_ps_file_stripping_all(stream *s, const char *fname, bool HaveTrueTypes)
     int n, l = 0, m = sizeof(buf) - 1, outl = 0;
     bool skipping = false;
 
-    f = sfopen(fname, "rb", s->memory);
+    f = sfopen(fname, "r", s->memory);
     if (f == NULL)
         return_error(gs_error_undefinedfilename);
     n = sfread(buf, 1, m, f);
@@ -244,7 +244,7 @@ copy_ps_file_strip_comments(stream *s, const char *fname, bool HaveTrueTypes)
     int n, l = 0, m = sizeof(buf) - 1, outl = 0;
     bool skipping = false;
 
-    f = sfopen(fname, "rb", s->memory);
+    f = sfopen(fname, "r", s->memory);
     if (f == NULL)
         return_error(gs_error_undefinedfilename);
     n = sfread(buf, 1, m, f);
@@ -403,7 +403,10 @@ int ps2write_dsc_header(gx_device_pdf * pdev, int pages)
         int code, status, cre_date_time_len;
         char BBox[256];
 
-        stream_write(s, (byte *)"%!PS-Adobe-3.0\n", 15);
+        if (pdev->Eps2Write)
+            stream_write(s, (byte *)"%!PS-Adobe-3.0 EPSF-3.0\n", 24);
+        else
+            stream_write(s, (byte *)"%!PS-Adobe-3.0\n", 15);
         /* We need to calculate the document BoundingBox which is a 'high water'
          * mark derived from the BoundingBox of all the individual pages.
          */
@@ -425,9 +428,15 @@ int ps2write_dsc_header(gx_device_pdf * pdev, int pages)
                         pagecount++;
                     }
             }
-            gs_sprintf(BBox, "%%%%BoundingBox: 0 0 %d %d\n", (int)urx, (int)ury);
+            if (!pdev->Eps2Write || pdev->BBox.p.x > pdev->BBox.q.x || pdev->BBox.p.y > pdev->BBox.q.y)
+                gs_sprintf(BBox, "%%%%BoundingBox: 0 0 %d %d\n", (int)urx, (int)ury);
+            else
+                gs_sprintf(BBox, "%%%%BoundingBox: %d %d %d %d\n", (int)floor(pdev->BBox.p.x), (int)floor(pdev->BBox.p.y), (int)ceil(pdev->BBox.q.x), (int)ceil(pdev->BBox.q.y));
             stream_write(s, (byte *)BBox, strlen(BBox));
-            gs_sprintf(BBox, "%%%%HiResBoundingBox: 0 0 %.2f %.2f\n", urx, ury);
+            if (!pdev->Eps2Write || pdev->BBox.p.x > pdev->BBox.q.x || pdev->BBox.p.y > pdev->BBox.q.y)
+                gs_sprintf(BBox, "%%%%HiResBoundingBox: 0 0 %.2f %.2f\n", urx, ury);
+            else
+                gs_sprintf(BBox, "%%%%HiResBoundingBox: %.2f %.2f %.2f %.2f\n", pdev->BBox.p.x, pdev->BBox.p.y, pdev->BBox.q.x, pdev->BBox.q.y);
             stream_write(s, (byte *)BBox, strlen(BBox));
         }
         cre_date_time_len = pdf_get_docinfo_item(pdev, "/CreationDate", cre_date_time, sizeof(cre_date_time) - 1);
@@ -460,7 +469,14 @@ int ps2write_dsc_header(gx_device_pdf * pdev, int pages)
                 return code;
         }
         stream_puts(s, "/DSC_OPDFREAD true def\n");
-        stream_puts(s, "/SetPageSize true def\n");
+        if (pdev->Eps2Write) {
+            stream_puts(s, "/SetPageSize false def\n");
+            stream_puts(s, "/EPS2Write true def\n");
+        } else {
+            if (pdev->SetPageSize)
+                stream_puts(s, "/SetPageSize true def\n");
+            stream_puts(s, "/EPS2Write false def\n");
+        }
 
         code = copy_procsets(s, pdev->HaveTrueTypes, false);
         if (code < 0)
@@ -520,6 +536,8 @@ pdfwrite_pdf_open_document(gx_device_pdf * pdev)
                         return_error(gs_error_ioerror);
                 } else
                     pdev->strm = s;
+                if (!pdev->Eps2Write)
+                    stream_puts(s, "/EPS2Write false def\n");
                 if(pdev->SetPageSize)
                     stream_puts(s, "/SetPageSize true def\n");
                 if(pdev->RotatePages)
@@ -614,6 +632,31 @@ pdf_obj_ref(gx_device_pdf * pdev)
     return id;
 }
 
+/* Set the offset in the xref table for an object to zero. This
+ * means that whenwritingthe xref we will mark the object as 'unused'.
+ * This is primarily of use when we encounter an error writing an object,
+ * we want to elide the entry from the xref in order to not write a
+ * broken PDF file. Of course, the missing object may still produce
+ * a broken PDF file (more subtly broken), but because the PDF interpreter
+ * generally doesn't stop if we signal an error, we try to avoid grossly
+ * broken PDF files this way.
+ */
+long
+pdf_obj_mark_unused(gx_device_pdf *pdev, long id)
+{
+    FILE *tfile = pdev->xref.file;
+    int64_t tpos = gp_ftell_64(tfile);
+    gs_offset_t pos = 0;
+
+    if (gp_fseek_64 (tfile, ((int64_t)(id - pdev->FirstObjectNumber)) * sizeof(pos),
+          SEEK_SET) != 0)
+          return gs_error_ioerror;
+    fwrite(&pos, sizeof(pos), 1, tfile);
+    if (gp_fseek_64(tfile, tpos, SEEK_SET) != 0)
+        return gs_error_ioerror;
+    return 0;
+}
+
 /* Begin an object, optionally allocating an ID. */
 long
 pdf_open_obj(gx_device_pdf * pdev, long id, pdf_resource_type_t type)
@@ -627,10 +670,12 @@ pdf_open_obj(gx_device_pdf * pdev, long id, pdf_resource_type_t type)
         FILE *tfile = pdev->xref.file;
         int64_t tpos = gp_ftell_64(tfile);
 
-        gp_fseek_64 (tfile, ((int64_t)(id - pdev->FirstObjectNumber)) * sizeof(pos),
-              SEEK_SET);
+        if (gp_fseek_64 (tfile, ((int64_t)(id - pdev->FirstObjectNumber)) * sizeof(pos),
+              SEEK_SET) != 0)
+              return gs_error_ioerror;
         fwrite(&pos, sizeof(pos), 1, tfile);
-        gp_fseek_64(tfile, tpos, SEEK_SET);
+        if (gp_fseek_64(tfile, tpos, SEEK_SET) != 0)
+              return gs_error_ioerror;
     }
     if (pdev->ForOPDFRead && pdev->ProduceDSC) {
         switch(type) {
@@ -710,6 +755,10 @@ pdf_open_obj(gx_device_pdf * pdev, long id, pdf_resource_type_t type)
                 /* This should not be possible, not valid in PostScript */
                 pprintld1(s, "%%%%BeginResource: file (PDF Dests obj_%ld)\n", id);
                 break;
+            case resourceEmbeddedFiles:
+                /* This should not be possible, not valid in PostScript */
+                pprintld1(s, "%%%%BeginResource: file (PDF EmbeddedFiles obj_%ld)\n", id);
+                break;
             case resourceLabels:
                 /* This should not be possible, not valid in PostScript */
                 pprintld1(s, "%%%%BeginResource: file (PDF Page Labels obj_%ld)\n", id);
@@ -741,6 +790,9 @@ pdf_open_obj(gx_device_pdf * pdev, long id, pdf_resource_type_t type)
             case resourceAnnotation:
                 /* This should not be possible, not valid in PostScript */
                 pprintld1(s, "%%%%BeginResource: file (PDF Annotation obj_%ld)\n", id);
+                break;
+            case resourceFontFile:
+                pprintld1(s, "%%%%BeginResource: file (PDF FontFile obj_%ld)\n", id);
                 break;
             default:
                 pprintld1(s, "%%%%BeginResource: file (PDF object obj_%ld)\n", id);
@@ -1109,8 +1161,8 @@ pdf_cancel_resource(gx_device_pdf * pdev, pdf_resource_t *pres, pdf_resource_typ
     if (pres->object) {
         pres->object->written = true;
         if (rtype == resourceXObject || rtype == resourceCharProc || rtype == resourceOther
-            || rtype > NUM_RESOURCE_TYPES) {
-            int code = cos_stream_release_pieces((cos_stream_t *)pres->object);
+            || rtype >= NUM_RESOURCE_TYPES) {
+            int code = cos_stream_release_pieces(pdev, (cos_stream_t *)pres->object);
 
             if (code < 0)
                 return code;
@@ -1151,7 +1203,8 @@ pdf_forget_resource(gx_device_pdf * pdev, pdf_resource_t *pres1, pdf_resource_ty
             *pprev = pres->prev;
             break;
         }
-    for (i = 0; i < NUM_RESOURCE_CHAINS; i++) {
+
+    for (i = (gs_id_hash(pres1->rid) % NUM_RESOURCE_CHAINS); i < NUM_RESOURCE_CHAINS; i++) {
         pprev = pchain + i;
         for (; (pres = *pprev) != 0; pprev = &pres->next)
             if (pres == pres1) {
@@ -1162,7 +1215,7 @@ pdf_forget_resource(gx_device_pdf * pdev, pdf_resource_t *pres1, pdf_resource_ty
                     pres->object = 0;
                 }
                 gs_free_object(pdev->pdf_memory, pres, "pdf_forget_resource");
-                break;
+                return;
             }
     }
 }
@@ -1174,6 +1227,12 @@ nocheck(gx_device_pdf * pdev, pdf_resource_t *pres0, pdf_resource_t *pres1)
 }
 
 /* Substitute a resource with a same one. */
+/* NB we cannot substitute resources which have already had an
+   id assigned to them, because they already have an entry in the
+   xref table. If we want to substiute a resource then it should
+   have been allocated with an initial id of -1.
+   (see pdf_alloc_resource)
+*/
 int
 pdf_substitute_resource(gx_device_pdf *pdev, pdf_resource_t **ppres,
         pdf_resource_type_t rtype,
@@ -1193,7 +1252,8 @@ pdf_substitute_resource(gx_device_pdf *pdev, pdf_resource_t **ppres,
         pdf_forget_resource(pdev, pres1, rtype);
         return 0;
     } else {
-        pdf_reserve_object_id(pdev, pres1, gs_no_id);
+        if (pres1->object->id < 0)
+            pdf_reserve_object_id(pdev, pres1, gs_no_id);
         if (write) {
             code = cos_write_object(pres1->object, pdev, rtype);
             if (code < 0)
@@ -1413,7 +1473,7 @@ pdf_begin_resource_body(gx_device_pdf * pdev, pdf_resource_type_t rtype,
 {
     int code;
 
-    if (rtype > NUM_RESOURCE_TYPES)
+    if (rtype >= NUM_RESOURCE_TYPES)
         rtype = resourceOther;
 
     code = pdf_begin_aside(pdev, PDF_RESOURCE_CHAIN(pdev, rtype, rid),
@@ -1429,7 +1489,7 @@ pdf_begin_resource(gx_device_pdf * pdev, pdf_resource_type_t rtype, gs_id rid,
 {
     int code;
 
-    if (rtype > NUM_RESOURCE_TYPES)
+    if (rtype >= NUM_RESOURCE_TYPES)
         rtype = resourceOther;
 
     code = pdf_begin_resource_body(pdev, rtype, rid, ppres);
@@ -1444,13 +1504,24 @@ pdf_begin_resource(gx_device_pdf * pdev, pdf_resource_type_t rtype, gs_id rid,
 }
 
 /* Allocate a resource, but don't open the stream. */
+/* If the passed in id 'id' is -1 then in pdf_alloc_aside
+   We *don't* reserve an object id (if its 0 or more we do).
+   This has important consequences; once an id is created we
+   can't 'cancel' it, it will always be written to the xref.
+   So if we want to not write duplicates we should create
+   the object with an 'id' of -1, and when we finish writing it
+   we should call 'pdf_substitute_resource'. If that finds a
+   duplicate then it will throw away the new one ands use the old.
+   If it doesn't find a duplicate then it will create an object
+   id for the new resource.
+*/
 int
 pdf_alloc_resource(gx_device_pdf * pdev, pdf_resource_type_t rtype, gs_id rid,
                    pdf_resource_t ** ppres, long id)
 {
     int code;
 
-    if (rtype > NUM_RESOURCE_TYPES)
+    if (rtype >= NUM_RESOURCE_TYPES)
         rtype = resourceOther;
 
     code = pdf_alloc_aside(pdev, PDF_RESOURCE_CHAIN(pdev, rtype, rid),
@@ -1567,32 +1638,6 @@ pdf_free_resource_objects(gx_device_pdf *pdev, pdf_resource_type_t rtype)
     return 0;
 }
 
-#ifdef DEPRECATED_906
-/* Write and free all resource objects. */
-
-int
-pdf_write_and_free_all_resource_objects(gx_device_pdf *pdev)
-{
-    int i, code = 0, code1;
-
-    for (i = 0; i < NUM_RESOURCE_TYPES; ++i) {
-        code1 = pdf_write_resource_objects(pdev, i);
-        if (code >= 0)
-            code = code1;
-    }
-    code1 = pdf_finish_resources(pdev, resourceFontDescriptor,
-                        pdf_release_FontDescriptor_components);
-    if (code >= 0)
-        code = code1;
-    for (i = 0; i < NUM_RESOURCE_TYPES; ++i) {
-        code1 = pdf_free_resource_objects(pdev, i);
-        if (code >= 0)
-            code = code1;
-    }
-    return code;
-}
-#endif
-
 /*
  * Store the resource sets for a content stream (page or XObject).
  * Sets page->{procsets, resource_ids[]}.
@@ -1608,7 +1653,7 @@ pdf_store_page_resources(gx_device_pdf *pdev, pdf_page_t *page, bool clear_usage
         stream *s = 0;
         int j;
 
-        if (i == resourceOther || i > NUM_RESOURCE_TYPES)
+        if (i == resourceOther || i >= NUM_RESOURCE_TYPES)
             continue;
         page->resource_ids[i] = 0;
         for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
@@ -1643,7 +1688,7 @@ pdf_store_page_resources(gx_device_pdf *pdev, pdf_page_t *page, bool clear_usage
          * for it. If we don't actually emit it then the xref will be invalid.
          * An alternative would be to modify the xref to mark the object as unused.
          */
-        if (i != resourceFont)
+        if (i != resourceFont && i != resourceProperties)
             pdf_write_resource_objects(pdev, i);
     }
     page->procsets = pdev->procsets;
@@ -1655,7 +1700,6 @@ void
 pdf_copy_data(stream *s, FILE *file, gs_offset_t count, stream_arcfour_state *ss)
 {
     gs_offset_t r, left = count;
-    long code;
     byte buf[sbuf_size];
 
     while (left > 0) {
@@ -1663,7 +1707,7 @@ pdf_copy_data(stream *s, FILE *file, gs_offset_t count, stream_arcfour_state *ss
 
         r = fread(buf, 1, copy, file);
         if (r < 1) {
-            code = gs_note_error(gs_error_ioerror);
+            gs_note_error(gs_error_ioerror);
             return;
         }
         if (ss)
@@ -1678,20 +1722,26 @@ pdf_copy_data(stream *s, FILE *file, gs_offset_t count, stream_arcfour_state *ss
 void
 pdf_copy_data_safe(stream *s, FILE *file, gs_offset_t position, long count)
 {
-    long r, left = count, code;
+    long r, left = count;
 
     while (left > 0) {
         byte buf[sbuf_size];
         long copy = min(left, (long)sbuf_size);
         int64_t end_pos = gp_ftell_64(file);
 
-        gp_fseek_64(file, position + count - left, SEEK_SET);
-        r = fread(buf, 1, copy, file);
-        if (r < 1) {
-            code = gs_note_error(gs_error_ioerror);
+        if (gp_fseek_64(file, position + count - left, SEEK_SET) != 0) {
+            gs_note_error(gs_error_ioerror);
             return;
         }
-        gp_fseek_64(file, end_pos, SEEK_SET);
+        r = fread(buf, 1, copy, file);
+        if (r < 1) {
+            gs_note_error(gs_error_ioerror);
+            return;
+        }
+        if (gp_fseek_64(file, end_pos, SEEK_SET) != 0) {
+            gs_note_error(gs_error_ioerror);
+            return;
+        }
         stream_write(s, buf, copy);
         sflush(s);
         left -= copy;
@@ -2182,7 +2232,7 @@ pdf_put_filters(cos_dict_t *pcd, gx_device_pdf *pdev, stream *s,
                 cos_dict_alloc(pdev, "pdf_put_image_filters(decode_parms)");
             if (decode_parms == 0)
                 return_error(gs_error_VMerror);
-            CHECK(cos_param_list_writer_init(&writer, decode_parms, 0));
+            CHECK(cos_param_list_writer_init(pdev, &writer, decode_parms, 0));
             /*
              * If EndOfBlock is true, we mustn't write a Rows value.
              * This is a hack....
@@ -2518,7 +2568,7 @@ pdf_function_aux(gx_device_pdf *pdev, const gs_function_t *pfn,
             return code;
         }
     }
-    code = cos_param_list_writer_init(&rlist, pcd, PRINT_BINARY_OK);
+    code = cos_param_list_writer_init(pdev, &rlist, pcd, PRINT_BINARY_OK);
     if (code < 0)
         return code;
     return gs_function_get_params(pfn, (gs_param_list *)&rlist);
@@ -2536,6 +2586,9 @@ pdf_function(gx_device_pdf *pdev, const gs_function_t *pfn, cos_value_t *pvalue)
 
     if (code < 0)
         return code;
+    if (pres->object->md5_valid)
+        pres->object->md5_valid = 0;
+
     code = pdf_substitute_resource(pdev, &pres, resourceFunction, functions_equal, false);
     if (code < 0)
         return code;

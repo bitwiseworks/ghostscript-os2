@@ -53,7 +53,7 @@ static const gs_color_space_type gs_color_space_type_DeviceGray = {
     gx_spot_colors_set_overprint,
     NULL, gx_no_adjust_color_count,
     gx_serialize_cspace_type,
-    gx_cspace_is_linear_default
+    gx_cspace_is_linear_default, gx_polarity_additive
 };
 static const gs_color_space_type gs_color_space_type_DeviceRGB = {
     gs_color_space_index_DeviceRGB, true, true,
@@ -65,7 +65,7 @@ static const gs_color_space_type gs_color_space_type_DeviceRGB = {
     gx_spot_colors_set_overprint,
     NULL, gx_no_adjust_color_count,
     gx_serialize_cspace_type,
-    gx_cspace_is_linear_default
+    gx_cspace_is_linear_default, gx_polarity_additive
 };
 
 static cs_proc_set_overprint(gx_set_overprint_DeviceCMYK);
@@ -80,7 +80,7 @@ static const gs_color_space_type gs_color_space_type_DeviceCMYK = {
     gx_set_overprint_DeviceCMYK,
     NULL, gx_no_adjust_color_count,
     gx_serialize_cspace_type,
-    gx_cspace_is_linear_default
+    gx_cspace_is_linear_default, gx_polarity_subtractive
 };
 
 /* Structure descriptors */
@@ -296,6 +296,24 @@ gx_num_components_4(const gs_color_space * pcs)
     return 4;
 }
 
+gx_color_polarity_t
+gx_polarity_subtractive(const gs_color_space * pcs)
+{
+    return GX_CINFO_POLARITY_SUBTRACTIVE;
+}
+
+gx_color_polarity_t
+gx_polarity_additive(const gs_color_space * pcs)
+{
+    return GX_CINFO_POLARITY_ADDITIVE;
+}
+
+gx_color_polarity_t
+gx_polarity_unknown(const gs_color_space * pcs)
+{
+    return GX_CINFO_POLARITY_UNKNOWN;
+}
+
 /*
  * For color spaces that have a base or alternative color space, return that
  * color space. Otherwise return null.
@@ -500,20 +518,22 @@ check_cmyk_color_model_comps(gx_device * dev)
         return 0;
 
     /* check the mapping */
-    if ( (pprocs = dev_proc(dev, get_color_mapping_procs)(dev)) == 0 ||
+    pprocs = get_color_mapping_procs_subclass(dev);
+
+    if ( pprocs == 0 ||
          (map_cmyk = pprocs->map_cmyk) == 0                            )
         return 0;
 
-    map_cmyk(dev, frac_14, frac_0, frac_0, frac_0, out);
+    map_cmyk_subclass(pprocs, dev, frac_14, frac_0, frac_0, frac_0, out);
     if (!check_single_comp(cyan_c, frac_14, ncomps, out))
         return 0;
-    map_cmyk(dev, frac_0, frac_14, frac_0, frac_0, out);
+    map_cmyk_subclass(pprocs, dev, frac_0, frac_14, frac_0, frac_0, out);
     if (!check_single_comp(magenta_c, frac_14, ncomps, out))
         return 0;
-    map_cmyk(dev, frac_0, frac_0, frac_14, frac_0, out);
+    map_cmyk_subclass(pprocs, dev, frac_0, frac_0, frac_14, frac_0, out);
     if (!check_single_comp(yellow_c, frac_14, ncomps, out))
         return false;
-    map_cmyk(dev, frac_0, frac_0, frac_0, frac_14, out);
+    map_cmyk_subclass(pprocs, dev, frac_0, frac_0, frac_0, frac_14, out);
     if (!check_single_comp(black_c, frac_14, ncomps, out))
         return 0;
 
@@ -564,17 +584,18 @@ check_rgb_color_model_comps(gx_device * dev)
         return 0;
 
     /* check the mapping */
-    if ( (pprocs = dev_proc(dev, get_color_mapping_procs)(dev)) == 0 ||
+    pprocs = get_color_mapping_procs_subclass(dev);
+    if ( pprocs == 0 ||
          (map_rgb = pprocs->map_rgb) == 0                            )
         return 0;
 
-    map_rgb(dev, NULL, frac_14, frac_0, frac_0, out);
+    map_rgb_subclass(pprocs, dev, NULL, frac_14, frac_0, frac_0, out);
     if (!check_single_comp(red_c, frac_14, ncomps, out))
         return 0;
-    map_rgb(dev, NULL, frac_0, frac_14, frac_0, out);
+    map_rgb_subclass(pprocs, dev, NULL, frac_0, frac_14, frac_0, out);
     if (!check_single_comp(green_c, frac_14, ncomps, out))
         return 0;
-    map_rgb(dev, NULL, frac_0, frac_0, frac_14, out);
+    map_rgb_subclass(pprocs, dev, NULL, frac_0, frac_0, frac_14, out);
     if (!check_single_comp(blue_c, frac_14, ncomps, out))
         return 0;
 
@@ -636,6 +657,9 @@ int gx_set_overprint_cmyk(const gs_color_space * pcs, gs_state * pgs)
     gsicc_rendering_param_t        render_cond;   
 
     code = dev_proc(dev, get_profile)(dev, &dev_profile);
+    if (code < 0)
+        return code;
+
     gsicc_extract_profile(dev->graphics_type_tag, dev_profile, &(output_profile),
                           &render_cond);
 

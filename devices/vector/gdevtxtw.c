@@ -31,6 +31,9 @@
 #include "gxistate.h"
 #include "gxpath.h"
 #include "gdevagl.h"
+#include "gxdevsop.h"
+#include "gzpath.h"
+#include "gdevkrnlsclass.h" /* 'standard' built in subclasses, currently First/Last Page and obejct filter */
 
 /* #define TRACE_TXTWRITE 1 */
 
@@ -132,6 +135,8 @@ static dev_proc_fill_path(txtwrite_fill_path);
 static dev_proc_stroke_path(txtwrite_stroke_path);
 static dev_proc_text_begin(txtwrite_text_begin);
 static dev_proc_strip_copy_rop(txtwrite_strip_copy_rop);
+static dev_proc_dev_spec_op(txtwrite_dev_spec_op);
+
 
 /* The device prototype */
 #define X_DPI 72
@@ -230,7 +235,7 @@ const gx_device_txtwrite_t gs_txtwrite_device =
      NULL,                      /* push_transparency_state */
      NULL,                      /* pop_transparency_state */
      NULL,                      /* put_image */
-     NULL,                      /* dev_spec_op */
+     txtwrite_dev_spec_op,      /* dev_spec_op */
      NULL,                      /* copy_planes */
      NULL,                      /* get_profile */
      NULL,                      /* set_graphics_type_tag */
@@ -261,6 +266,7 @@ static int
 txtwrite_open_device(gx_device * dev)
 {
     gx_device_txtwrite_t *const tdev = (gx_device_txtwrite_t *) dev;
+    int code = 0;
 
     gx_device_fill_in_procs(dev);
     if (tdev->fname[0] == 0)
@@ -272,7 +278,9 @@ txtwrite_open_device(gx_device * dev)
 #ifdef TRACE_TXTWRITE
     tdev->DebugFile = gp_fopen("/temp/txtw_dbg.txt", "wb+");
 #endif
-    return 0;
+
+    code = install_internal_subclass_devices((gx_device **)&dev, NULL);
+    return code;
 }
 
 static int
@@ -281,8 +289,10 @@ txtwrite_close_device(gx_device * dev)
     int code = 0;
     gx_device_txtwrite_t *const tdev = (gx_device_txtwrite_t *) dev;
 
-    if (tdev->file)
+    if (tdev->file) {
         code = gx_device_close_output_file(dev, tdev->fname, tdev->file);
+        tdev->file = 0;
+    }
 
 #ifdef TRACE_TXTWRITE
     fclose(tdev->DebugFile);
@@ -534,7 +544,7 @@ static int write_simple_text(unsigned short *text, int count, gx_device_txtwrite
                         fwrite (UTF8, sizeof(unsigned char), 1, tdev->file);
                     } else {
                         if (*UTF16 < 0x800) {
-                            UTF8[0] = (*UTF16 >> 11) + 0xC0;
+                            UTF8[0] = (*UTF16 >> 6) + 0xC0;
                             UTF8[1] = (*UTF16 & 0x3F) + 0x80;
                             fwrite (UTF8, sizeof(unsigned char), 2, tdev->file);
                         } else {
@@ -671,7 +681,7 @@ static int decorated_text_output(gx_device_txtwrite_t *tdev)
             xpos = x_entry->start.x;
             for (i=0;i<x_entry->Unicode_Text_Size;i++) {
                 escaped_Unicode(x_entry->Unicode_Text[i], (char *)&Escaped);
-                gs_sprintf(TextBuffer, "<char bbox=\"%0.0f %0.0f %0.0f %0.0f\" c=\"%s\">\n", xpos,
+                gs_sprintf(TextBuffer, "<char bbox=\"%0.0f %0.0f %0.0f %0.0f\" c=\"%s\"/>\n", xpos,
                     x_entry->start.y, xpos + x_entry->Widths[i], x_entry->end.y, Escaped);
                 fwrite(TextBuffer, 1, strlen(TextBuffer), tdev->file);
                 xpos += x_entry->Widths[i];
@@ -794,7 +804,7 @@ static int decorated_text_output(gx_device_txtwrite_t *tdev)
                     xpos = x_entry->start.x;
                     for (i=0;i<x_entry->Unicode_Text_Size;i++) {
                         escaped_Unicode(x_entry->Unicode_Text[i], (char *)&Escaped);
-                        gs_sprintf(TextBuffer, "<char bbox=\"%0.0f %0.0f %0.0f %0.0f\" c=\"%s\">\n", xpos,
+                        gs_sprintf(TextBuffer, "<char bbox=\"%0.0f %0.0f %0.0f %0.0f\" c=\"%s\"/>\n", xpos,
                             x_entry->start.y, xpos + x_entry->Widths[i], x_entry->end.y, Escaped);
                         fwrite(TextBuffer, 1, strlen(TextBuffer), tdev->file);
                         xpos += x_entry->Widths[i];
@@ -823,6 +833,7 @@ txtwrite_output_page(gx_device * dev, int num_copies, int flush)
     page_text_list_t *y_list;
     gs_parsed_file_name_t parsed;
     const char *fmt;
+    const short BOM = 0xFEFF;
 
     if (!tdev->file) {
         /* Either this is the first page, or we're doing one file per page */
@@ -841,6 +852,7 @@ txtwrite_output_page(gx_device * dev, int num_copies, int flush)
             break;
 
         case 2:
+            fwrite (&BOM, sizeof(unsigned short), 1, tdev->file);
         case 3:
             code = simple_text_output(tdev);
             if (code < 0)
@@ -958,6 +970,32 @@ txtwrite_strip_copy_rop(gx_device * dev,
 }*/
 
 /* ---------------- Parameters ---------------- */
+
+static int txtwrite_get_param(gx_device *dev, char *Param, void *list)
+{
+    gx_device_txtwrite_t *const tdev = (gx_device_txtwrite_t *) dev;
+    gs_param_list * plist = (gs_param_list *)list;
+    bool bool_T = true;
+
+    if (strcmp(Param, "OutputFile") == 0) {
+        gs_param_string ofns;
+
+        ofns.data = (const byte *)tdev->fname,
+        ofns.size = strlen(tdev->fname),
+        ofns.persistent = false;
+        return param_write_string(plist, "OutputFile", &ofns);
+    }
+    if (strcmp(Param, "WantsToUnicode") == 0) {
+        return param_write_bool(plist, "WantsToUnicode", &bool_T);
+    }
+    if (strcmp(Param, "PreserveTrMode") == 0) {
+        return param_write_bool(plist, "PreserveTrMode", &bool_T);
+    }
+    if (strcmp(Param, "HighLevelDevice") == 0) {
+        return param_write_bool(plist, "HighLevelDevice", &bool_T);
+    }
+    return gs_error_undefined;
+}
 
 static int
 txtwrite_get_params(gx_device * dev, gs_param_list * plist)
@@ -1342,7 +1380,6 @@ txt_update_text_state(text_list_entry_t *ppts,
     gs_fixed_point cpt;
     gs_matrix smat, tmat;
     float size;
-    float c_s = 0, w_s = 0;
     int mask = 0;
     int code = gx_path_current_point(penum->path, &cpt);
 
@@ -1357,9 +1394,7 @@ txt_update_text_state(text_list_entry_t *ppts,
             gs_point pt;
 
             code = transform_delta_inverse(&penum->text.delta_all, &smat, &pt);
-            if (code >= 0 && pt.y == 0)
-                c_s = pt.x * size;
-            else
+            if (code < 0 || pt.y != 0)
                 mask |= TEXT_ADD_TO_ALL_WIDTHS;
         }
         else
@@ -1370,9 +1405,7 @@ txt_update_text_state(text_list_entry_t *ppts,
         gs_point pt;
 
         code = transform_delta_inverse(&penum->text.delta_space, &smat, &pt);
-        if (code >= 0 && pt.y == 0 && penum->text.space.s_char == 32)
-            w_s = pt.x * size;
-        else
+        if (code < 0 || pt.y != 0 || penum->text.space.s_char != 32)
             mask |= TEXT_ADD_TO_SPACE_WIDTH;
     }
     /* Store the updated values. */
@@ -1674,12 +1707,11 @@ txt_shift_text_currentpoint(textw_text_enum_t *penum, gs_point *wpt)
 static int get_unicode(gs_font *font, gs_glyph glyph, gs_char ch, unsigned short *Buffer)
 {
     gs_char unicode;
-    int code, cid;
+    int code;
     gs_const_string gnstr;
     unsigned short fallback = ch;
 
     unicode = font->procs.decode_glyph((gs_font *)font, glyph, ch);
-    cid = glyph - GS_MIN_CID_GLYPH;
     if (unicode == GS_NO_CHAR) {
         code = font->procs.glyph_name(font, glyph, &gnstr);
         if (code >= 0 && gnstr.size == 7) {
@@ -1812,7 +1844,7 @@ txtwrite_process_cmap_text(gs_text_enum_t *pte)
     /* Composite font using a CMap */
     for ( ; ; ) {
         gs_glyph glyph;
-        int font_code, font_index, code;
+        int font_code, code;
         gs_font *subfont;
         gs_char chr;
         txt_glyph_widths_t widths;
@@ -1824,7 +1856,6 @@ txtwrite_process_cmap_text(gs_text_enum_t *pte)
                 (&scan, &chr, &glyph);
 
         subfont = scan.fstack.items[scan.fstack.depth].font;
-        font_index = scan.fstack.items[scan.fstack.depth - 1].index;
 
         switch (font_code) {
             case 0:		/* no font change */
@@ -1833,6 +1864,7 @@ txtwrite_process_cmap_text(gs_text_enum_t *pte)
                         penum->cdevproc_callout ? penum->cdevproc_result : NULL);
                 if (code == TEXT_PROCESS_CDEVPROC) {
                     penum->cdevproc_callout = true;
+                    pte->returned.current_glyph = glyph;
                     scan.returned.current_glyph = glyph;
                     pte->current_font = subfont;
                     scan.current_font = subfont;
@@ -1894,7 +1926,7 @@ txtwrite_process_plain_text(gs_text_enum_t *pte)
     gs_font *font = pte->orig_font;
     const gs_glyph *gdata = NULL;
     gs_glyph glyph;
-    gs_char ch;
+    gs_char ch = 0;
     int i, code;
     uint operation = pte->text.operation;
     txt_glyph_widths_t widths;
@@ -1917,6 +1949,8 @@ txtwrite_process_plain_text(gs_text_enum_t *pte)
                            : *gdata);
 
         code = txt_glyph_widths(font, font->WMode, glyph, (gs_font *)font, &widths, NULL);
+        if (code < 0)
+            return code;
 
         penum->cdevproc_callout = false;
         code = txt_update_text_state(penum->text_state, (textw_text_enum_t *)pte, pte->orig_font, &font->FontMatrix);
@@ -2100,10 +2134,10 @@ txt_add_fragment(gx_device_txtwrite_t *tdev, textw_text_enum_t *penum)
     memcpy(unsorted_entry->Widths, penum->Widths, penum->TextBufferIndex * sizeof(float));
 
     unsorted_entry->FontName = (char *)gs_malloc(tdev->memory->stable_memory,
-        (strlen(penum->text_state->FontName) + 1), sizeof(unsigned short), "txtwrite alloc sorted text buffer");
-    if (!unsorted_entry->Unicode_Text)
+        (strlen(penum->text_state->FontName) + 1), sizeof(unsigned char), "txtwrite alloc sorted text buffer");
+    if (!unsorted_entry->FontName)
         return gs_note_error(gs_error_VMerror);
-    memcpy(unsorted_entry->FontName, penum->text_state->FontName, strlen(penum->text_state->FontName) * sizeof(unsigned short));
+    memcpy(unsorted_entry->FontName, penum->text_state->FontName, strlen(penum->text_state->FontName) * sizeof(unsigned char));
     unsorted_entry->FontName[strlen(penum->text_state->FontName)] = 0x00;
 
     /* First add one entry to the unsorted list */
@@ -2136,6 +2170,9 @@ textw_text_process(gs_text_enum_t *pte)
     gs_font *font = pte->orig_font;
     gs_font_base *font_base = (gs_font_base *)pte->current_font;
     int code = 0;
+
+    if (pte->text.size == 0)
+        return 0;
 
     if (!penum->TextBuffer) {
         /* We can get up to 4 Unicode points per glyph, and a glyph can be
@@ -2292,6 +2329,17 @@ txtwrite_text_begin(gx_device * dev, gs_imager_state * pis,
     textw_text_enum_t *penum;
     int code;
 
+    /* If this is a stringwidth, we must let the default graphics library code handle it
+     * in case there is no current point (this can happen if this is the first operation
+     * we get, the current font is a CIDFont, and its descendant is a substitute type 1
+     * font). If there is no current point we throw an error in text_process and that
+     * messes up all the font handling. The test below is copied from pdfwrite
+     * (gdev_pdf_text_begin) and seems to do the job.
+     */
+    if ((!(text->operation & TEXT_DO_DRAW) && pis->text_rendering_mode != 3)
+                    || path == 0 || !path_position_valid(path))
+            return gx_default_text_begin(dev, pis, text, font, path, pdcolor,
+                                         pcpath, mem, ppenum);
     /* Allocate and initialize one of our text enumerators. */
     rc_alloc_struct_1(penum, textw_text_enum_t, &st_textw_text_enum, mem,
                       return_error(gs_error_VMerror), "gdev_textw_text_begin");
@@ -2301,6 +2349,7 @@ txtwrite_text_begin(gx_device * dev, gs_imager_state * pis,
     penum->returned.total_width.x = penum->returned.total_width.y = 0;
     penum->TextBuffer = NULL;
     penum->TextBufferIndex = 0;
+    penum->Widths = NULL;
     /* The enumerator's text_release method frees this memory */
     penum->text_state = (text_list_entry_t *)gs_malloc(tdev->memory->stable_memory, 1,
             sizeof(text_list_entry_t), "txtwrite alloc text state");
@@ -2338,4 +2387,20 @@ txtwrite_strip_copy_rop(gx_device * dev,
                     int phase_x, int phase_y, gs_logical_operation_t lop)
 {
     return 0;
+}
+
+int
+txtwrite_dev_spec_op(gx_device *pdev, int dev_spec_op, void *data, int size)
+{
+    switch (dev_spec_op) {
+        case gxdso_get_dev_param:
+            {
+                int code;
+                dev_param_req_t *request = (dev_param_req_t *)data;
+                code = txtwrite_get_param(pdev, request->Param, request->list);
+                if (code != gs_error_undefined)
+                    return code;
+            }
+    }
+    return gx_default_dev_spec_op(pdev, dev_spec_op, data, size);
 }

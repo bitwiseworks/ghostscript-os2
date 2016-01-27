@@ -43,25 +43,25 @@
         % We store generation numbers as value + 1
         % We reserve 0 to indicate an free xref entry
   1 add			% increment generation number
-        % To save space, generations numbers are stored in a lstring unless we
+        % To save space, generations numbers are stored in a string unless we
         % find a generation number greater than 255.  If so then transfer to
-        % an larray.
+        % an array.
   dup 255 gt {
-    Generations ltype /stringtype eq {	% Convert Generations to an larray.
-      larray Generations llength lgrowto dup	% Create new larray
-      0 1 2 index llength 1 sub {	% Copy from old lstring to new larray
-        Generations 1 index lget lput dup
+    Generations type /stringtype eq {	% Convert Generations to an array.
+      Generations length array dup	% Create new array
+      0 1 2 index length 1 sub {	% Copy from old string to new array
+        Generations 1 index get put dup
       } for
       pop
-      /Generations exch store		% Save new Generations larray
+      /Generations exch store		% Save new Generations array
     } if
   } if
         % Verify that the new values are for a new object.  If the current
         % entry is null then we have a new entry.
-  Objects 4 index lget //null eq {
-    ObjectStream 4 index 4 index cvx lput % Save ObjectStream object number
-    Objects 4 index 3 index cvx lput	% Save object location
-    Generations 4 index 2 index lput	% Save geenration number
+  Objects 4 index get //null eq {
+    ObjectStream 4 index 4 index cvx put % Save ObjectStream object number
+    Objects 4 index 3 index cvx put	% Save object location
+    Generations 4 index 2 index put	% Save geenration number
   } {
         % Verify that the new entry has at least as high a generaton number
         % We accept equal entry number because we have found PDF files in
@@ -69,29 +69,36 @@
         % numbers.  The normal xref logic only accepts the first such
         % entry that it finds.  However the 'rebuild PDF' logic can find
         % both such entries.  The correct one is usually the last one.
-    Generations 4 index lget 1 index le {
-      ObjectStream 4 index 4 index cvx lput % Save ObjectStream object number
-      Objects 4 index 3 index cvx lput	% Save object location
-      Generations 4 index 2 index lput	% Save geenration number
+    Generations 4 index get 1 index le {
+      %% Check if the object we already found was at the locaton specified
+      %% in the original xref (now stored in Orig_Objects). If so, prefer
+      %% that offset, otherwise prefer the later object.
+      %% NB check first to see that the object number is in the range of the original
+      %% xref. If it isn't, set the 'original' Offset to 0.
+      3 index Orig_Objects length pstack le {Orig_Objects 4 index get}{0}ifelse
+      Objects 5 index get eq not
+      {
+        ObjectStream 4 index 4 index cvx put % Save ObjectStream object number
+        Objects 4 index 3 index cvx put	% Save object location
+        Generations 4 index 2 index put	% Save geenration number
+      } if
     } if
         % Set error flag if we have equal object and generation numbers
-    Generations 4 index lget 1 index eq { /dup_obj_gen_num //true def } if
+    Generations 4 index get 1 index eq { /dup_obj_gen_num //true def } if
   } 8 -1 roll { ifelse } { pop if } ifelse  % Run 'else' only when rebuilding.
 } bind def
 
 % Print the contents of the xref array.  This actually consists of three
-% arrays (Objects, Generations, and ObjectStream).  All three are larrays.
-% larrays are a special Ghostscript object which can be arrays with more
-% than 64k elements.
+% arrays (Objects, Generations, and ObjectStream).
 /print_xref				% - print_xref -
-{ 0 1 Objects llength 1 sub		% stack: 0 1 <number of objects - 1>
+{ 0 1 Objects length 1 sub		% stack: 0 1 <number of objects - 1>
   { dup =only				% print object number
     (  ) print
-    dup Generations exch lget 1 sub =only % print Generation number
+    dup Generations exch get 1 sub =only % print Generation number
     (  ) print
-    dup ObjectStream exch lget ==only	% print ObjectStream object number
+    dup ObjectStream exch get ==only	% print ObjectStream object number
     (  ) print
-    Objects exch lget ===		% print object location
+    Objects exch get ===		% print object location
   } for
   flush
 } bind def
@@ -145,6 +152,46 @@
   } {
     pop 0                 	% no xref, should not happen, report it upstrem
   } ifelse
+} bind def
+
+
+%% Searches backwards from a specified point looking for a 'trailer' keyword.
+%%      position search_earlier_trailer position or 0
+%%
+%% Its is just possible that a 'trailer' keyword could straddle a buffer, in which case
+%% we wouldn't find it. Given that this only executes for broken files anyway I don't
+%% propose to worry about it at the moment, if anyone ever turns up an example we may
+%% choose to enhance this routine further.
+%%
+/search_earlier_trailer {
+{                                             % position
+    dup 0 gt {                                  % position bool
+      dup 65535 .min exch                        % block_size position
+      1 index sub                               % block_size position-block_size
+      dup                                       % block_size new_position new_position
+      PDFfile exch setfileposition              % block_size new position
+      exch dup string 0 1 4 -1 roll 1 sub       %
+      {2 copy PDFfile read pop put pop } for    %
+                                                % new_position (...string from file....)
+      (trailer) search {
+        pop
+        { search not { exit } if pop } loop
+                                                % determine where the trailer is in the file
+                                                %   trailer loc = end loc - remaing string length
+        length exch 65535 add exch sub
+      } {
+        pop 0
+      } ifelse
+    } {
+      pop 0 exit
+    }ifelse
+
+    %% We either have a position for a trailer, or 0 if we failed to find one
+    dup 0 eq not {
+      exit
+    }if
+    pop                                         % renove the zero leaving the new start position
+  } loop
 } bind def
 
 % We want the location of the trailer dictionary at the end of file.
@@ -230,10 +277,30 @@
     (   **** Error:  Trailer is not found.\n) pdfformaterror
   }{
   % get the trailer
+  dup
   PDFfile exch setfileposition		% set to the specified trailer location
   /dictlevelcount 0 def
   PDFfile traileropdict .pdfrun		% read trailer info
+
+  {
+    dup /Root known not {
+     (   **** Warning: This trailer dictionary does not contain a /Root entry\n        searching for a prior trailer.\n) pdfformaterror
+      %% remove trailer dict copy, duplicate file position, then remove the length of 'trailer' so we don't
+      %% find the same one again....
+      pop dup 7 sub
+      search_earlier_trailer
+    }{exit}ifelse
+    dup 0 eq {
+    pop
+    (   **** Error:  Valid trailer not found.\n) pdfformaterror
+    }{
+      PDFfile exch setfileposition		% set to the specified trailer location
+      /dictlevelcount 0 def
+      PDFfile traileropdict .pdfrun		% read trailer info
+    } ifelse
+  } loop
   /Trailer exch def
+  pop
   } ifelse
 } bind def
 
@@ -275,7 +342,8 @@
 % an alternate version of the data in the xref tables.
 % Its purpose is to provide a basis for an xref fixing facility.
 /search_objects				% - search_objects -
-{ % Initialize the Objects, Generations, etc. larrays
+{ % Initialize the Objects, Generations, etc. arrays
+  Objects dup length array copy /Orig_Objects exch def
   initPDFobjects
   % reset duplicate object and generation numbers error flag
   /dup_obj_gen_num //false def
@@ -346,6 +414,7 @@
     (   **** numbers.  The accuracy of the resulting image is unknown.\n)
     pdfformaterror
   } if
+  currentdict /Orig_Objects undef
 } bind def
 
 % Print warning message because we found a problem while reading the xref

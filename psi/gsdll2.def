@@ -22,7 +22,9 @@ EXPORTS
    GSAPI_SET_STDIO = _gsapi_set_stdio
    GSAPI_SET_POLL = _gsapi_set_poll
    GSAPI_SET_DISPLAY_CALLBACK = _gsapi_set_display_callback
-   GASPI_SET_ARG_ENCODING = _gsapi_set_arg_encoding
+   GSAPI_SET_ARG_ENCODING = _gsapi_set_arg_encoding
+   GSAPI_SET_DEFAULT_DEVICE_LIST = _gsapi_set_default_device_list
+   GSAPI_GET_DEFAULT_DEVICE_LIST = _gsapi_get_default_device_list
 
    _gsdll_revision
    _gsdll_init
@@ -45,3 +47,5 @@ EXPORTS
    _gsapi_set_poll
    _gsapi_set_display_callback
    _gsapi_set_arg_encoding
+   _gsapi_set_default_device_list
+   _gsapi_get_default_device_list

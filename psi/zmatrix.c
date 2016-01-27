@@ -24,8 +24,8 @@
 
 /* Forward references */
 static int common_transform(i_ctx_t *,
-                int (*)(gs_state *, floatp, floatp, gs_point *),
-                int (*)(floatp, floatp, const gs_matrix *, gs_point *));
+                int (*)(gs_state *, double, double, gs_point *),
+                int (*)(double, double, const gs_matrix *, gs_point *));
 
 /* - initmatrix - */
 static int
@@ -265,8 +265,8 @@ zidtransform(i_ctx_t *i_ctx_p)
 /* Common logic for [i][d]transform */
 static int
 common_transform(i_ctx_t *i_ctx_p,
-        int (*ptproc)(gs_state *, floatp, floatp, gs_point *),
-        int (*matproc)(floatp, floatp, const gs_matrix *, gs_point *))
+        int (*ptproc)(gs_state *, double, double, gs_point *),
+        int (*matproc)(double, double, const gs_matrix *, gs_point *))
 {
     os_ptr op = osp;
     double opxy[2];
@@ -346,7 +346,7 @@ zbbox_transform(i_ctx_t *i_ctx_p)
     gs_matrix m;
     float bbox[4];
     gs_point aa, az, za, zz;
-    floatp temp;
+    double temp;
     int code;
 
     if ((code = read_matrix(imemory, op, &m)) < 0)
@@ -356,7 +356,7 @@ zbbox_transform(i_ctx_t *i_ctx_p)
         return_op_typecheck(op - 1);
     check_read(op[-1]);
     if (r_size(op - 1) != 4)
-        return_error(e_rangecheck);
+        return_error(gs_error_rangecheck);
     if ((code = process_float_array(imemory, op - 1, 4, bbox) < 0))
         return code;
 

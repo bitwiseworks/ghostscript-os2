@@ -28,6 +28,7 @@
 #include "gxclpath.h"
 #include "gxcolor2.h"
 #include "gxdcolor.h"
+#include "gxpcolor.h"
 #include "gxpaint.h"		/* for gx_fill/stroke_params */
 #include "gzpath.h"
 #include "gzcpath.h"
@@ -134,7 +135,7 @@ cmd_put_drawing_color(gx_device_clist_writer * cldev, gx_clist_state * pcls,
      *
      * The complete cmd_opv_ext_put_drawing_color consists of:
      *  comand code (2 bytes)
-     *  tile index value or non tile color (1) 
+     *  tile index value or non tile color (1)
      *  device color type index (1)
      *  length of serialized device color (enc_u_sizew(dc_size))
      *  the serialized device color itself (dc_size)
@@ -152,7 +153,7 @@ cmd_put_drawing_color(gx_device_clist_writer * cldev, gx_clist_state * pcls,
         return 0;
     else if (code < 0 && code != gs_error_rangecheck)
         return code;
-    if (!all_bands && dc_size * pre->nbands > 1024*1024 /* arbitrary */)
+    if (!all_bands && dc_size * pre->rect_nbands > 1024*1024 /* arbitrary */)
         all_bands = true;
     is_pattern = gx_dc_is_pattern1_color(pdcolor);
     if (is_pattern)
@@ -243,12 +244,12 @@ cmd_put_drawing_color(gx_device_clist_writer * cldev, gx_clist_state * pcls,
         left -= portion_size;
     } while (left);
 
-    /* should properly calculate color_usage, but for now just punt */
-    pcls->color_usage.or = gx_color_usage_all(cldev);
+    /* attempt to properly calculate color_usage */
+    pcls->color_usage.or |= cmd_drawing_color_usage(cldev, pdcolor);
 
     /* record the color we have just serialized color */
     pdcolor->type->save_dc(pdcolor, &pcls->sdc);
-    if (pattern_id) {
+    if (pattern_id != gs_no_id) {
         /* Don't record empty tiles because they're not cached. */
         pcls->pattern_id = pattern_id;
     }
@@ -256,6 +257,23 @@ cmd_put_drawing_color(gx_device_clist_writer * cldev, gx_clist_state * pcls,
         /* HACK: since gx_dc_pattern_write identifies pattern by tile id,
            replace the client's pattern id with tile id in the saved color.  */
         pcls->sdc.colors.pattern.id = pattern_id;
+        if (pattern_id &&
+            (gx_pattern1_get_transptr(pdcolor) != NULL ||
+             gx_pattern1_clist_has_trans(pdcolor))) {
+            /* update either this band or all bands with the trans_bbox */
+            if (all_bands) {
+                pcls->color_usage.trans_bbox.p.x = 0;
+                pcls->color_usage.trans_bbox.q.x = cldev->width;  /* no other information available */
+                pcls->color_usage.trans_bbox.p.y = 0;
+                pcls->color_usage.trans_bbox.q.y = cldev->height;
+                clist_update_trans_bbox(cldev, &(pcls->color_usage.trans_bbox));
+            } else {
+                pcls->color_usage.trans_bbox.p.x = 0;
+                pcls->color_usage.trans_bbox.q.x = cldev->width;  /* no other information available */
+                pcls->color_usage.trans_bbox.p.y = pre->y;
+                pcls->color_usage.trans_bbox.q.y = pre->yend;
+            }
+        }
     }
     if (is_pattern && all_bands) {
         /* Distribute the written pattern params to all bands.
@@ -274,7 +292,7 @@ cmd_put_drawing_color(gx_device_clist_writer * cldev, gx_clist_state * pcls,
 }
 
 /* Compute the colors used by a drawing color. */
-gx_color_index
+gx_color_usage_bits
 cmd_drawing_color_usage(gx_device_clist_writer *cldev,
                         const gx_drawing_color * pdcolor)
 {
@@ -286,6 +304,12 @@ cmd_drawing_color_usage(gx_device_clist_writer *cldev,
                                     gx_color_index2usage((gx_device *)cldev, gx_dc_binary_color1(pdcolor)));
     else if (gx_dc_is_colored_halftone(pdcolor))
         return gx_color_index2usage((gx_device *)cldev, colored_halftone_color_usage(cldev, pdcolor));
+    else if (gx_dc_is_devn(pdcolor)) {
+        gx_color_usage_bits bits = 0;		/* NB, gx_color_usage_bits is actually gx_color_index */
+
+        gx_dc_devn_get_nonzero_comps(pdcolor, (gx_device *)cldev, &bits);
+        return bits;
+    }
     else
         return gx_color_usage_all(cldev);
 }
@@ -327,7 +351,7 @@ cmd_check_clip_path(gx_device_clist_writer * cldev, const gx_clip_path * pcpath)
   shape_alpha_known | fill_adjust_known | alpha_known | clip_path_known)
 static void
 cmd_check_fill_known(gx_device_clist_writer *cdev, const gs_imager_state *pis,
-                     floatp flatness, const gs_fixed_point *padjust,
+                     double flatness, const gs_fixed_point *padjust,
                      const gx_clip_path *pcpath, uint *punknown)
 {
     /*
@@ -801,7 +825,7 @@ clist_fill_path(gx_device * dev, const gs_imager_state * pis, gx_path * ppath,
                 (code = cmd_update_lop(cdev, re.pcls, lop)) < 0
                 )
                 return code;
-            code = cmd_put_drawing_color(cdev, re.pcls, pdcolor, &re, 
+            code = cmd_put_drawing_color(cdev, re.pcls, pdcolor, &re,
                                          devn_not_tile);
             if (code == gs_error_unregistered)
                 return code;
@@ -1416,7 +1440,7 @@ cmd_put_path(gx_device_clist_writer * cldev, gx_clist_state * pcls,
                         continue;
                     }
                     /* If we skipped any segments, put out a moveto/lineto. */
-                    if (side && (px != out.x || py != out.y || first_point())) {
+                    if (side && ((open < 0) || (px != out.x || py != out.y || first_point()))) {
                         C = out.x - px, D = out.y - py;
                         if (open < 0) {
                             first = out;
@@ -1458,7 +1482,7 @@ cmd_put_path(gx_device_clist_writer * cldev, gx_clist_state * pcls,
                         continue;
                     }
                     /* If we skipped any segments, put out a moveto/lineto. */
-                    if (side && (px != out.x || py != out.y || first_point())) {
+                    if (side && ((open < 0) || (px != out.x || py != out.y || first_point()))) {
                         C = out.x - px, D = out.y - py;
                         if (open < 0) {
                             first = out;
@@ -1590,7 +1614,7 @@ cmd_put_path(gx_device_clist_writer * cldev, gx_clist_state * pcls,
                         } else
                             out_side = which_side(F);
                         /* If we skipped any segments, put out a moveto/lineto. */
-                        if (side && (px != out.x || py != out.y || first_point())) {
+                        if (side && ((open < 0) || (px != out.x || py != out.y || first_point()))) {
                             fixed diff[2];
 
                             diff[0] = out.x - px, diff[1] = out.y - py;

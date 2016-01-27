@@ -31,6 +31,7 @@
 #include "gsiparm2.h"
 #include "gxdevmem.h"
 #include "gdevx.h"
+#include "gdevkrnlsclass.h" /* 'standard' built in subclasses, currently First/Last Page and obejct filter */
 
 /* Define whether to try to read back exposure events after XGetImage. */
 /****** THIS IS USELESS.  XGetImage DOES NOT GENERATE EXPOSURE EVENTS. ******/
@@ -76,7 +77,7 @@ static dev_proc_get_bits_rectangle(x_get_bits_rectangle);
 /*extern dev_proc_get_xfont_procs(gdev_x_finish_copydevice);*/
 
 /* The device descriptor */
-#define x_device(this_device, dev_body, max_bitmap) \
+#define x_device(this_device, dev_body) \
 const gx_device_X this_device = { \
     dev_body, \
     {				/* std_procs */ \
@@ -128,7 +129,6 @@ const gx_device_X this_device = { \
     gx_device_bbox_common_initial(0 /*false*/, 1 /*true*/, 1 /*true*/), \
     0 /*false*/,		/* is_buffered */ \
     1 /*true*/,			/* IsPageDevice */ \
-    max_bitmap,			/* MaxBitmap */ \
     NULL,			/* buffer */ \
     0,				/* buffer_size */ \
     {				/* image */ \
@@ -216,16 +216,14 @@ x_device(gs_x11_device,
                                      FAKE_RES * DEFAULT_WIDTH_10THS / 10,
                                      FAKE_RES * DEFAULT_HEIGHT_10THS / 10,	/* x and y extent (nominal) */
                                      FAKE_RES, FAKE_RES,	/* x and y density (nominal) */
-                                     24, 255, 256 ),
-         0)
+                                     24, 255, 256 ))
 
 x_device(gs_x11alpha_device,
          std_device_dci_alpha_type_body(gx_device_X, 0, "x11alpha", &st_device_X,
                                         FAKE_RES * DEFAULT_WIDTH_10THS / 10,
                                         FAKE_RES * DEFAULT_HEIGHT_10THS / 10,	/* x and y extent (nominal) */
                                         FAKE_RES, FAKE_RES,	/* x and y density (nominal) */
-                                        3, 24, 255, 255, 256, 256, 4, 4 ),
-         50000000)
+                                        3, 24, 255, 255, 256, 256, 4, 4 ))
 
 /* If XPutImage doesn't work, do it ourselves. */
 static int alt_put_image(gx_device * dev, Display * dpy, Drawable win,
@@ -246,11 +244,23 @@ static int
 x_open(gx_device * dev)
 {
     gx_device_X *xdev = (gx_device_X *) dev;
-    int code = gdev_x_open(xdev);
+    int code;
+
+    if (xdev->color_info.anti_alias.text_bits > 1 ||
+        xdev->color_info.anti_alias.graphics_bits > 1)
+        xdev->space_params.MaxBitmap = 50000000;		/* default MaxBitmap when using AA */
+    code = gdev_x_open(xdev);
 
     if (code < 0)
         return code;
     update_init(xdev);
+    code = install_internal_subclass_devices((gx_device **)&xdev, NULL);
+    if (code < 0)
+        return code;
+
+    if (xdev->is_buffered)
+        xdev->box_proc_data = xdev;
+
     return 0;
 }
 
@@ -1041,27 +1051,41 @@ static void
 update_do_flush(gx_device_X * xdev)
 {
     flush_text(xdev);
+    if (xdev->update.box.q.x == min_int_in_fixed || xdev->update.box.q.y == min_int_in_fixed)
+        return;
+    if (xdev->update.box.p.x == max_int_in_fixed || xdev->update.box.p.y == max_int_in_fixed)
+        return;
     if (xdev->update.count != 0) {
         int x = xdev->update.box.p.x, y = xdev->update.box.p.y;
         int w = xdev->update.box.q.x - x, h = xdev->update.box.q.y - y;
+        const gx_device_memory *mdev = NULL;
 
-        fit_fill_xywh(xdev, x, y, w, h);
+        /*
+         * Copy from memory image to X server if any.
+         */
+        if (xdev->is_buffered) {
+            /*
+             * The bbox device may have set the target to NULL
+             * temporarily.  If this is the case, defer the screen
+             * update.
+             */
+            if (!(mdev = (const gx_device_memory *)xdev->target))
+                return;
+        }
+
+        /*
+         * mdev->width and mdev->height arn't the same as
+         * xdev->width and xdev->height ... at least for gv
+         */
+        if (mdev)
+            fit_fill_xywh(mdev, x, y, w, h);
+        else
+            fit_fill_xywh(xdev, x, y, w, h);
+
         if (w > 0 && h > 0) {
-            if (xdev->is_buffered) {
-                /* Copy from memory image to X server. */
-                const gx_device_memory *mdev =
-                    (const gx_device_memory *)xdev->target;
-
-                /*
-                 * The bbox device may have set the target to NULL
-                 * temporarily.  If this is the case, defer the screen
-                 * update.
-                 */
-                if (mdev == NULL)
-                    return;	/* don't reset */
+            if (mdev)
                 x_copy_image(xdev, mdev->line_ptrs[y], x, mdev->raster,
                              x, y, w, h);
-            }
             if (xdev->bpixmap) {
                 /* Copy from X backing pixmap to screen. */
 

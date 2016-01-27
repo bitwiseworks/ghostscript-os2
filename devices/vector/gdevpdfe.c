@@ -502,7 +502,7 @@ pdf_xmp_write_docinfo_item(gx_device_pdf *pdev, stream *s, const char *key, cons
 
     if (v != NULL && (v->value_type == COS_VALUE_SCALAR ||
                         v->value_type == COS_VALUE_CONST)) {
-        if (v->contents.chars.size > 2 && v->contents.chars.data[0] == '(')
+        if (v->contents.chars.size >= 2 && v->contents.chars.data[0] == '(')
             return pdf_xmp_write_translated(pdev, s, v->contents.chars.data + 1,
                         v->contents.chars.size - 2, write);
         else
@@ -782,9 +782,12 @@ pdf_write_document_metadata(gx_device_pdf *pdev, const byte digest[6])
                 if (cos_dict_find(pdev->Info, (const byte *)"/Subject", 8)) {
                     pdf_xml_tag_open(s, "dc:description");
                     {
-                        pdf_xml_tag_open(s, "rdf:Seq");
+                        pdf_xml_tag_open(s, "rdf:Alt");
                         {
-                            pdf_xml_tag_open(s, "rdf:li");
+                            pdf_xml_tag_open_beg(s, "rdf:li");
+                            pdf_xml_attribute_name(s, "xml:lang");
+                            pdf_xml_attribute_value(s, "x-default");
+                            pdf_xml_tag_end(s);
                             {
                                 code = pdf_xmp_write_docinfo_item(pdev, s,  "/Subject", "No Subject",
                                             pdf_xml_data_write);
@@ -793,7 +796,7 @@ pdf_write_document_metadata(gx_device_pdf *pdev, const byte digest[6])
                             }
                             pdf_xml_tag_close(s, "rdf:li");
                         }
-                        pdf_xml_tag_close(s, "rdf:Seq");
+                        pdf_xml_tag_close(s, "rdf:Alt");
                     }
                     pdf_xml_tag_close(s, "dc:description");
                 }
@@ -831,7 +834,7 @@ pdf_document_metadata(gx_device_pdf *pdev)
 {
     if (pdev->CompatibilityLevel < 1.4)
         return 0;
-    if (pdev->ParseDSCCommentsForDocInfo || pdev->PreserveEPSInfo) {
+    if (pdev->ParseDSCCommentsForDocInfo || pdev->PreserveEPSInfo || pdev->PDFA) {
         pdf_resource_t *pres;
         char buf[20];
         byte digest[6] = {0,0,0,0,0,0};

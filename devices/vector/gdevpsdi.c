@@ -39,9 +39,11 @@
 #ifdef USE_LWF_JP2
 #include "sjpx_luratech.h"
 #endif
+#include "sisparam.h"
 
 /* Define parameter-setting procedures. */
 extern stream_state_proc_put_params(s_CF_put_params, stream_CF_state);
+extern stream_template s_IScale_template;
 
 /* ---------------- Image compression ---------------- */
 
@@ -143,13 +145,21 @@ choose_DCT_params(gx_device *pdev, const gs_color_space *pcs,
            suppress an ununiformity by subtracting the image of {0,0,0},
            and then check for giagonal domination.  */
         cc.paint.values[0] = cc.paint.values[1] = cc.paint.values[2] = MIN_FLOAT;
-        convert_color((gx_device *)&mdev, pcs, pis, &cc, c[3]);
+        code = convert_color((gx_device *)&mdev, pcs, pis, &cc, c[3]);
+        if (code < 0)
+            return code;
         cc.paint.values[0] = MAX_FLOAT; cc.paint.values[1] = MIN_FLOAT; cc.paint.values[2] = MIN_FLOAT;
-        convert_color((gx_device *)&mdev, pcs, pis, &cc, c[0]);
+        code = convert_color((gx_device *)&mdev, pcs, pis, &cc, c[0]);
+        if (code < 0)
+            return code;
         cc.paint.values[0] = MIN_FLOAT; cc.paint.values[1] = MAX_FLOAT; cc.paint.values[2] = MIN_FLOAT;
-        convert_color((gx_device *)&mdev, pcs, pis, &cc, c[1]);
+        code = convert_color((gx_device *)&mdev, pcs, pis, &cc, c[1]);
+        if (code < 0)
+            return code;
         cc.paint.values[0] = MIN_FLOAT; cc.paint.values[1] = MIN_FLOAT; cc.paint.values[2] = MAX_FLOAT;
-        convert_color((gx_device *)&mdev, pcs, pis, &cc, c[2]);
+        code = convert_color((gx_device *)&mdev, pcs, pis, &cc, c[2]);
+        if (code < 0)
+            return code;
         c[0][0] -= c[3][0]; c[0][1] -= c[3][1]; c[0][2] -= c[3][2];
         c[1][0] -= c[3][0]; c[1][1] -= c[3][1]; c[1][2] -= c[3][2];
         c[2][0] -= c[3][0]; c[2][1] -= c[3][1]; c[2][2] -= c[3][2];
@@ -286,6 +296,9 @@ setup_image_compression(psdf_binary_writer *pbw, const psdf_image_params *pdip,
     st = s_alloc_state(mem, templat->stype, "setup_image_compression");
     if (st == 0)
         return_error(gs_error_VMerror);
+
+    st->templat = templat;
+
     if (templat->set_defaults)
         (*templat->set_defaults) (st);
     if (templat == &s_CFE_template) {
@@ -314,6 +327,7 @@ setup_image_compression(psdf_binary_writer *pbw, const psdf_image_params *pdip,
                 code = gs_note_error(gs_error_VMerror);
                 goto fail;
             }
+            st->templat = templat;
             if (templat->set_defaults)
                 (*templat->set_defaults) (st);
             {
@@ -386,9 +400,9 @@ setup_image_compression(psdf_binary_writer *pbw, const psdf_image_params *pdip,
 /* Determine whether an image should be downsampled. */
 static bool
 do_downsample(const psdf_image_params *pdip, const gs_pixel_image_t *pim,
-              floatp resolution)
+              double resolution)
 {
-    floatp factor = resolution / pdip->Resolution;
+    double factor = resolution / pdip->Resolution;
 
     return (pdip->Downsample && factor >= pdip->DownsampleThreshold &&
             factor <= pim->Width && factor <= pim->Height);
@@ -400,7 +414,7 @@ do_downsample(const psdf_image_params *pdip, const gs_pixel_image_t *pim,
 static int
 setup_downsampling(psdf_binary_writer * pbw, const psdf_image_params * pdip,
                    gs_pixel_image_t * pim, const gs_imager_state * pis,
-                   floatp resolution, bool lossless)
+                   double resolution, bool lossless)
 {
     gx_device_psdf *pdev = pbw->dev;
     const stream_template *templat = &s_Subsample_template;
@@ -419,7 +433,11 @@ setup_downsampling(psdf_binary_writer * pbw, const psdf_image_params * pdip,
             templat = &s_Average_template;
             break;
         case ds_Bicubic:
+            templat = &s_IScale_template;
+            /* We now use the Mitchell filter instead of the 'bicubic' filter
+             * because it gives better results.
             templat = &s_Bicubic_template;
+             */
             break;
         default:
             dmprintf1(pdev->v_memory, "Unsupported downsample type %d\n", pdip->DownsampleType);
@@ -443,6 +461,8 @@ setup_downsampling(psdf_binary_writer * pbw, const psdf_image_params * pdip,
         return_error(gs_error_VMerror);
     if (templat->set_defaults)
         templat->set_defaults(st);
+
+    if (templat != &s_IScale_template)
     {
         stream_Downsample_state *const ss = (stream_Downsample_state *) st;
 
@@ -454,11 +474,12 @@ setup_downsampling(psdf_binary_writer * pbw, const psdf_image_params * pdip,
         ss->XFactor = ss->YFactor = factor;
         ss->AntiAlias = pdip->AntiAlias;
         ss->padX = ss->padY = false; /* should be true */
+
         if (templat->init)
             templat->init(st);
-        pim->Width = s_Downsample_size_out(pim->Width, factor, ss->padX);
-        pim->Height = s_Downsample_size_out(pim->Height, factor, ss->padY);
         pim->BitsPerComponent = pdip->Depth;
+        pim->Width = s_Downsample_size_out(pim->Width, factor, false);
+        pim->Height = s_Downsample_size_out(pim->Height, factor, false);
         gs_matrix_scale(&pim->ImageMatrix, (double)pim->Width / orig_width,
                         (double)pim->Height / orig_height,
                         &pim->ImageMatrix);
@@ -468,6 +489,45 @@ setup_downsampling(psdf_binary_writer * pbw, const psdf_image_params * pdip,
                                  8, pdip->Depth)) < 0 ||
             (code = psdf_encode_binary(pbw, templat, st)) < 0 ||
             (code = pixel_resize(pbw, orig_width, ss->Colors,
+                                 orig_bpc, 8)) < 0
+            ) {
+            gs_free_object(pdev->v_memory, st, "setup_image_compression");
+            return code;
+        }
+    } else {
+        /* The setup for the Mitchell filter is quite different to the other filters
+         * because it isn't one of ours.
+         */
+        int Colors = (pim->ColorSpace == 0 ? 1 /*mask*/ :
+             gs_color_space_num_components(pim->ColorSpace));
+
+        stream_image_scale_state *ss = (stream_image_scale_state *)st;
+
+        ss->params.EntireWidthIn = ss->params.WidthIn = ss->params.PatchWidthIn = pim->Width;
+        ss->params.EntireHeightIn = ss->params.HeightIn = ss->params.PatchHeightIn = pim->Height;
+        ss->params.EntireWidthOut = ss->params.WidthOut = ss->params.PatchWidthOut = s_Downsample_size_out(pim->Width, factor, false);
+        ss->params.EntireHeightOut = ss->params.HeightOut = ss->params.PatchHeightOut = s_Downsample_size_out(pim->Height, factor, false);
+        ss->params.BitsPerComponentIn = ss->params.BitsPerComponentOut = pdip->Depth;
+        ss->params.spp_interp = ss->params.spp_decode = Colors;
+        ss->params.TopMargin = ss->params.LeftMarginIn = ss->params.LeftMarginOut = 0;
+        ss->params.src_y_offset = 0;
+        ss->params.early_cm = true;
+        ss->params.MaxValueIn = ss->params.MaxValueOut = (int)pow(2, pdip->Depth);;
+
+        if (templat->init)
+            templat->init(st);
+        pim->Width = s_Downsample_size_out(pim->Width, factor, false);
+        pim->Height = s_Downsample_size_out(pim->Height, factor, false);
+        pim->BitsPerComponent = pdip->Depth;
+        gs_matrix_scale(&pim->ImageMatrix, (double)pim->Width / orig_width,
+                        (double)pim->Height / orig_height,
+                        &pim->ImageMatrix);
+        /****** NO ANTI-ALIASING YET ******/
+        if ((code = setup_image_compression(pbw, pdip, pim, pis, lossless)) < 0 ||
+            (code = pixel_resize(pbw, pim->Width, Colors,
+                                 8, pdip->Depth)) < 0 ||
+            (code = psdf_encode_binary(pbw, templat, st)) < 0 ||
+            (code = pixel_resize(pbw, orig_width, Colors,
                                  orig_bpc, 8)) < 0
             ) {
             gs_free_object(pdev->v_memory, st, "setup_image_compression");
@@ -499,7 +559,7 @@ adjust_auto_filter_strategy(gx_device_psdf *pdev,
     if (!in_line && params->Depth > 1 && pdev->ParamCompatibilityLevel >= 1.5 &&
             pim->ColorSpace->type->index != gs_color_space_index_Indexed &&
             params->AutoFilter &&
-            !strcmp(params->AutoFilterStrategy, "/JPEG2000")) {
+            params->AutoFilterStrategy != af_Jpeg) {
         params->Filter = "/JPXEncode";
         params->filter_template = &s_jpxe_template;
         params->Dict = plist;
@@ -700,6 +760,8 @@ psdf_setup_compression_chooser(psdf_binary_writer *pbw, gx_device_psdf *pdev,
 
     if (ss == 0)
         return_error(gs_error_VMerror);
+    ss->templat = &s_compr_chooser_template;
+
     pbw->memory = pdev->memory;
     pbw->strm = pdev->strm; /* just a stub - will not write to it. */
     pbw->dev = pdev;
@@ -788,7 +850,7 @@ new_setup_image_filters(gx_device_psdf * pdev, psdf_binary_writer * pbw,
     int bpc = pim->BitsPerComponent;
     int bpc_out = pim->BitsPerComponent = min(bpc, 8);
     int ncomp;
-    double resolution;
+    double resolution, resolutiony;
 
     /*
      * The Adobe documentation doesn't say this, but mask images are
@@ -839,6 +901,19 @@ new_setup_image_filters(gx_device_psdf * pdev, psdf_binary_writer * pbw,
         gs_distance_transform(pt.x, pt.y, pctm, &pt);
         resolution = 1.0 / hypot(pt.x / pdev->HWResolution[0],
                                  pt.y / pdev->HWResolution[1]);
+
+        /* Actually we must do both X and Y, in case the image is ananmorphically scaled
+         * and one axis is not high enough resolution to be downsampled.
+         * Bug #696152
+         */
+        code = gs_distance_transform_inverse(0.0, 1.0, &pim->ImageMatrix, &pt);
+        if (code < 0)
+            return code;
+        gs_distance_transform(pt.x, pt.y, pctm, &pt);
+        resolutiony = 1.0 / hypot(pt.x / pdev->HWResolution[0],
+                                 pt.y / pdev->HWResolution[1]);
+        if (resolutiony < resolution)
+            resolution = resolutiony;
     }
     if (ncomp == 1 && pim->ColorSpace && pim->ColorSpace->type->index != gs_color_space_index_Indexed) {
         /* Monochrome, gray, or mask */

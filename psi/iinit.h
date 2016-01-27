@@ -16,6 +16,10 @@
 
 /* (Internal) interface to iinit.c */
 
+/* The following will allow for -Z! to trace PS operators. */
+/* This is slightly less noisy but less informative than -ZI */
+/* #define DEBUG_TRACE_PS_OPERATORS */
+
 #ifndef iinit_INCLUDED
 #  define iinit_INCLUDED
 
@@ -29,6 +33,9 @@ int op_init(i_ctx_t *);
 #if defined(DEBUG_TRACE_PS_OPERATORS) || defined(DEBUG)
 const char *op_get_name_string(op_proc_t opproc);
 #endif
+
+int
+i_iodev_init(i_ctx_t *i_ctx_p);
 
 /*
  * Test whether there are any Level 2 operators in the executable.

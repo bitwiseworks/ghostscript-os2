@@ -172,7 +172,6 @@ struct gx_pattern_trans_s {
     int height;
     const pdf14_nonseparable_blending_procs_t *blending_procs;
     bool is_additive;
-    gs_blend_mode_t blending_mode;
     gs_int_rect *dirty;
     void (* pat_trans_fill)(int xmin, int ymin, int xmax, int ymax, int px,
                             int py, const gx_color_tile *ptile,
@@ -215,6 +214,7 @@ struct gx_color_tile_s {
     /* (i.e., the mask is all 1's) */
 
     gx_pattern_trans_t *ttrans;  /* !=0 if has trans. in this case tbits == 0 */
+    gs_blend_mode_t blending_mode;  /* used if the pattern has transparency */
 
     gx_device_clist *cdev;	/* not NULL if the graphics is a command list. */
     byte is_simple;		/* true if xstep/ystep = tile size */
@@ -295,6 +295,9 @@ gx_device_forward * gx_pattern_accum_alloc(gs_memory_t * mem,
                        gs_memory_t * stoarge_memory,
                        gs_pattern1_instance_t *pinst, client_name_t cname);
 
+/* Return true if pattern accumulator device (not pattern-clist) */
+bool gx_device_is_pattern_accum(gx_device *dev);
+
 /* Given the size of a new pattern tile, free entries from the cache until  */
 /* enough space is available (or nothing left to free).			    */
 /* This will allow 1 oversized entry					    */
@@ -329,6 +332,9 @@ void gx_pattern_cache_winnow(gx_pattern_cache *,
                              void *);
 
 bool gx_pattern_tile_is_clist(gx_color_tile *ptile);
+
+/* Return true if pattern-clist device (not pattern accumulator) */
+bool gx_device_is_pattern_clist(gx_device *dev);
 
 dev_proc_open_device(pattern_clist_open_device);
 

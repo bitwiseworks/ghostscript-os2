@@ -56,42 +56,47 @@ overview</a>.
 
 <!-- [2.0 begin contents] ================================================== -->
 
-<h2><a name="Version9.10"></a>Version 9.10 (2013-08-30)</h2>
+<h2><a name="Version9.18"></a>Version 9.18 (2015-09-23)</h2>
 
-<p>This is the ninth full release in the stable 9.x series, and is
-primarily a maintenance release.
+<p>This is the thirteenth full release in the stable 9.x series, and is
+a maintenance release.
 
 <p> Highlights in this release include:
 <ul>
 <li>
-<p> Background printing (BGPrint) is a new feature allowing an accumulated page
-clist to be rendered by one or more rendering threads whilst the interpreter
-(in the "main" thread) continues to accumulate the subsequent page's clist.
-For certain classes of file this can result in a useful performance increase.
-See: <a href="Language.htm#Banding_parameters">Banding Parameters</a>
+<p>
+A substantial revision of the build system and GhostPDL directory structure,
+meaning the GhostPCL and GhostXPS &quotproducts&quot are now built by the
+Ghostscript build system &quotproper&quot rather than having their own builds
+which called the Ghostscript build system for certain parts of the builds.
+<p>
+Ghostscript-only users should not be affected by this change.
+<p>
+For users of the PCL and XPS interpreters (collectively downloaded as &quotGhostPDL&quot) there
+is a new, &quotflatter&quot directory structure and only one <code>configure</code> and one
+<code>make</code> invocation to build all the products. There are also some executable default name changes
+to bring the PCL and XPS binaries in line with the Ghostscript ones. All executables now end up in
+the &quotbin&quot directory (or build specific variant thereof, e.g. &quotdebugbin&quot). The PCL
+executable, by default, is now &quotgpcl6&quot on Unix like systems and &quotgpcl6win??.exe&quot (where
+&quot??&quot is either &quot32&quot or &quot64&quot). The XPS executable remains &quotgxps&quot on Unix-like
+systems, but similarly becomes &quotgxpswin??.exe&quot on Windows.
+<p>
+Those using scripts or other automated processes will need to take steps to cope with these changes.
 </li>
 <li>
-<p> GrayDetection allows suitably written devices to detect "color" input
-in near neutral tones (i.e. near monochrome) and to convert "on-the-fly" to
-pure grayscale, whilst retaining the ability to print full color on demand.
-This is primarily aimed at workflows where saving ink (especially color inks)
-is required.
-See: <a href="Language.htm#Device_parameters">Device Parameters</a>
+<p>
+A new method of internally inserting devices into the device chain has been
+developed, named "device subclassing". This allows suitably written devices to
+be more easily and consistently as &quotfilter&quot devices.
+<p>
+The first fruit of this is a new implementation of the &quot-dFirstPage&quot/&quot-dLastPage&quot
+feature which functions a device filter in the Ghostscript graphics library,
+meaning it works consistently with all input languages.
 </li>
 <li>
-<p> LittleCMS2 and libpng have both been updated to the latest versions.
-</li>
-<li>
-<p> Support has been added to build the Ghostscript DLL for WinRT for x86,
-x64 and ARM (Requires MS Visual Studio 2012 Pro).
-</li>
-<li>
-<p> Processing of Windows command line arguments into UTF8 (as presaged a few
-releases ago) has been enhanced and enabled by default.
-</li>
-<li>
-<p> The URW Postscript font set has been updated to the latest version, fixing
-many compatibility problems with the Adobe fonts.
+The &quotghostpdl.inf&quot file, provided to simplify installing a Postscript
+printer configure to produce output to suit Ghostscript's &quotpdfwrite&quot device
+is now available as a digitally signed version: &quotghostpdl.cat&quot.
 </li>
 <li>
 <p>Plus the usual round of bug fixes, compatibility changes, and incremental improvements.
@@ -100,11 +105,11 @@ many compatibility problems with the Adobe fonts.
 <p>For a list of open issues, or to report problems,
 please visit <a href="http://bugs.ghostscript.com/">bugs.ghostscript.com</a>.
 
-<h3><a name="9.10_Incompatible_changes"></a>Incompatible changes</h3>
+<h3><a name="9.18_Incompatible_changes"></a>Incompatible changes</h3>
 <p>
 No recorded incompatible changes.
 
-<h3><a name="9.10_changelog"></a>Changelog</h3>
+<h3><a name="9.18_changelog"></a>Changelog</h3>
 
 <p>See the <a href="History9.htm">history file</a> for complete log 
 of changes.
@@ -115,7 +120,7 @@ of changes.
 <hr>
 
 <p>
-<small>Copyright &copy; 2005-2013 Artifex Software, Inc.
+<small>Copyright &copy; 2005-2015 Artifex Software, Inc.
 All rights reserved.</small>
 
 <p>
@@ -129,7 +134,7 @@ or contact Artifex Software, Inc.,  7 Mt. Lassen Drive - Suite A-134,
 San Rafael, CA  94903, U.S.A., +1(415)492-9861, for further information.
 
 <p>
-<small>Ghostscript version 9.10, 30 August 2013
+<small>Ghostscript version 9.18, 5 October 2015
 
 <!-- [3.0 end visible trailer] ============================================= -->
 

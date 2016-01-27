@@ -116,6 +116,21 @@ typedef struct gxdso_device_child_request_s
     int        n;
 } gxdso_device_child_request;
 
+/* structure used to request a specific device parameter
+ * be returned by a device.
+ */
+typedef struct dev_param_req_s {
+    char *Param;
+    void *list;
+}dev_param_req_t;
+
+/* structure used to pass the parameters for pattern handling */
+typedef struct pattern_accum_param_t {
+    void *pinst;
+    void *graphics_state;
+    int pinst_id;
+}pattern_accum_param_s;
+
 enum {
     /* All gxdso_ keys must be defined in this structure.
      * Do NOT rely on your particular gxdso_ having a particular value.
@@ -197,18 +212,17 @@ enum {
     gxdso_is_std_cmyk_1bit,
 
     /* gxdso_is_pdf14_device:
+     * Either:
      *     data = NULL
      *     size = 0
-     * Returns 1 if the device is a pdf14 device .
+     *   Returns 1 if the device is a pdf14 device .
+     * Or:
+     *     data = pointer to a place to store a pdf14_device *
+     *     size = sizeof(pdf14_device *).
+     *   Returns 1 if the device is a pdf14 device, and fills data with the
+     *   pointer to the pdf14 device (may be a child of the original device)
      */
     gxdso_is_pdf14_device,
-
-    /* gxdso_is_native_planar:
-     *      data = NULL
-     *      size = 0
-     * Returns the number of bits per plane if the device's native format is planar
-     */
-    gxdso_is_native_planar,
 
     /* gxdso_device_child:
      *      data = pointer to gxdso_device_child_request struct
@@ -233,7 +247,7 @@ enum {
      *      data = NULL
      *      size = 0
      * Returns 1 if the device supports devicen colors.  example tiffsep.
-     */    
+     */
     gxdso_supports_devn,
     /* gxdso_supports_hlcolor:
      * for devices that can handle pattern and other high level structures
@@ -260,7 +274,32 @@ enum {
      * (eg pdfwrite) we can't deal with this. return '0' if the device
      * doesn't care if the palette changes, and 1 if it does.
      */
-     gxdso_needs_invariant_palette,
+    gxdso_needs_invariant_palette,
+    /* gxdso_supports_saved_pages:
+     * gx_device_printer devices can support this saving pages as clist
+     */
+    gxdso_supports_saved_pages,
+    /* Form handling, we need one to start and one to stop a form
+     */
+    gxdso_form_begin,
+    gxdso_form_end,
+    /* These next two relate to high level form handling. After executing a form the
+     * PostScript will request an ID for the form. If it gets one, it stores it in the
+     * /Implementation in the Form dictioanry. Next time it encoutners 'execform' for that
+     * form it will not call gxdso_form_begin and gxdso_form_end, instead it will simply call
+     * gxdso_repeat_form with the ID presented earlier. You should not return anything in response
+     * to the gxdso_form_ID unless the device is capable of storing the form and repeating it
+     * without running the PaintProc again.
+     */
+    gxdso_get_form_ID,
+    gxdso_repeat_form,
+    /* gxdso_adjust_bandheight:
+     * Adjust the bandheight given in 'size' (normally downwards). Typically
+     * to round it to a multiple of a given number.
+     */
+    gxdso_adjust_bandheight,
+    /* Retrieve a *single* device parameter */
+    gxdso_get_dev_param,
     /* Add new gxdso_ keys above this. */
     gxdso_pattern__LAST
 };

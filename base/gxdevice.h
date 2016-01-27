@@ -63,6 +63,22 @@
 #  define DEFAULT_HEIGHT_10THS DEFAULT_HEIGHT_10THS_US_LETTER
 #endif
 
+/* Define parameters for machines with little dinky RAMs.... */
+#if arch_small_memory
+#   define MAX_BITMAP 32000
+#   define BUFFER_SPACE 25000
+#   define MIN_MEMORY_LEFT 32000
+#else
+#   define MAX_BITMAP 10000000L /* reasonable on most modern hosts */
+#   define BUFFER_SPACE 4000000L
+#   define MIN_MEMORY_LEFT 500000L
+#endif
+#define MIN_BUFFER_SPACE 10000	/* give up if less than this */
+
+#ifndef MaxPatternBitmap_DEFAULT
+#  define MaxPatternBitmap_DEFAULT MAX_BITMAP
+#endif
+
 /* ---------------- Device structure ---------------- */
 
 /*
@@ -85,7 +101,7 @@
 #define std_device_part1_(devtype, ptr_procs, dev_name, stype, open_init)\
         sizeof(devtype), ptr_procs, dev_name,\
         0 /*memory*/, stype, 0 /*stype_is_dynamic*/, 0 /*finalize*/,\
-        { 0 } /*rc*/, 0 /*retained*/, open_init() /*is_open, max_fill_band*/
+        { 0 } /*rc*/, 0 /*retained*/, 0 /* parent */, 0 /* child */, 0 /* subclass_data */, open_init() /*is_open, max_fill_band*/
         /* color_info goes here */
 /*
  * The MetroWerks compiler has some bizarre bug that produces a spurious
@@ -94,7 +110,7 @@
  */
 #define std_device_part2_(width, height, x_dpi, y_dpi)\
         { gx_no_color_index, gx_no_color_index },\
-          width, height, 0/*TrayOrientation*/,\
+          width, height, 0/*Pad*/, 0/*align*/, 0/*Num planes*/, 0/*TrayOrientation*/,\
         { (float)((((width) * 72.0 + 0.5) - 0.5) / (x_dpi))/*MediaSize[0]*/,\
           (float)((((height) * 72.0 + 0.5) - 0.5) / (y_dpi))/*MediaSize[1]*/},\
         { 0, 0, 0, 0 }/*ImagingBBox*/, 0/*ImagingBBox_set*/,\
@@ -102,9 +118,16 @@
 
 /* offsets and margins go here */
 #define std_device_part3_()\
+        0/*FirstPage*/, 0/*LastPage*/, 0/*PageHandlerPushed*/, 0/*DisablePageHandler*/, 0/* Object Filter*/, 0/*ObjectHandlerPushed*/,\
         0/*PageCount*/, 0/*ShowpageCount*/, 1/*NumCopies*/, 0/*NumCopies_set*/,\
         0/*IgnoreNumCopies*/, 0/*UseCIEColor*/, 0/*LockSafetyParams*/,\
-        0/*band_offset_x*/, 0/*band_offset_y*/, {false}/* sgr */, 0/* MaxPatternBitmap */,\
+        0/*band_offset_x*/, 0/*band_offset_y*/, {false}/* sgr */,\
+        0/* MaxPatternBitmap */, 0/*page_uses_transparency*/,\
+        { MAX_BITMAP, BUFFER_SPACE,\
+             { BAND_PARAMS_INITIAL_VALUES },\
+           0/*false*/, /* params_are_read_only */\
+           BandingAuto /* banding_type */\
+        }, /*space_params*/\
         0/*Profile Array*/,\
         0/* graphics_type_tag default GS_UNKNOWN_TAG */,\
         { gx_default_install, gx_default_begin_page, gx_default_end_page }
@@ -286,6 +309,7 @@ dev_proc_set_graphics_type_tag(gx_default_set_graphics_type_tag);
 dev_proc_strip_copy_rop2(gx_default_strip_copy_rop2);
 dev_proc_strip_tile_rect_devn(gx_default_strip_tile_rect_devn);
 dev_proc_copy_alpha_hl_color(gx_default_copy_alpha_hl_color);
+dev_proc_process_page(gx_default_process_page);
 /* BACKWARD COMPATIBILITY */
 #define gx_non_imaging_create_compositor gx_null_create_compositor
 
@@ -378,6 +402,7 @@ dev_proc_strip_tile_rect_devn(gx_forward_strip_tile_rect_devn);
 dev_proc_copy_alpha_hl_color(gx_forward_copy_alpha_hl_color);
 
 /* ---------------- Implementation utilities ---------------- */
+int gx_default_get_param(gx_device *dev, char *Param, void *list);
 
 /* Convert the device procedures to the proper form (see above). */
 void gx_device_set_procs(gx_device *);
@@ -458,6 +483,9 @@ int gx_device_open_output_file(const gx_device * dev, char *fname,
 /* Close the output file for a device. */
 int gx_device_close_output_file(const gx_device * dev, const char *fname,
                                 FILE *file);
+
+/* Delete the current output file for a device (file must be closed first) */
+int gx_device_delete_output_file(const gx_device * dev, const char *fname);
 
 /*
  * Define the number of levels for a colorant above which we do not halftone.
@@ -583,7 +611,7 @@ int gdev_begin_input_media(gs_param_list * mlist, gs_param_dict * pdict,
                            int count);
 
 int gdev_write_input_page_size(int index, gs_param_dict * pdict,
-                               floatp width_points, floatp height_points);
+                               double width_points, double height_points);
 
 int gdev_write_input_media(int index, gs_param_dict * pdict,
                            const gdev_input_media_t * pim);
@@ -609,5 +637,26 @@ void gx_default_put_icc_dir(gs_param_string *icc_pro, gx_device * dev);
 int gdev_end_output_media(gs_param_list * mlist, gs_param_dict * pdict);
 
 void gx_device_request_leadingedge(gx_device *dev, int le_req);
+
+/* ---------------- Device subclassing procedures ---------------- */
+int gs_is_pdf14trans_compositor(const gs_composite_t * pct);
+
+#define subclass_common\
+    t_dev_proc_create_compositor *saved_compositor_method
+
+typedef int (t_dev_proc_create_compositor) (gx_device *dev, gx_device **pcdev, const gs_composite_t *pcte, gs_imager_state *pis, gs_memory_t *memory, gx_device *cdev);
+
+typedef struct {
+    t_dev_proc_create_compositor *saved_compositor_method;
+} generic_subclass_data;
+
+
+int gx_copy_device_procs(gx_device_procs *dest_procs, gx_device_procs *src_procs, gx_device_procs *prototype_procs);
+int gx_device_subclass(gx_device *dev_to_subclass, gx_device *new_prototype, unsigned int private_data_size);
+int gx_device_unsubclass(gx_device *dev);
+int gx_update_from_subclass(gx_device *dev);
+int gx_subclass_create_compositor(gx_device *dev, gx_device **pcdev, const gs_composite_t *pcte,
+    gs_imager_state *pis, gs_memory_t *memory, gx_device *cdev);
+
 
 #endif /* gxdevice_INCLUDED */

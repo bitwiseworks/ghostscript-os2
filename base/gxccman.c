@@ -159,9 +159,6 @@ gx_purge_selected_cached_chars(gs_font_dir * dir,
         cached_char *cc = dir->ccache.table[chi];
 
         if (cc != 0 &&
-#ifdef GSLITE
-                !cc->dont_evict &&
-#endif
                 (*proc) (dir->memory, cc, proc_data)) {
             hash_remove_cached_char(dir, chi);
             gx_free_cached_char(dir, cc);
@@ -358,7 +355,12 @@ gx_add_fm_pair(register gs_font_dir * dir, gs_font * font, const gs_uid * puid,
                                 char_tm, log2_scale, design_grid);
             if (code < 0)
                 return code;
-        }
+    }
+    else {
+       if (font->FontType == ft_TrueType) {
+           pair->design_grid = design_grid;
+       }
+    }
     pair->memory = 0;
     if_debug8m('k', dir->memory,
                "[k]adding pair 0x%lx: font=0x%lx [%g %g %g %g] UID %ld, 0x%lx\n",
@@ -534,6 +536,7 @@ gx_alloc_char_bits(gs_font_dir * dir, gx_device_memory * dev,
         pdev->retained = retained;
         pdev->width = iwidth;
         pdev->height = iheight;
+        pdev->raster = gx_device_raster((gx_device *)pdev, 1);
         gdev_mem_bitmap_size(pdev, &isize);	/* Assume less than max_ulong */
         pdev->HWResolution[0] = HWResolution0;
         pdev->HWResolution[1] = HWResolution1;
@@ -975,12 +978,6 @@ alloc_char_in_chunk(gs_font_dir * dir, ulong icdsize, cached_char **pcc)
         if (cch == 0) {		/* Not enough room to allocate in this chunk. */
             return 0;
         }
-#ifdef GSLITE
-        /* We shouldn't free because it's used. */
-        if (cc->dont_evict) {
-            return 0;
-        }
-#endif
         else {			/* Free the character */
             cached_fm_pair *pair = cc_pair(cc);
 
@@ -999,10 +996,6 @@ alloc_char_in_chunk(gs_font_dir * dir, ulong icdsize, cached_char **pcc)
             gx_free_cached_char(dir, cc);
         }
     }
-
-#ifdef GSLITE
-    cc->dont_evict = 0;
-#endif
 
     cc->chunk = cck;
     cc->loc = (byte *) cc - cck->data;
@@ -1049,17 +1042,3 @@ shorten_cached_char(gs_font_dir * dir, cached_char * cc, uint diff)
     if_debug2m('K', dir->memory, "[K]shortening creates free block 0x%lx(%u)\n",
               (ulong) ((byte *) cc + cc->head.size), diff);
 }
-
-#ifdef GSLITE
-
-void gx_retain_cached_char(cached_char *cc)
-{
-    cc->dont_evict ++;
-}
-
-void gx_release_cached_char(cached_char *cc)
-{
-    cc->dont_evict --;
-}
-
-#endif
