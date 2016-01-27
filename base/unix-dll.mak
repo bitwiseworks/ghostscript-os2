@@ -113,6 +113,8 @@ $(PSOBJ)gsdll.$(OBJ): $(PSSRC)gsdll.c $(gsdll_h) $(ghost_h) $(gscdefs_h)
 	$(PSCC) $(PSO_)gsdll.$(OBJ) $(C_) $(PSSRC)gsdll.c
 
 # os2.mak Make the icons from their text form.
+# create a includepath variable, which wrc can handle
+WRCINCLUDE=$(UNIXROOT)/usr/include
 $(PSOBJ)gsos2.ico: $(PSSRC)gsos2.icx $(ECHOGS_XE)
 	$(ECHOGS_XE) -wb $(PSOBJ)gsos2.ico -n -X -r $(PSSRC)gsos2.icx
 
@@ -120,11 +122,11 @@ $(GLOBJ)gspmdrv.ico: $(GLSRC)gspmdrv.icx $(ECHOGS_XE)
 	$(ECHOGS_XE) -wb $(GLOBJ)gspmdrv.ico -n -X -r $(GLSRC)gspmdrv.icx
 
 $(PSOBJ)$(GS).res: $(PSSRC)$(GS).rc $(PSOBJ)gsos2.ico
-	wrc -i="$(PSSRCDIR);$(PSOBJDIR)" -r $(PSSRC)$(GS).rc -fo=$(PSOBJ)$(GS).res
+	wrc -i="$(PSSRCDIR);$(WRCINCLUDE)" -r $(PSSRC)$(GS).rc -fo=$(PSOBJ)$(GS).res
 
 # os2.mak PM driver program
 $(GLOBJ)gspmdrv.res: $(GLSRC)gspmdrv.rc $(GLSRC)gspmdrv.h $(GLOBJ)gspmdrv.ico
-	wrc -i="$(GLSRCDIR);$(GLOBJDIR)" -r $(GLSRC)gspmdrv.rc -fo=$(GLOBJ)gspmdrv.res
+	wrc -i="$(GLSRCDIR);$(WRCINCLUDE)" -r $(GLSRC)gspmdrv.rc -fo=$(GLOBJ)gspmdrv.res
 
 $(BINDIR)/gspmdrv.exe: $(GLSRC)gspmdrv.c $(GLOBJ)gspmdrv.res $(GLSRC)gspmdrv.def
 	$(GLCC) -g -Zomf -o $(BINDIR)/gspmdrv.exe $(GLSRC)gspmdrv.c $(GLOBJ)gssprintf.$(OBJ) \

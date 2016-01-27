@@ -137,7 +137,7 @@ $(MKROMFS_XE): $(MKROMFS_XE)_$(SHARE_ZLIB) $(MAKEDIRS)
 # they can be overridden by settings from the configure script.
 # The "empty" $(ECHOGS_XE) lines just append a white space line to the
 # header file.
-INCLUDE=/usr/include
+INCLUDE=$(includedir)
 $(gconfig__h): $(UNIX_AUX_MAK) $(ECHOGS_XE) $(MAKEDIRS)
 	$(ECHOGS_XE) -w $(gconfig__h) -x 2f2a -s This file was generated automatically by unix-aux.mak. -s -x 2a2f
 	$(ECHOGS_XE) -a $(gconfig__h)
