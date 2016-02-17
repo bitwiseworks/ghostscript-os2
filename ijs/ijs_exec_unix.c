@@ -29,6 +29,11 @@
 #include "ijs.h"
 #include "ijs_client.h"
 
+#ifdef __OS2__
+#include <sys/socket.h>
+#define pipe(A)	socketpair(AF_UNIX, SOCK_STREAM, 0, A)
+#endif
+
 int
 ijs_exec_server(const char *server_cmd, int *pfd_to, int *pfd_from,
     int *pchild_pid)
