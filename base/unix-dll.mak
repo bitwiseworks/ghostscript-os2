@@ -32,7 +32,7 @@ SODEBUGDIRPREFIX=sodebug
 # Choose the language feature(s) to include.  See gs.mak for details.
 # Since we have a large address space, we include some optional features.
 FEATURE_DEVS+=$(PSD)os2print.dev
-DEVICE_DEVS=$(DD)display.dev
+#DEVICE_DEVS=$(DD)display.dev
 DEVICE_DEVS+=$(DD)os2prn.dev
 
 # ------------------- Ghostscript shared object --------------------------- #
