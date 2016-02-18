@@ -64,6 +64,15 @@ wftopfa fixmswrd.pl lprsetup.sh pj-gs.sh pv.sh sysvlp.sh unix-lpr.sh ;\
 	fi;\
 	done'
 
+	$(SH) -c 'for f in \
+eps2eps.cmd font2c.cmd pdf2ps.cmd pf2afm.cmd \
+ps2ascii.cmd ps2epsi.cmd ps2pdf.cmd ps2pdf12.cmd ps2pdf13.cmd ps2pdf14.cmd \
+ps2ps.cmd ps2ps2.cmd ;\
+	do if ( test -f $(PSLIBDIR)/$$f ); then \
+	  $(INSTALL_PROGRAM) $(PSOBJDIR)/$$f $(DESTDIR)$(scriptdir)/$$f; \
+	fi;\
+	done'
+
 PSRESDIR=$(PSLIBDIR)/../Resource
 ICCRESDIR=$(PSLIBDIR)/../iccprofiles
 PSDOCDIR=$(PSLIBDIR)/../doc
