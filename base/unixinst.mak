@@ -69,7 +69,7 @@ eps2eps.cmd font2c.cmd pdf2ps.cmd pf2afm.cmd \
 ps2ascii.cmd ps2epsi.cmd ps2pdf.cmd ps2pdf12.cmd ps2pdf13.cmd ps2pdf14.cmd \
 ps2ps.cmd ps2ps2.cmd ;\
 	do if ( test -f $(PSLIBDIR)/$$f ); then \
-	  $(INSTALL_PROGRAM) $(PSOBJDIR)/$$f $(DESTDIR)$(scriptdir)/$$f; \
+	  $(INSTALL_PROGRAM) $(PSLIBDIR)/$$f $(DESTDIR)$(scriptdir)/$$f; \
 	fi;\
 	done'
 
