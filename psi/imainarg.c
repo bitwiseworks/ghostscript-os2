@@ -164,6 +164,10 @@ gs_main_init_with_args(gs_main_instance * minst, int argc, char *argv[])
         }
     }
 #endif /* __VMS */
+#ifdef __OS2__ /* we always set the fontpath here for lazzyness of user */
+    if (getenv("GS_FONTPATH") == NULL)
+        setenv("GS_FONTPATH", gs_lib_default_path, strlen(gs_lib_default_path));
+#endif
     minst->lib_path.final = gs_lib_default_path;
     code = gs_main_set_lib_paths(minst);
     if (code < 0)
@@ -789,8 +793,26 @@ run_stdin:
                             }
                         }
                     } else {
-                        int len = strlen(eqp);
-                        char *str =
+                        int len;
+                        char *str;
+#ifdef __OS2__
+/* to overcome the need to enter the -sFONTPATH correct we exchange \ to /
+ * and also add the default path, so fonst should always be found */
+
+                        char *p;
+                        if (strcmp(adef, "FONTPATH") == 0) {
+                            p = eqp;
+                            while (*p != '\0') {
+                               if (*p == '\\')
+                                  *p = '/';
+                               p++;
+                            }
+                            len = strlen(eqp) + strlen(gs_lib_default_path) +1;
+                        }
+                        else 
+#endif
+                        len = strlen(eqp);
+                        str =
                         (char *)gs_alloc_bytes(minst->heap,
                                                (uint) len, "-s");
 
@@ -799,6 +821,12 @@ run_stdin:
                             return gs_error_Fatal;
                         }
                         memcpy(str, eqp, len);
+#ifdef __OS2__
+                        if (strcmp(adef, "FONTPATH") == 0) {
+                        strcat(str, ";");
+                        strcat(str, gs_lib_default_path);
+                        }
+#endif
                         make_const_string(&value,
                                           a_readonly | avm_foreign,
                                           len, (const byte *)str);

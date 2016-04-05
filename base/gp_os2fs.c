@@ -42,6 +42,12 @@
 #include <sys/emxload.h>
 #endif
 
+#ifdef __KLIBC__
+#include "dirent_.h"
+#include "stat_.h"
+#include "gsutil.h"
+#endif
+
 #ifdef __DLL__
 #define isos2 TRUE
 #else
@@ -70,6 +76,7 @@ const char gp_fmode_binary_suffix[] = "b";
 const char gp_fmode_rb[] = "rb";
 const char gp_fmode_wb[] = "wb";
 
+#ifndef __KLIBC__
 /* ------ File enumeration ------ */
 
 struct file_enum_s {
@@ -190,6 +197,306 @@ gp_enumerate_files_close(file_enum * pfen)
                    "gp_enumerate_files_close(pattern)");
     gs_free_object(mem, pfen, "gp_enumerate_files_close");
 }
+#else
+// the below part is borrowed from gp_unifs.c
+typedef struct dirstack_s dirstack;
+struct dirstack_s {
+    dirstack *next;
+    DIR *entry;
+};
+
+gs_private_st_ptrs1(st_dirstack, dirstack, "dirstack",
+                    dirstack_enum_ptrs, dirstack_reloc_ptrs, next);
+
+struct file_enum_s {
+    DIR *dirp;                  /* pointer to current open directory   */
+    char *pattern;              /* original pattern                    */
+    char *work;                 /* current path                        */
+    int worklen;                /* strlen (work)                       */
+    dirstack *dstack;           /* directory stack                     */
+    int patlen;
+    int pathead;                /* how much of pattern to consider
+                                 *  when listing files in current directory */
+    bool first_time;
+    gs_memory_t *memory;
+};
+gs_private_st_ptrs3(st_file_enum, struct file_enum_s, "file_enum",
+          file_enum_enum_ptrs, file_enum_reloc_ptrs, pattern, work, dstack);
+
+/* Private procedures */
+
+/* Do a wild-card match. */
+#define wmatch(S,L,PS,PL,M) string_match(S,L,PS,PL,NULL)
+
+/* Search a string backward for a separator. */
+static char *
+rchr(char *str, int len)
+{
+    register char *p = str + len;
+
+    while (p > str)
+    {
+        --p;
+        if (*p == '/' || *p == '\\')
+            return p;
+    }
+    return 0;
+}
+
+/* Pop a directory from the enumeration stack. */
+static bool
+popdir(file_enum * pfen)
+{
+    dirstack *d = pfen->dstack;
+
+    if (d == 0)
+        return false;
+    pfen->dirp = d->entry;
+    pfen->dstack = d->next;
+    gs_free_object(pfen->memory, d, "gp_enumerate_files(popdir)");
+    return true;
+}
+
+/* Initialize an enumeration. */
+file_enum *
+gp_enumerate_files_init(const char *pat, uint patlen, gs_memory_t * mem)
+{
+    file_enum *pfen;
+    char *p;
+    char *work;
+
+    /* Reject attempts to enumerate paths longer than the */
+    /* system-dependent limit. */
+    if (patlen > FILENAME_MAX)
+        return 0;
+
+    /* Reject attempts to enumerate with a pattern containing zeroes. */
+    {
+        const char *p1;
+
+        for (p1 = pat; p1 < pat + patlen; p1++)
+            if (*p1 == 0)
+                return 0;
+    }
+    /* >>> Should crunch strings of repeated "/"'s in pat to a single "/"
+     * >>>  to match stupid unix filesystem "conventions" */
+
+    pfen = gs_alloc_struct(mem, file_enum, &st_file_enum,
+                           "gp_enumerate_files");
+    if (pfen == 0)
+        return 0;
+
+    /* pattern and work could be allocated as strings, */
+    /* but it's simpler for GC and freeing to allocate them as bytes. */
+
+    pfen->memory = mem;
+    pfen->dstack = 0;
+    pfen->first_time = true;
+    pfen->patlen = patlen;
+    pfen->work = 0;
+    pfen->pattern =
+        (char *)gs_alloc_bytes(mem, patlen + 1,
+                               "gp_enumerate_files(pattern)");
+    if (pfen->pattern == 0)
+        return 0;
+    memcpy(pfen->pattern, pat, patlen);
+    pfen->pattern[patlen] = 0;
+
+    work = (char *)gs_alloc_bytes(mem, FILENAME_MAX + 1,
+                                  "gp_enumerate_files(work)");
+    if (work == 0)
+        return 0;
+    pfen->work = work;
+
+    p = work;
+    memcpy(p, pat, patlen);
+    p += patlen;
+    *p = 0;
+
+    /* Remove directory specifications beyond the first wild card. */
+    /* Some systems don't have strpbrk, so we code it open. */
+    p = pfen->work;
+    while (!(*p == '*' || *p == '?' || *p == 0))
+        p++;
+    while (!(*p == '/' || *p == '\\' ||*p == 0))
+        p++;
+    if (*p == '/' || *p == '\\')
+        *p = 0;
+    /* Substring for first wildcard match */
+    pfen->pathead = p - work;
+
+    /* Select the next higher directory-level. */
+    p = rchr(work, p - work);
+    if (!p) {                   /* No directory specification */
+        work[0] = 0;
+        pfen->worklen = 0;
+    } else {
+        if (p == work) {        /* Root directory -- don't turn "/" into "" */
+            p++;
+        }
+        *p = 0;
+        pfen->worklen = p - work;
+    }
+
+    return pfen;
+}
+
+/* Enumerate the next file. */
+uint
+gp_enumerate_files_next(file_enum * pfen, char *ptr, uint maxlen)
+{
+    const dir_entry *de;
+    char *work = pfen->work;
+    int worklen = pfen->worklen;
+    char *pattern = pfen->pattern;
+    int pathead = pfen->pathead;
+    int len;
+    struct stat stbuf;
+
+    if (pfen->first_time) {
+        pfen->dirp = ((worklen == 0) ? opendir(".") : opendir(work));
+        pfen->first_time = false;
+        if (pfen->dirp == 0) {  /* first opendir failed */
+            gp_enumerate_files_close(pfen);
+            return ~(uint) 0;
+        }
+    }
+  top:de = readdir(pfen->dirp);
+    if (de == 0) {              /* No more entries in this directory */
+        char *p;
+
+        closedir(pfen->dirp);
+        /* Back working directory and matching pattern up one level */
+        p = rchr(work, worklen);
+        if (p != 0) {
+            if (p == work)
+                p++;
+            *p = 0;
+            worklen = p - work;
+        } else
+            worklen = 0;
+        if (pathead != pfen->patlen) {
+            p = rchr(pattern, pathead);
+            if (p != 0)
+                pathead = p - pattern;
+            else
+                pathead = 0;
+        }
+
+        if (popdir(pfen)) {     /* Back up the directory tree. */
+            goto top;
+        } else {
+            gp_enumerate_files_close(pfen);
+            return ~(uint) 0;
+        }
+    }
+    /* Skip . and .. */
+    len = strlen(de->d_name);
+    if (len <= 2 && (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")))
+        goto top;
+    if (len + worklen + 1 > FILENAME_MAX)
+        /* Should be an error, I suppose */
+        goto top;
+    if (worklen == 0) {         /* "Current" directory (evil un*x kludge) */
+        memcpy(work, de->d_name, len + 1);
+    } else if (worklen == 1 && (work[0] == '/' || work[0] == '\\')) {   /* Root directory */
+        memcpy(work + 1, de->d_name, len + 1);
+        len = len + 1;
+    } else {
+        work[worklen] = '/';
+        memcpy(work + worklen + 1, de->d_name, len + 1);
+        len = worklen + 1 + len;
+    }
+
+    /* Test for a match at this directory level */
+    if (!wmatch((byte *) work, len, (byte *) pattern, pathead, pfen->memory))
+        goto top;
+
+    /* Perhaps descend into subdirectories */
+    if (pathead < maxlen) {
+        DIR *dp;
+
+        if (((stat(work, &stbuf) >= 0)
+             ? !stat_is_dir(stbuf)
+        /* Couldn't stat it.
+         * Well, perhaps it's a directory and
+         * we'll be able to list it anyway.
+         * If it isn't or we can't, no harm done. */
+             : 0))
+            goto winner;
+
+        if (pfen->patlen == pathead + 1) {      /* Listing "foo/?/" -- return this entry */
+            /* if it's a directory. */
+            if (!stat_is_dir(stbuf)) {  /* Do directoryp test the hard way */
+                dp = opendir(work);
+                if (!dp)
+                    goto top;
+                closedir(dp);
+            }
+            work[len++] = '/';
+            goto winner;
+        }
+        /* >>> Should optimise the case in which the next level */
+        /* >>> of directory has no wildcards. */
+        dp = opendir(work);
+        if (!dp)
+            /* Can't list this one */
+            goto top;
+        else {                  /* Advance to the next directory-delimiter */
+            /* in pattern */
+            char *p;
+            dirstack *d;
+
+            for (p = pattern + pathead + 1;; p++) {
+                if (*p == 0) {  /* No more subdirectories to match */
+                    pathead = pfen->patlen;
+                    break;
+                } else if (*p == '/' || *p == '\\') {
+                    pathead = p - pattern;
+                    break;
+                }
+            }
+
+            /* Push a directory onto the enumeration stack. */
+            d = gs_alloc_struct(pfen->memory, dirstack,
+                                &st_dirstack,
+                                "gp_enumerate_files(pushdir)");
+            if (d != 0) {
+                d->next = pfen->dstack;
+                d->entry = pfen->dirp;
+                pfen->dstack = d;
+            } else
+                DO_NOTHING;     /* >>> e_VMerror!!! */
+
+            worklen = len;
+            pfen->dirp = dp;
+            goto top;
+        }
+    }
+  winner:
+    /* We have a winner! */
+    pfen->worklen = worklen;
+    pfen->pathead = pathead;
+    memcpy(ptr, work, len > maxlen ? maxlen : len);
+
+    return len;
+}
+
+/* Clean up the file enumeration. */
+void
+gp_enumerate_files_close(file_enum * pfen)
+{
+    gs_memory_t *mem = pfen->memory;
+
+    while (popdir(pfen))        /* clear directory stack */
+        DO_NOTHING;
+    gs_free_object(mem, (byte *) pfen->work,
+                   "gp_enumerate_close(work)");
+    gs_free_object(mem, (byte *) pfen->pattern,
+                   "gp_enumerate_files_close(pattern)");
+    gs_free_object(mem, pfen, "gp_enumerate_files_close");
+}
+#endif
 
 /* ------ File naming and accessing ------ */
 
