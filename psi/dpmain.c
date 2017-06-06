@@ -985,14 +985,14 @@ display_callback display = {
 int
 main(int argc, char *argv[])
 {
-    int code, code1;
-    int exit_code;
     int exit_status;
+    int code = 1, code1;
+    void *instance;
     int nargc;
     char **nargv;
     char dformat[64];
+    int exit_code;
     ULONG version[3];
-    void *instance;
 
     if (DosQuerySysInfo(QSV_VERSION_MAJOR, QSV_VERSION_REVISION,
             &version, sizeof(version)))
@@ -1031,8 +1031,6 @@ main(int argc, char *argv[])
                 DISPLAY_DEPTH_4 | DISPLAY_LITTLEENDIAN | DISPLAY_BOTTOMFIRST;
         gs_sprintf(dformat, "-dDisplayFormat=%d", format);
     }
-    nargc = argc + 1;
-
 #ifdef DEBUG
     if (debug)
         fprintf(stdout, "%s\n", dformat);
@@ -1051,8 +1049,10 @@ main(int argc, char *argv[])
         if (code == 0)
             code = gsdll.run_string(instance, start_string, 0, &exit_code);
         code1 = gsdll.exit(instance);
-        if (code == 0 || (code == gs_error_Quit && code1 != 0))
+        if (code == 0 || code == gs_error_Quit)
             code = code1;
+        if (code == gs_error_Quit)
+            code = 0;	/* user executed 'quit' */
 
         gsdll.delete_instance(instance);
     }
