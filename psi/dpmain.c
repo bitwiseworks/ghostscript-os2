@@ -29,6 +29,7 @@
 #define INCL_WIN	/* to get bits/pixel of display */
 #define INCL_GPI	/* to get bits/pixel of display */
 #include <os2.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -47,7 +48,9 @@
 #define BITMAPINFO2_SIZE 40
 const char *szDllName = "GSDLL2.DLL";
 char start_string[] = "systemdict /start get exec\n";
-int debug = TRUE /* FALSE */;
+int debug = FALSE;
+FILE *logfileFH;
+char logBuf[MAXSTR];
 
 #define MIN_COMMIT 4096		/* memory is committed in these size chunks */
 #define ID_NAME "GSPMDRV_%u_%u"
@@ -59,6 +62,26 @@ LONG display_planes;
 LONG display_bitcount;
 LONG display_hasPalMan;
 ULONG os_version;
+
+static int gsdll_stdin(void *instance, char *buf, int len);
+static int gsdll_stdout(void *instance, const char *str, int len);
+static int gsdll_stderr(void *instance, const char *str, int len);
+static int display_open(void *handle, void *device);
+static int display_preclose(void *handle, void *device);
+static int display_close(void *handle, void *device);
+static int display_presize(void *handle, void *device, int width, int height,
+        int raster, unsigned int format);
+static int display_size(void *handle, void *device, int width, int height,
+        int raster, unsigned int format, unsigned char *pimage);
+static int display_sync(void *handle, void *device);
+static int display_page(void *handle, void *device, int copies, int flush);
+static int display_update(void *handle, void *device, int x, int y,
+        int w, int h);
+void gs_addmess(const char *str);
+BOOL gs_free_dll(void);
+void gs_load_dll_cleanup(void);
+BOOL gs_load_dll(void);
+
 
 /* main structure with info about the GS DLL */
 typedef struct tagGSDLL {
@@ -79,11 +102,15 @@ void *instance;
 TID tid;
 
 void
-gs_addmess(char *str)
+gs_addmess(const char *str)
 {
 #if defined(__EMX__)
-    fputs(str, stderr);
-    fflush(stderr);
+    if (logfileFH != NULL)
+        fprintf(logfileFH, str);
+    else {
+        fputs(str, stderr);
+        fflush(stderr);
+    }
 #else
     fputs(str, stdout);
     fflush(stdout);
@@ -99,8 +126,10 @@ gs_addmess(char *str)
 BOOL
 gs_free_dll(void)
 {
-    char buf[MAXSTR];
     APIRET rc;
+
+    if (debug)
+        gs_addmess("gs_free_dll\n");
 
     if (gsdll.hmodule == (HMODULE) NULL)
         return TRUE;
@@ -108,10 +137,9 @@ gs_free_dll(void)
     if (rc == 12) rc = 0; //we ignore rc == 12 (ERROR_INVALID_ACCESS)
 
     if (rc) {
-        gs_sprintf(buf, "DosFreeModule returns %d\n", rc);
-        gs_addmess(buf);
-        gs_sprintf(buf, "Unloaded GSDLL\n\n");
-        gs_addmess(buf);
+        sprintf(logBuf, "DosFreeModule returns %d\n", rc);
+        gs_addmess(logBuf);
+        gs_addmess("Unloaded GSDLL\n\n");
     }
     return !rc;
 }
@@ -119,7 +147,8 @@ gs_free_dll(void)
 void
 gs_load_dll_cleanup(void)
 {
-    char buf[MAXSTR];
+    if (debug)
+        gs_addmess("gs_load_dll_cleanup\n");
 
     gs_free_dll();
 }
@@ -132,7 +161,6 @@ gs_load_dll(void)
     char buf[MAXSTR + 40];
     APIRET rc;
     char *p;
-    int i;
     const char *dllname;
     PTIB pptib;
     PPIB pppib;
@@ -142,13 +170,15 @@ gs_load_dll(void)
     gsapi_revision_t rv;
 
     if ((rc = DosGetInfoBlocks(&pptib, &pppib)) != 0) {
-        fprintf(stdout, "Couldn't get pid, rc = \n", rc);
+        sprintf(logBuf, "Couldn't get pid, rc = \n", rc);
+        gs_addmess(logBuf);
         return FALSE;
     }
     /* get path to EXE */
     if ((rc = DosQueryModuleName(pppib->pib_hmte, sizeof(szExePath),
         szExePath)) != 0) {
-        fprintf(stdout, "Couldn't get module name, rc = %d\n", rc);
+        sprintf(logBuf, "Couldn't get module name, rc = %d\n", rc);
+        gs_addmess(logBuf);
         return FALSE;
     }
     if ((p = strrchr(szExePath, '\\')) != (char *)NULL) {
@@ -156,12 +186,10 @@ gs_load_dll(void)
         *p = '\0';
     }
     dllname = szDllName;
-#ifdef DEBUG
     if (debug) {
-        gs_sprintf(buf, "Trying to load %s\n", dllname);
-        gs_addmess(buf);
+        sprintf(logBuf, "Trying to load %s\n", dllname);
+        gs_addmess(logBuf);
     }
-#endif
     memset(buf, 0, sizeof(buf));
     rc = DosLoadModule(buf, sizeof(buf), dllname, &gsdll.hmodule);
     if (rc) {
@@ -178,117 +206,114 @@ gs_load_dll(void)
         *p = '\0';
         strcat(fullname, shortname);
         dllname = fullname;
-#ifdef DEBUG
         if (debug) {
-            gs_sprintf(buf, "Trying to load %s\n", dllname);
-            gs_addmess(buf);
+            sprintf(logBuf, "Trying to load %s\n", dllname);
+            gs_addmess(logBuf);
         }
-#endif
         rc = DosLoadModule(buf, sizeof(buf), dllname, &gsdll.hmodule);
         if (rc) {
             /* failed again */
             /* try once more, this time on system search path */
             dllname = shortname;
-#ifdef DEBUG
             if (debug) {
-                gs_sprintf(buf, "Trying to load %s\n", dllname);
-                gs_addmess(buf);
+                sprintf(logBuf, "Trying to load %s\n", dllname);
+                gs_addmess(logBuf);
             }
-#endif
             rc = DosLoadModule(buf, sizeof(buf), dllname, &gsdll.hmodule);
         }
     }
     if (rc == 0) {
-#ifdef DEBUG
         if (debug)
             gs_addmess("Loaded Ghostscript DLL\n");
-#endif
         if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_REVISION",
                 (PFN *) (&gsdll.revision))) != 0) {
-            gs_sprintf(buf, "Can't find GSAPI_REVISION, rc = %d\n", rc);
-            gs_addmess(buf);
+            sprintf(logBuf, "Can't find GSAPI_REVISION, rc = %d\n", rc);
+            gs_addmess(logBuf);
             gs_load_dll_cleanup();
             return FALSE;
         }
         /* check DLL version */
         if (gsdll.revision(&rv, sizeof(rv)) != 0) {
-            gs_sprintf(buf, "Unable to identify Ghostscript DLL revision - it must be newer than needed.\n");
-            gs_addmess(buf);
+            sprintf(logBuf, "Unable to identify Ghostscript DLL revision - it must be newer than needed.\n");
+            gs_addmess(logBuf);
             gs_load_dll_cleanup();
             return FALSE;
         }
 
         if (rv.revision != GS_REVISION) {
-            gs_sprintf(buf, "Wrong version of DLL found.\n  Found version %ld\n  Need version  %ld\n", rv.revision, (long)GS_REVISION);
-            gs_addmess(buf);
+            sprintf(logBuf, "Wrong version of DLL found.\n  Found version %ld\n  Need version  %ld\n", rv.revision, (long)GS_REVISION);
+            gs_addmess(logBuf);
             gs_load_dll_cleanup();
             return FALSE;
         }
 
         if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_NEW_INSTANCE",
                 (PFN *) (&gsdll.new_instance))) != 0) {
-            gs_sprintf(buf, "Can't find GSAPI_NEW_INSTANCE, rc = %d\n", rc);
-            gs_addmess(buf);
+            sprintf(logBuf, "Can't find GSAPI_NEW_INSTANCE, rc = %d\n", rc);
+            gs_addmess(logBuf);
             gs_load_dll_cleanup();
             return FALSE;
         }
         if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_DELETE_INSTANCE",
                 (PFN *) (&gsdll.delete_instance))) != 0) {
-            gs_sprintf(buf, "Can't find GSAPI_DELETE_INSTANCE, rc = %d\n", rc);
-            gs_addmess(buf);
+            sprintf(logBuf, "Can't find GSAPI_DELETE_INSTANCE, rc = %d\n", rc);
+            gs_addmess(logBuf);
             gs_load_dll_cleanup();
             return FALSE;
         }
         if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_SET_STDIO",
                 (PFN *) (&gsdll.set_stdio))) != 0) {
-            gs_sprintf(buf, "Can't find GSAPI_SET_STDIO, rc = %d\n", rc);
-            gs_addmess(buf);
+            sprintf(logBuf, "Can't find GSAPI_SET_STDIO, rc = %d\n", rc);
+            gs_addmess(logBuf);
             gs_load_dll_cleanup();
             return FALSE;
         }
         if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_SET_DISPLAY_CALLBACK",
                 (PFN *) (&gsdll.set_display_callback))) != 0) {
-            gs_sprintf(buf, "Can't find GSAPI_SET_DISPLAY_CALLBACK, rc = %d\n", rc);
-            gs_addmess(buf);
+            sprintf(logBuf, "Can't find GSAPI_SET_DISPLAY_CALLBACK, rc = %d\n", rc);
+            gs_addmess(logBuf);
             gs_load_dll_cleanup();
             return FALSE;
         }
         if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_SET_POLL",
                 (PFN *) (&gsdll.set_poll))) != 0) {
-            gs_sprintf(buf, "Can't find GSAPI_SET_POLL, rc = %d\n", rc);
-            gs_addmess(buf);
+            sprintf(logBuf, "Can't find GSAPI_SET_POLL, rc = %d\n", rc);
+            gs_addmess(logBuf);
             gs_load_dll_cleanup();
             return FALSE;
         }
         if ((rc = DosQueryProcAddr(gsdll.hmodule, 0,
                 "GSAPI_INIT_WITH_ARGS",
                 (PFN *) (&gsdll.init_with_args))) != 0) {
-            gs_sprintf(buf, "Can't find GSAPI_INIT_WITH_ARGS, rc = %d\n", rc);
-            gs_addmess(buf);
+            sprintf(logBuf, "Can't find GSAPI_INIT_WITH_ARGS, rc = %d\n", rc);
+            gs_addmess(logBuf);
             gs_load_dll_cleanup();
             return FALSE;
         }
         if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_RUN_STRING",
                 (PFN *) (&gsdll.run_string))) != 0) {
-            gs_sprintf(buf, "Can't find GSAPI_RUN_STRING, rc = %d\n", rc);
-            gs_addmess(buf);
+            sprintf(logBuf, "Can't find GSAPI_RUN_STRING, rc = %d\n", rc);
+            gs_addmess(logBuf);
             gs_load_dll_cleanup();
             return FALSE;
         }
         if ((rc = DosQueryProcAddr(gsdll.hmodule, 0, "GSAPI_EXIT",
                 (PFN *) (&gsdll.exit))) != 0) {
-            gs_sprintf(buf, "Can't find GSAPI_EXIT, rc = %d\n", rc);
-            gs_addmess(buf);
+            sprintf(logBuf, "Can't find GSAPI_EXIT, rc = %d\n", rc);
+            gs_addmess(logBuf);
             gs_load_dll_cleanup();
             return FALSE;
         }
     } else {
-        gs_sprintf(buf, "Can't load Ghostscript DLL %s \nDosLoadModule rc = %d\n",
+        sprintf(logBuf, "Can't load Ghostscript DLL %s \nDosLoadModule rc = %d\n",
             szDllName, rc);
-        gs_addmess(buf);
+        gs_addmess(logBuf);
         gs_load_dll_cleanup();
         return FALSE;
     }
+    if (debug)
+        gs_addmess("gs_load_dll out\n");
+
     return TRUE;
 }
 
@@ -319,10 +344,6 @@ gsdll_stderr(void *instance, const char *str, int len)
 
 /*********************************************************************/
 /* display device */
-
-/*
-#define DISPLAY_DEBUG
-*/
 
 typedef struct IMAGE_S IMAGE;
 struct IMAGE_S {
@@ -364,7 +385,6 @@ image_find(void *handle, void *device)
 /* start gspmdrv.exe */
 static int run_gspmdrv(IMAGE *img)
 {
-    int ccode;
     PCHAR pdrvname = "gspmdrv.exe";
     CHAR error_message[256];
     CHAR term_queue_name[128];
@@ -377,28 +397,29 @@ static int run_gspmdrv(IMAGE *img)
     CHAR progname[256];
     PCHAR tail;
 
-#ifdef DEBUG
-    if (debug)
-        fprintf(stdout, "run_gspmdrv: starting\n");
-#endif
-    gs_sprintf(id, ID_NAME, img->pid, (ULONG)img->device);
+    if (debug) {
+        gs_addmess("run_gspmdrv: starting\n");
+    }
+    sprintf(id, ID_NAME, img->pid, (ULONG)img->device);
 
     /* Create termination queue - used to find out when gspmdrv terminates */
-    gs_sprintf(term_queue_name, "\\QUEUES\\TERMQ_%s", id);
+    sprintf(term_queue_name, "\\QUEUES\\TERMQ_%s", id);
     if (DosCreateQueue(&(img->term_queue), QUE_FIFO, term_queue_name)) {
-        fprintf(stdout, "run_gspmdrv: failed to create termination queue\n");
+        gs_addmess("run_gspmdrv: failed to create termination queue\n");
         return gs_error_limitcheck;
     }
     /* get full path to gsos2.exe and hence path to gspmdrv.exe */
     if ((rc = DosGetInfoBlocks(&pptib, &pppib)) != 0) {
-        fprintf(stdout, "run_gspmdrv: Couldn't get module handle, rc = %d\n",
+        sprintf(logBuf, "run_gspmdrv: Couldn't get module handle, rc = %d\n",
             rc);
+        gs_addmess(logBuf);
         return gs_error_limitcheck;
     }
     if ((rc = DosQueryModuleName(pppib->pib_hmte, sizeof(progname) - 1,
         progname)) != 0) {
-        fprintf(stdout, "run_gspmdrv: Couldn't get module name, rc = %d\n",
+        sprintf(logBuf, "run_gspmdrv: Couldn't get module name, rc = %d\n",
             rc);
+        gs_addmess(logBuf);
         return gs_error_limitcheck;
     }
     if ((tail = strrchr(progname, '\\')) != (PCHAR) NULL) {
@@ -412,7 +433,7 @@ static int run_gspmdrv(IMAGE *img)
     /* arguments are: */
     /*  (1) -d (display) option */
     /*  (2) id string */
-    gs_sprintf(arg, "-d %s", id);
+    sprintf(arg, "-d %s", id);
 
     /* because gspmdrv.exe is a different EXE type to gs.exe,
      * we must use start session not DosExecPgm() */
@@ -444,15 +465,15 @@ static int run_gspmdrv(IMAGE *img)
         rc = DosStartSession(&sdata, &img->session_id, &img->process_id);
     }
     if (rc) {
-        fprintf(stdout, "run_gspmdrv: failed to run %s, rc = %d\n",
+        sprintf(logBuf, "run_gspmdrv: failed to run %s, rc = %d\n",
             sdata.PgmName, rc);
-        fprintf(stdout, "run_gspmdrv: error_message: %s\n", error_message);
+        gs_addmess(logBuf);
+        sprintf(logBuf, "run_gspmdrv: error_message: %s\n", error_message);
+        gs_addmess(logBuf);
         return gs_error_limitcheck;
     }
-#ifdef DEBUG
     if (debug)
-        fprintf(stdout, "run_gspmdrv: returning\n");
-#endif
+        gs_addmess("run_gspmdrv: returning\n");
     return 0;
 }
 
@@ -546,9 +567,8 @@ static int image_palette_size(int format)
 
 /* New device has been opened */
 /* Tell user to use another device */
-int display_open(void *handle, void *device)
+static int display_open(void *handle, void *device)
 {
-    APIRET rc;
     IMAGE *img;
     PTIB pptib;
     PPIB pppib;
@@ -556,11 +576,10 @@ int display_open(void *handle, void *device)
     CHAR name[128];
     PBITMAPINFO2 bmi;
 
-#ifdef DISPLAY_DEBUG
-    if (debug)
-        fputc('o', stdout);
-    fprintf(stdout, "display_open(0x%x, 0x%x)\n", handle, device);
-#endif
+    if (debug) {
+        sprintf(logBuf, "display_open(0x%x, 0x%x)\n", handle, device);
+        gs_addmess(logBuf);
+    }
 
     if (first_image) {
         /* gsos2.exe is a console application, and displays using
@@ -596,34 +615,37 @@ int display_open(void *handle, void *device)
 
     /* Derive ID from process ID */
     if (DosGetInfoBlocks(&pptib, &pppib)) {
-        fprintf(stdout, "\ndisplay_open: Couldn't get pid\n");
+        gs_addmess("display_open: Couldn't get pid\n");
         return gs_error_limitcheck;
     }
     img->pid = pppib->pib_ulppid;	/* use parent (CMD.EXE) pid */
-    gs_sprintf(id, ID_NAME, img->pid, (ULONG) img->device);
+    sprintf(id, ID_NAME, img->pid, (ULONG) img->device);
 
     /* Create update event semaphore */
-    gs_sprintf(name, SYNC_NAME, id);
+    sprintf(name, SYNC_NAME, id);
     if (DosCreateEventSem(name, &(img->sync_event), 0, FALSE)) {
-        fprintf(stdout, "display_open: failed to create event semaphore %s\n", name);
+        sprintf(logBuf, "display_open: failed to create event semaphore %s\n", name);
+        gs_addmess(logBuf);
         return gs_error_limitcheck;
     }
     /* Create mutex - used for preventing gspmdrv from accessing */
     /* bitmap while we are changing the bitmap size. Initially unowned. */
-    gs_sprintf(name, MUTEX_NAME, id);
+    sprintf(name, MUTEX_NAME, id);
     if (DosCreateMutexSem(name, &(img->bmp_mutex), 0, FALSE)) {
         DosCloseEventSem(img->sync_event);
-        fprintf(stdout, "display_open: failed to create mutex semaphore %s\n", name);
+        sprintf(logBuf, "display_open: failed to create mutex semaphore %s\n", name);
+        gs_addmess(logBuf);
         return gs_error_limitcheck;
     }
 
     /* Shared memory is common to all processes so we don't want to
      * allocate too much.
      */
-    gs_sprintf(name, SHARED_NAME, id);
+    sprintf(name, SHARED_NAME, id);
     if (DosAllocSharedMem((PPVOID) & img->bitmap, name,
                       13 * 1024 * 1024, PAG_READ | PAG_WRITE)) {
-        fprintf(stdout, "display_open: failed allocating shared BMP memory %s\n", name);
+        sprintf(logBuf, "display_open: failed allocating shared BMP memory %s\n", name);
+        gs_addmess(logBuf);
         return gs_error_limitcheck;
     }
 
@@ -631,7 +653,7 @@ int display_open(void *handle, void *device)
     /* bitmap header and palette */
     if (DosSetMem(img->bitmap, MIN_COMMIT, PAG_COMMIT | PAG_DEFAULT)) {
         DosFreeMem(img->bitmap);
-        fprintf(stdout, "display: failed committing BMP memory\n");
+        gs_addmess("display: failed committing BMP memory\n");
         return gs_error_limitcheck;
     }
     img->committed = MIN_COMMIT;
@@ -652,26 +674,24 @@ int display_open(void *handle, void *device)
 
     /* delay start of gspmdrv until size is known */
 
-#ifdef DISPLAY_DEBUG
     if (debug)
-        fputc('O', stdout);
-#endif
+        gs_addmess("display_open out\n");
     return 0;
 }
 
-int display_preclose(void *handle, void *device)
+static int display_preclose(void *handle, void *device)
 {
     IMAGE *img;
     REQUESTDATA Request;
     ULONG DataLength;
     PVOID DataAddress;
-    PULONG QueueEntry;
     BYTE ElemPriority;
-#ifdef DISPLAY_DEBUG
-    if (debug)
-        fputc('l', stdout);
-    fprintf(stdout, "display_preclose(0x%x, 0x%x)\n", handle, device);
-#endif
+
+    if (debug) {
+        sprintf(logBuf, "display_preclose(0x%x, 0x%x)\n", handle, device);
+        gs_addmess(logBuf);
+    }
+
     img = image_find(handle, device);
     if (img) {
         if (img->session_id) {
@@ -692,21 +712,22 @@ int display_preclose(void *handle, void *device)
         DosCloseEventSem(img->sync_event);
         DosCloseMutexSem(img->bmp_mutex);
     }
-#ifdef DISPLAY_DEBUG
+
     if (debug)
-        fputc('L', stdout);
-#endif
+        gs_addmess("display_preclose out\n");
+
     return 0;
 }
 
-int display_close(void *handle, void *device)
+static int display_close(void *handle, void *device)
 {
     IMAGE *img;
-#ifdef DISPLAY_DEBUG
-    if (debug)
-        fputc('c', stdout);
-    fprintf(stdout, "display_close(0x%x, 0x%x)\n", handle, device);
-#endif
+
+    if (debug) {
+        sprintf(logBuf, "display_close(0x%x, 0x%x)\n", handle, device);
+        gs_addmess(logBuf);
+    }
+
     img = image_find(handle, device);
     if (img) {
         /* gspmdrv was closed by display_preclose */
@@ -715,23 +736,23 @@ int display_close(void *handle, void *device)
         img->bitmap = (unsigned char *)NULL;
         img->committed = 0;
     }
-#ifdef DISPLAY_DEBUG
     if (debug)
-        fputc('C', stdout);
-#endif
+        gs_addmess("display_close out\n");
+
     return 0;
 }
 
-int display_presize(void *handle, void *device, int width, int height,
+static int display_presize(void *handle, void *device, int width, int height,
         int raster, unsigned int format)
 {
     IMAGE *img;
-#ifdef DISPLAY_DEBUG
-    if (debug)
-        fputc('r', stdout);
-    fprintf(stdout, "display_presize(0x%x 0x%x, %d, %d, %d, %d)\n",
+
+    if (debug) {
+        sprintf(logBuf, "display_presize(0x%x 0x%x, %d, %d, %d, %d)\n",
         handle, device, width, height, raster, format);
-#endif
+        gs_addmess(logBuf);
+    }
+
     img = image_find(handle, device);
     if (img) {
         int color = format & DISPLAY_COLORS_MASK;
@@ -749,7 +770,8 @@ int display_presize(void *handle, void *device, int width, int height,
             (alpha == DISPLAY_ALPHA_NONE))
             img->format_known = TRUE;
         if (!img->format_known) {
-            fprintf(stdout, "display_presize: format %d = 0x%x is unsupported\n", format, format);
+            sprintf(logBuf, "display_presize: format %d = 0x%x is unsupported\n", format, format);
+            gs_addmess(logBuf);
             return gs_error_limitcheck;
         }
         /* grab mutex to stop other thread using bitmap */
@@ -760,26 +782,26 @@ int display_presize(void *handle, void *device, int width, int height,
         img->raster = raster;
         img->format = format;
     }
-#ifdef DISPLAY_DEBUG
     if (debug)
-        fputc('R', stdout);
-#endif
+        gs_addmess("display_presize out\n");
+
     return 0;
 }
 
-int display_size(void *handle, void *device, int width, int height,
+static int display_size(void *handle, void *device, int width, int height,
         int raster, unsigned int format, unsigned char *pimage)
 {
     IMAGE *img;
     PBITMAPINFO2 bmi;
     int nColors;
     int i;
-#ifdef DISPLAY_DEBUG
-    if (debug)
-        fputc('z', stdout);
-    fprintf(stdout, "display_size(0x%x 0x%x, %d, %d, %d, %d, %d, 0x%x)\n",
-        handle, device, width, height, raster, format, pimage);
-#endif
+
+    if (debug) {
+        sprintf(logBuf, "display_size(0x%x 0x%x, %d, %d, %d, %d, %d, 0x%x)\n",
+          handle, device, width, height, raster, format, pimage);
+        gs_addmess(logBuf);
+    }
+
     img = image_find(handle, device);
     if (img) {
         if (!img->format_known)
@@ -834,37 +856,50 @@ int display_size(void *handle, void *device, int width, int height,
 
         /* release mutex to allow other thread to use bitmap */
         DosReleaseMutexSem(img->bmp_mutex);
-    }
-#ifdef DISPLAY_DEBUG
-    if (debug) {
-        fprintf(stdout, "\nBMP dump\n");
-        fprintf(stdout, " bitmap=%lx\n", img->bitmap);
-        fprintf(stdout, " committed=%lx\n", img->committed);
-        fprintf(stdout, " cx=%d\n", bmi->cx);
-        fprintf(stdout, " cy=%d\n", bmi->cy);
-        fprintf(stdout, " cPlanes=%d\n", bmi->cPlanes);
-        fprintf(stdout, " cBitCount=%d\n", bmi->cBitCount);
-        fprintf(stdout, " ulCompression=%d\n", bmi->ulCompression);
-        fprintf(stdout, " cbImage=%d\n", bmi->cbImage);
-        fprintf(stdout, " cxResolution=%d\n", bmi->cxResolution);
-        fprintf(stdout, " cyResolution=%d\n", bmi->cyResolution);
-        fprintf(stdout, " cclrUsed=%d\n", bmi->cclrUsed);
-        fprintf(stdout, " cclrImportant=%d\n", bmi->cclrImportant);
+
+        if (debug) {
+            gs_addmess("\nBMP dump\n");
+            sprintf(logBuf, " bitmap=%lx\n", img->bitmap);
+            gs_addmess(logBuf);
+            sprintf(logBuf, " committed=%lx\n", img->committed);
+            gs_addmess(logBuf);
+            sprintf(logBuf, " cx=%d\n", bmi->cx);
+            gs_addmess(logBuf);
+            sprintf(logBuf, " cy=%d\n", bmi->cy);
+            gs_addmess(logBuf);
+            sprintf(logBuf, " cPlanes=%d\n", bmi->cPlanes);
+            gs_addmess(logBuf);
+            sprintf(logBuf, " cBitCount=%d\n", bmi->cBitCount);
+            gs_addmess(logBuf);
+            sprintf(logBuf, " ulCompression=%d\n", bmi->ulCompression);
+            gs_addmess(logBuf);
+            sprintf(logBuf, " cbImage=%d\n", bmi->cbImage);
+            gs_addmess(logBuf);
+            sprintf(logBuf, " cxResolution=%d\n", bmi->cxResolution);
+            gs_addmess(logBuf);
+            sprintf(logBuf, " cyResolution=%d\n", bmi->cyResolution);
+            gs_addmess(logBuf);
+            sprintf(logBuf, " cclrUsed=%d\n", bmi->cclrUsed);
+            gs_addmess(logBuf);
+            sprintf(logBuf, " cclrImportant=%d\n", bmi->cclrImportant);
+            gs_addmess(logBuf);
+        }
     }
     if (debug)
-        fputc('Z', stdout);
-#endif
+        gs_addmess("display_size out\n");
+
     return 0;
 }
 
-int display_sync(void *handle, void *device)
+static int display_sync(void *handle, void *device)
 {
     IMAGE *img;
-#ifdef DISPLAY_DEBUG
-    if (debug)
-        fputc('s', stdout);
-    fprintf(stdout, "display_sync(0x%x, 0x%x)\n", handle, device);
-#endif
+
+    if (debug) {
+        sprintf(logBuf, "display_sync(0x%x, 0x%x)\n", handle, device);
+        gs_addmess(logBuf);
+    }
+
     img = image_find(handle, device);
     if (img) {
         if (!img->format_known)
@@ -874,26 +909,25 @@ int display_sync(void *handle, void *device)
            run_gspmdrv(img);
         DosPostEventSem(img->sync_event);
     }
-#ifdef DISPLAY_DEBUG
+
     if (debug)
-        fputc('S', stdout);
-#endif
+        gs_addmess("display_sync out\n");
+
     return 0;
 }
 
-int display_page(void *handle, void *device, int copies, int flush)
+static int display_page(void *handle, void *device, int copies, int flush)
 {
-#ifdef DISPLAY_DEBUG
     if (debug)
-        fputc('p', stdout);
-    fprintf(stdout, "display_page(0x%x, 0x%x, copies=%d, flush=%d)\n",
-        handle, device, copies, flush);
-#endif
+        sprintf(logBuf, "display_page(0x%x, 0x%x, copies=%d, flush=%d)\n",
+          handle, device, copies, flush);
+        gs_addmess(logBuf);
+
     display_sync(handle, device);
-#ifdef DISPLAY_DEBUG
+
     if (debug)
-        fputc('P', stdout);
-#endif
+        gs_addmess("display_page out\n");
+
     return 0;
 }
 
@@ -905,12 +939,12 @@ void *display_memalloc(void *handle, void *device, unsigned long size)
     APIRET rc;
     void *mem = NULL;
 
-#ifdef DISPLAY_DEBUG
-    if (debug)
-        fputc('m', stdout);
-    fprintf(stdout, "display_memalloc(0x%x 0x%x %d)\n",
-        handle, device, size);
-#endif
+    if (debug) {
+        sprintf(logBuf, "display_memalloc(0x%x 0x%x %d)\n",
+          handle, device, size);
+        gs_addmess(logBuf);
+    }
+
     img = image_find(handle, device);
     if (img) {
         /* we don't actually allocate memory here, we only commit
@@ -931,18 +965,20 @@ void *display_memalloc(void *handle, void *device, unsigned long size)
             if (rc = DosSetMem(img->bitmap + img->committed,
                            needed - img->committed,
                            PAG_COMMIT | PAG_DEFAULT)) {
-                fprintf(stdout, "No memory in display_memalloc rc = %d\n", rc);
+                sprintf(logBuf, "No memory in display_memalloc rc = %d\n", rc);
+                gs_addmess(logBuf);
                 return NULL;
             }
             img->committed = needed;
         }
         mem = img->bitmap + header;
     }
-#ifdef DISPLAY_DEBUG
-    fprintf(stdout, "  returning 0x%x\n", (int)mem);
-    if (debug)
-        fputc('M', stdout);
-#endif
+
+    if (debug) {
+        sprintf(logBuf, "  returning 0x%x\n", (int)mem);
+        gs_addmess(logBuf);
+    }
+
     return mem;
 }
 
@@ -950,14 +986,15 @@ int display_memfree(void *handle, void *device, void *mem)
 {
     /* we can't uncommit shared memory, so do nothing */
     /* memory will be released when device is closed */
-#ifdef DISPLAY_DEBUG
-    fprintf(stdout, "display_memfree(0x%x, 0x%x, 0x%x)\n",
-        handle, device, mem);
-#endif
+    if (debug) {
+        sprintf(logBuf, "display_memfree(0x%x, 0x%x, 0x%x)\n",
+           handle, device, mem);
+        gs_addmess(logBuf);
+    }
     return 0;
 }
 
-int display_update(void *handle, void *device,
+static int display_update(void *handle, void *device,
     int x, int y, int w, int h)
 {
     /* unneeded - we are running image window in a separate process */
@@ -993,6 +1030,8 @@ main(int argc, char *argv[])
     char dformat[64];
     int exit_code;
     ULONG version[3];
+    char logfile[_MAX_PATH +1];
+    char *env;
 
     if (DosQuerySysInfo(QSV_VERSION_MAJOR, QSV_VERSION_REVISION,
             &version, sizeof(version)))
@@ -1000,9 +1039,26 @@ main(int argc, char *argv[])
     else
         os_version = version[0] * 10000 + version[1] * 100 + version[2];
 
+    logfileFH = NULL;
+    debug = FALSE;
+    if (getenv("GS_DEBUG") != NULL) {
+        debug = TRUE;
+        env = getenv("LOGFILES");
+        if (env != NULL)
+           snprintf(logfile, sizeof(logfile), "%s/%s", env, "gs_debug.log");
+        else
+           snprintf(logfile, sizeof(logfile), "%s", "gs_debug.log");
+        logfileFH = fopen(logfile, "a");
+    }
+
+    if (debug)
+        gs_addmess("main init\n");
+
     if (!gs_load_dll()) {
-        fprintf(stdout, "Can't load %s\n", szDllName);
-        return -1;
+        sprintf(logBuf, "Can't load %s\n", szDllName);
+        gs_addmess(logBuf);
+        exit_status = -1;
+        goto bail;
     }
 
     /* insert -dDisplayFormat=XXXXX as first argument */
@@ -1029,12 +1085,13 @@ main(int argc, char *argv[])
         else if (depth >= 4)
             format = DISPLAY_COLORS_NATIVE | DISPLAY_ALPHA_NONE |
                 DISPLAY_DEPTH_4 | DISPLAY_LITTLEENDIAN | DISPLAY_BOTTOMFIRST;
-        gs_sprintf(dformat, "-dDisplayFormat=%d", format);
+        sprintf(dformat, "-dDisplayFormat=%d", format);
     }
-#ifdef DEBUG
-    if (debug)
-        fprintf(stdout, "%s\n", dformat);
-#endif
+    if (debug) {
+        sprintf(logBuf, "%s\n", dformat);
+        gs_addmess(logBuf);
+    }
+
     nargc = argc + 1;
     nargv = (char **)malloc((nargc + 1) * sizeof(char *));
     nargv[0] = argv[0];
@@ -1045,9 +1102,21 @@ main(int argc, char *argv[])
         gsdll.set_stdio(instance, gsdll_stdin, gsdll_stdout, gsdll_stderr);
         gsdll.set_display_callback(instance, &display);
 
+        if (debug)
+            gs_addmess("main set_display_callback\n");
+
         code = gsdll.init_with_args(instance, nargc, nargv);
+        if (debug) {
+            sprintf(logBuf, "main init_with_args rc: %i\n", code);
+            gs_addmess(logBuf);
+        }
+
         if (code == 0)
             code = gsdll.run_string(instance, start_string, 0, &exit_code);
+        if (debug) {
+            sprintf(logBuf, "main run_string rc: %i\n", code);
+            gs_addmess(logBuf);
+        }
         code1 = gsdll.exit(instance);
         if (code == 0 || code == gs_error_Quit)
             code = code1;
@@ -1073,6 +1142,14 @@ main(int argc, char *argv[])
         default:
             exit_status = 255;
     }
+    if (debug) {
+        sprintf(logBuf, "main end rc: %i\n", code);
+        gs_addmess(logBuf);
+    }
+
+bail:
+    if (debug)
+            fclose(logfileFH);
 
     return exit_status;
 }
