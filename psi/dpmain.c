@@ -61,7 +61,6 @@ char logBuf[MAXSTR];
 LONG display_planes;
 LONG display_bitcount;
 LONG display_hasPalMan;
-ULONG os_version;
 
 static int gsdll_stdin(void *instance, char *buf, int len);
 static int gsdll_stdout(void *instance, const char *str, int len);
@@ -105,8 +104,10 @@ void
 gs_addmess(const char *str)
 {
 #if defined(__EMX__)
-    if (logfileFH != NULL)
+    if (logfileFH != NULL) {
         fprintf(logfileFH, str);
+        fflush(logfileFH);
+    }
     else {
         fputs(str, stderr);
         fflush(stderr);
@@ -1032,12 +1033,6 @@ main(int argc, char *argv[])
     ULONG version[3];
     char logfile[_MAX_PATH +1];
     char *env;
-
-    if (DosQuerySysInfo(QSV_VERSION_MAJOR, QSV_VERSION_REVISION,
-            &version, sizeof(version)))
-        os_version = 201000;	/* a guess */
-    else
-        os_version = version[0] * 10000 + version[1] * 100 + version[2];
 
     logfileFH = NULL;
     debug = FALSE;
