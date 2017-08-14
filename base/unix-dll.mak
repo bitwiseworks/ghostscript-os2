@@ -103,7 +103,7 @@ $(GSSOC_XE): so-links-subtarget $(PSSRC)$(SOC_LOADER)
 	emximp -o $(BINDIR)/gs.a $(PSSRC)gsdll2.def
 	emximp -o $(BINDIR)/gs.lib $(PSSRC)gsdll2.def
 	$(GLCC) -g -o $(GSSOC_XE) $(PSSRC)dpmain.c soobj/gscdefs.o soobj/gssprintf.o \
-	$(PSSRC)gsos2.def -L$(BINDIR) -l$(GS_SO_BASE)
+	$(PSSRC)gsos2.def -L$(BINDIR) -l$(GS_SO_BASE) $(EXTRALIBS)
 
 $(GSSOX_XE): so-links-subtarget $(PSSRC)$(SOC_LOADER)
 	$(GLCC) -g $(SOC_CFLAGS) -o $(GSSOX_XE) $(PSSRC)$(SOC_LOADER) \
