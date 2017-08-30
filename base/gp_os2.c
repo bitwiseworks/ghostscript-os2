@@ -475,14 +475,15 @@ int
 pm_spool(const gs_memory_t *mem, char *filename, const char *queue)
 {
     HSPL hspl;
-    PDEVOPENSTRUC pdata;
+    PDEVOPENSTRUC pdata = NULL;
     PSZ pszToken = "*";
     ULONG jobid;
-    BOOL rc;
+    BOOL apiRet = 0;
+    int retCode = 0;
     char queue_name[256];
     char driver_name[256];
-    char *buffer;
-    FILE *f;
+    char *buffer = NULL;
+    FILE *f = NULL;
     int count;
 
     if (strlen(queue) != 0) {
@@ -501,14 +502,16 @@ pm_spool(const gs_memory_t *mem, char *filename, const char *queue)
     if (!filename)
         return 0;		/* we were only asked to check the queue */
 
+  do {
     if ((buffer = malloc(PRINT_BUF_SIZE)) == (char *)NULL) {
         emprintf(mem, "Out of memory in pm_spool\n");
-        return 1;
+        retCode = 1;
+        break;
     }
     if ((f = gp_fopen(filename, "rb")) == (FILE *) NULL) {
-        free(buffer);
         emprintf1(mem, "Can't open temporary file %s\n", filename);
-        return 1;
+        retCode = 1;
+        break;
     }
     /* Allocate memory for pdata */
     if (!DosAllocMem((PVOID) & pdata, sizeof(DEVOPENSTRUC),
@@ -527,40 +530,52 @@ pm_spool(const gs_memory_t *mem, char *filename, const char *queue)
         hspl = SplQmOpen(pszToken, 4L, (PQMOPENDATA) pdata);
         if (hspl == SPL_ERROR) {
             emprintf(mem, "SplQmOpen failed.\n");
-            DosFreeMem((PVOID) pdata);
-            free(buffer);
-            fclose(f);
-            return 1;		/* failed */
+            retCode = 1;		/* failed */
+            break;        
         }
-        rc = SplQmStartDoc(hspl, "Ghostscript");
-        if (!rc) {
+        apiRet = SplQmStartDoc(hspl, "Ghostscript");
+        if (!apiRet) {
             emprintf(mem, "SplQmStartDoc failed.\n");
-            DosFreeMem((PVOID) pdata);
-            free(buffer);
-            fclose(f);
-            return 1;
+            retCode = 1;
+            break;
         }
         /* loop, copying file to queue */
-        while (rc && (count = fread(buffer, 1, PRINT_BUF_SIZE, f)) != 0) {
-            rc = SplQmWrite(hspl, count, buffer);
-            if (!rc)
+        while (apiRet && (count = fread(buffer, 1, PRINT_BUF_SIZE, f)) != 0) {
+            apiRet = SplQmWrite(hspl, count, buffer);
+            if (!apiRet) {
                 emprintf(mem, "SplQmWrite failed.\n");
+                retCode = 1;
+            }
         }
-        free(buffer);
-        fclose(f);
 
-        if (!rc) {
+        if (!apiRet) {
             emprintf(mem, "Aborting Spooling.\n");
             SplQmAbort(hspl);
+            retCode = 1;
+            break;
         } else {
             SplQmEndDoc(hspl);
-            rc = SplQmClose(hspl);
-            if (!rc)
+            apiRet = SplQmClose(hspl);
+            if (!apiRet) {
                 emprintf(mem, "SplQmClose failed.\n");
+                retCode = 1;
+                break;
+            }
         }
     } else
-        rc = 0;			/* no memory */
-    return !rc;
+        retCode = 1;			/* no memory */
+  } while (0);
+
+    if (pdata != NULL)
+        DosFreeMem((PVOID) pdata);
+
+    if (buffer != NULL)
+        free(buffer);
+
+    if (f != NULL)
+        fclose(f);
+
+    return retCode;
 }
 
 /* ------ Font enumeration ------ */

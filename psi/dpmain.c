@@ -1030,7 +1030,6 @@ main(int argc, char *argv[])
     char **nargv;
     char dformat[64];
     int exit_code;
-    ULONG version[3];
     char logfile[_MAX_PATH +1];
     char *env;
 
