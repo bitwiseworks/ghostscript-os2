@@ -24,6 +24,7 @@
  *  Uses same interface to gspmdrv.c as os2pm device.
  */
 
+#define OS2EMX_PLAIN_CHAR
 #define INCL_DOS
 #define INCL_DOSERRORS
 #define INCL_WIN	/* to get bits/pixel of display */
@@ -76,6 +77,10 @@ static int display_sync(void *handle, void *device);
 static int display_page(void *handle, void *device, int copies, int flush);
 static int display_update(void *handle, void *device, int x, int y,
         int w, int h);
+void *display_memalloc(void *handle, void *device, unsigned long size);
+int display_memfree(void *handle, void *device, void *mem);
+void image_color(unsigned int format, int index,
+    unsigned char *r, unsigned char *g, unsigned char *b);
 void gs_addmess(const char *str);
 BOOL gs_free_dll(void);
 void gs_load_dll_cleanup(void);
@@ -963,9 +968,8 @@ void *display_memalloc(void *handle, void *device, unsigned long size)
         needed = (size + header + MIN_COMMIT - 1) & (~(MIN_COMMIT - 1));
         if (needed > img->committed) {
             /* commit more memory */
-            if (rc = DosSetMem(img->bitmap + img->committed,
-                           needed - img->committed,
-                           PAG_COMMIT | PAG_DEFAULT)) {
+            if ((rc = DosSetMem(img->bitmap + img->committed,
+                      needed - img->committed, PAG_COMMIT | PAG_DEFAULT))) {
                 sprintf(logBuf, "No memory in display_memalloc rc = %d\n", rc);
                 gs_addmess(logBuf);
                 return NULL;
