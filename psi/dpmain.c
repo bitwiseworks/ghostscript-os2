@@ -25,6 +25,7 @@
  */
 
 #define OS2EMX_PLAIN_CHAR
+#define INCL_EXAPIS
 #define INCL_DOS
 #define INCL_DOSERRORS
 #define INCL_WIN	/* to get bits/pixel of display */
@@ -139,11 +140,11 @@ gs_free_dll(void)
 
     if (gsdll.hmodule == (HMODULE) NULL)
         return TRUE;
-    rc = DosFreeModule(gsdll.hmodule);
+    rc = DosFreeModuleEx(gsdll.hmodule);
     if (rc == 12) rc = 0; //we ignore rc == 12 (ERROR_INVALID_ACCESS)
 
     if (rc) {
-        sprintf(logBuf, "DosFreeModule returns %d\n", rc);
+        sprintf(logBuf, "DosFreeModuleEx returns %d\n", rc);
         gs_addmess(logBuf);
         gs_addmess("Unloaded GSDLL\n\n");
     }
@@ -197,7 +198,7 @@ gs_load_dll(void)
         gs_addmess(logBuf);
     }
     memset(buf, 0, sizeof(buf));
-    rc = DosLoadModule(buf, sizeof(buf), dllname, &gsdll.hmodule);
+    rc = DosLoadModuleEx(buf, sizeof(buf), dllname, &gsdll.hmodule);
     if (rc) {
         /* failed */
         /* try again, with path of EXE */
@@ -216,7 +217,7 @@ gs_load_dll(void)
             sprintf(logBuf, "Trying to load %s\n", dllname);
             gs_addmess(logBuf);
         }
-        rc = DosLoadModule(buf, sizeof(buf), dllname, &gsdll.hmodule);
+        rc = DosLoadModuleEx(buf, sizeof(buf), dllname, &gsdll.hmodule);
         if (rc) {
             /* failed again */
             /* try once more, this time on system search path */
@@ -225,7 +226,7 @@ gs_load_dll(void)
                 sprintf(logBuf, "Trying to load %s\n", dllname);
                 gs_addmess(logBuf);
             }
-            rc = DosLoadModule(buf, sizeof(buf), dllname, &gsdll.hmodule);
+            rc = DosLoadModuleEx(buf, sizeof(buf), dllname, &gsdll.hmodule);
         }
     }
     if (rc == 0) {
@@ -311,7 +312,7 @@ gs_load_dll(void)
             return FALSE;
         }
     } else {
-        sprintf(logBuf, "Can't load Ghostscript DLL %s \nDosLoadModule rc = %d\n",
+        sprintf(logBuf, "Can't load Ghostscript DLL %s \nDosLoadModuleEx rc = %d\n",
             szDllName, rc);
         gs_addmess(logBuf);
         gs_load_dll_cleanup();
